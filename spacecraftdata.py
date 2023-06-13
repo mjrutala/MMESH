@@ -75,6 +75,9 @@ class SpacecraftData:
         spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-2.bsp')
         spice.furnsh('/Users/mrutala/SPICE/generic/kernels/pck/pck00011.tpc')
         
+        #  Custom helio frames
+        spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
+        
         spice.furnsh(self.SPICE_METAKERNEL)
         
         datetimes_str = [time.strftime('%Y-%m-%dT%H:%M:%S.%f') for time in self.datetimes]
@@ -85,7 +88,6 @@ class SpacecraftData:
         sc_state_dataframe = pd.DataFrame(data=sc_state_arr, 
                                           index=self.datetimes,
                                           columns=['xpos', 'ypos', 'zpos', 'xvel', 'yvel', 'zvel'])
-        print(sc_state_dataframe)
         spice.kclear()
         
         #  !!! Check is self.data is a dataframe, if not, make it
