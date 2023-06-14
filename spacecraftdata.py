@@ -96,10 +96,18 @@ class SpacecraftData:
         except AttributeError:
             self.data = sc_state_dataframe
         
-        
-    def read_processeddata(self, starttime, stoptime):
+    def read_processeddata(self, starttime, stoptime, everything=False):
         import read_SWData
         import pandas as pd
+        import spiceypy as spice
+        
+        import spiceypy_metakernelcontext as spice_mkc
+        
+        #  everything keyword read in all available data, overwriting starttime and stoptime
+        if everything == True:
+            spice.furnsh(self.SPICE_METAKERNEL)
+            starttime, stoptime = spice_mkc.kernelrange(self.SPICE_ID, kw_verbose=False)
+            spice.kclear()
         
         processed_data = read_SWData.Ulysses(starttime, stoptime, basedir=self.basedir + 'Data/')
         
@@ -111,8 +119,6 @@ class SpacecraftData:
         
         self.data_type = 'processed'
         self.datetimes = processed_data.index.to_pydatetime()
-        
-        
     
         #self.start_date = None
         #self.stop_date = None
