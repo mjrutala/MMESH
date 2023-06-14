@@ -6,7 +6,7 @@ Created on Mon Jun 12 16:17:07 2023
 @author: mrutala
 """
 
-def MSWIM2Dlike():
+def MSWIM2Dlike(spacecraft, starttime, stoptime):
     import datetime as dt
     import numpy as np
     import spiceypy as spice
@@ -15,13 +15,13 @@ def MSWIM2Dlike():
     import spacecraftdata as SpacecraftData
     
     #  Things that will be input parameters
-    name = 'Ulysses'
-    starttime = dt.datetime(1997, 12, 1)
-    stoptime = dt.datetime(1998, 1, 1)
+    #name = 'Ulysses'
+    #starttime = dt.datetime(1997, 12, 1)
+    #stoptime = dt.datetime(1998, 1, 1)
     latitude_cutoff = 10
     
     
-    sc = SpacecraftData.SpacecraftData(name)
+    sc = SpacecraftData.SpacecraftData(spacecraft)
     sc.read_processeddata(starttime, stoptime)
     sc.find_state('SUN_INERTIAL', 'SUN')
     
