@@ -16,8 +16,8 @@ def MSWIM2Dlike():
     
     #  Things that will be input parameters
     name = 'Ulysses'
-    starttime = dt.datetime(1990, 1, 1)
-    stoptime = dt.datetime(2010, 1, 1)
+    starttime = dt.datetime(1997, 12, 1)
+    stoptime = dt.datetime(1998, 1, 1)
     latitude_cutoff = 10
     
     
@@ -43,10 +43,10 @@ def MSWIM2Dlike():
     df_to_write['hr'] = [t.strftime('%H') for t in sc.data.index]
     df_to_write['mn'] = [t.strftime('%M') for t in sc.data.index]
     df_to_write['sc'] = [t.strftime('%S') for t in sc.data.index]
-    df_to_write['msc'] = [t.strftime('%f') for t in sc.data.index]
-    df_to_write['x'] = sc.data['xpos']/sc.au_to_km
-    df_to_write['y'] = sc.data['ypos']/sc.au_to_km
-    df_to_write['z'] = sc.data['zpos']/sc.au_to_km
+    df_to_write['msc'] = [t.strftime('%f')[:-3] for t in sc.data.index] # micros to millis
+    df_to_write['x'] = [coord/sc.au_to_km for coord in sc.data['xpos']]
+    df_to_write['y'] = [coord/sc.au_to_km for coord in sc.data['ypos']]
+    df_to_write['z'] = [coord/sc.au_to_km for coord in sc.data['zpos']]
     
     trajectory_filename = ''.join([sc.name.lower(), '_trajectory_',
                                    sc.data.index[0].strftime('%Y%m%d%H%M%S'),
@@ -64,8 +64,8 @@ def MSWIM2Dlike():
         file.write('HGI' + '\n')
         file.write('\n')
         file.write('year mo dy hr mn sc msc x y z' + '\n')
-        file.write('#START')
+        file.write('#START' + '\n')
     
-    df_to_write.to_csv(trajectory_filename, sep=' ', mode='a', header=False, index=False)
+    df_to_write.to_csv(trajectory_filename, sep=' ', mode='a', header=False, index=False, float_format='%.3f')
     
     
