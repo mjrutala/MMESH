@@ -12,6 +12,8 @@ class SpacecraftData:
     au_to_km = 1.496e8
     rj_to_km = 71492.
     
+    import datetime as dt
+    
     def __init__(self, name, 
                  basedir = '/Users/mrutala/'):
         import spiceypy as spice
@@ -58,16 +60,18 @@ class SpacecraftData:
                 #self.basedir_data = '/Users/mrutala/Data/voyager/'
         
     def find_timerange(self, starttime, stoptime, timedelta):
-        import datetime as dt
+        #import datetime as dt
         import numpy as np
         
         self.datetimes = np.arange(starttime, stoptime, timedelta).astype(dt.datetime)
     
     def find_state(self, reference_frame, observer):
-        import datetime as dt
+        #import datetime as dt
         import numpy as np
         import spiceypy as spice
         import pandas as pd
+        
+        #!!! Add reference frame and observer to self
         
         #  Essential solar system and timekeeping kernels
         spice.furnsh('/Users/mrutala/SPICE/generic/kernels/lsk/latest_leapseconds.tls')
@@ -82,8 +86,11 @@ class SpacecraftData:
         
         datetimes_str = [time.strftime('%Y-%m-%dT%H:%M:%S.%f') for time in self.datetimes]
         ets = spice.str2et(datetimes_str)
-        
+        print(self.SPICE_METAKERNEL)
+        print(self.SPICE_ID)
+        print(self.name)
         sc_state, sc_lt = spice.spkezr(str(self.SPICE_ID), ets, reference_frame, 'NONE', observer)
+        print(sc_state)
         sc_state_arr = np.array(sc_state)
         sc_state_dataframe = pd.DataFrame(data=sc_state_arr, 
                                           index=self.datetimes,
@@ -96,7 +103,7 @@ class SpacecraftData:
         except AttributeError:
             self.data = sc_state_dataframe
         
-    def read_processeddata(self, starttime, stoptime, everything=False):
+    def read_processeddata(self, starttime=dt.datetime.now(), stoptime=dt.datetime.now(), everything=False):
         import read_SWData
         import pandas as pd
         import spiceypy as spice
@@ -109,7 +116,7 @@ class SpacecraftData:
             starttime, stoptime = spice_mkc.kernelrange(self.SPICE_ID, kw_verbose=False)
             spice.kclear()
         
-        processed_data = read_SWData.Ulysses(starttime, stoptime, basedir=self.basedir + 'Data/')
+        processed_data = read_SWData.read(self.name, starttime, stoptime, basedir=self.basedir + 'Data/')
         
         #  If self.data exists, add to it, else, make it
         try:
