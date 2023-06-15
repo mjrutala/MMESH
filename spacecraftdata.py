@@ -86,11 +86,7 @@ class SpacecraftData:
         
         datetimes_str = [time.strftime('%Y-%m-%dT%H:%M:%S.%f') for time in self.datetimes]
         ets = spice.str2et(datetimes_str)
-        print(self.SPICE_METAKERNEL)
-        print(self.SPICE_ID)
-        print(self.name)
         sc_state, sc_lt = spice.spkezr(str(self.SPICE_ID), ets, reference_frame, 'NONE', observer)
-        print(sc_state)
         sc_state_arr = np.array(sc_state)
         sc_state_dataframe = pd.DataFrame(data=sc_state_arr, 
                                           index=self.datetimes,
