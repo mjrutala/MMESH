@@ -213,3 +213,19 @@ def Ulysses(starttime, finaltime, basedir=None):
     data.attrs['equations'] = {**plasma_data.attrs['equations'], **mag_data.attrs['equations']}
         
     return(data)
+
+# =============================================================================
+# A simple function which allows you to specify the spacecraft name as an argument
+# Which then calls the relrevant functions
+# =============================================================================
+def read(spacecraft, starttime, finaltime, basedir=None):
+    
+    match spacecraft.lower():
+        case 'ulysses':
+            result = Ulysses(starttime, finaltime, basedir=basedir)
+        case 'juno':
+            result = Juno_Wilson2018(starttime, finaltime)
+            
+    return(result)
+            
+        
