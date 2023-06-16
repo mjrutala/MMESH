@@ -28,13 +28,13 @@ def Juno_Wilson2018(starttime, finaltime, filepath=None):
     
     spacecraft_data = pd.read_csv(filepath)
     
-    output_columns = ['Umag', 'Umag_err', 
-                      'nproton', 'nproton_err', 
-                      'nalpha', 'nalpha_err',
-                      'Tproton', 'Tproton_err', 
-                      'Talpha', 'Talpha_err',
-                      'pdynalpha', 'pdynalpha_err', 
-                      'pdynproton', 'pdynproton_err']
+    output_columns = ['u_mag', 'u_mag_err', 
+                      'n_proton', 'n_proton_err', 
+                      'n_alpha', 'n_alpha_err',
+                      'T_proton', 'T_proton_err', 
+                      'T_alpha', 'T_alpha_err',
+                      'p_dyn_alpha', 'p_dyn_alpha_err', 
+                      'p_dyn_proton', 'p_dyn_proton_err']
     output_spacecraft_data = pd.DataFrame(columns=output_columns)
     
     #  Data quality is a boolean to determine whether to use (1) or not use (0) the respective measurement
@@ -42,29 +42,29 @@ def Juno_Wilson2018(starttime, finaltime, filepath=None):
     dataquality_index = np.where(dataquality == 1)[0]
     
     #  No conversion necessary, km/s is good
-    output_spacecraft_data['Umag'] = spacecraft_data['V_KMPS']
-    output_spacecraft_data['Umag_err'] = spacecraft_data['V_KMPS_UNCERTAINTY']
+    output_spacecraft_data['u_mag'] = spacecraft_data['V_KMPS']
+    output_spacecraft_data['u_mag_err'] = spacecraft_data['V_KMPS_UNCERTAINTY']
     
     #  No conversion necessary, cm^-3 is good
-    output_spacecraft_data['nproton'] = spacecraft_data['N_PROTONS_CC']
-    output_spacecraft_data['nproton_err'] = spacecraft_data['N_PROTONS_CC_UNCERTAINTY']  
+    output_spacecraft_data['n_proton'] = spacecraft_data['N_PROTONS_CC']
+    output_spacecraft_data['n_proton_err'] = spacecraft_data['N_PROTONS_CC_UNCERTAINTY']  
     # Alphas may contribute significantly during pressure/density increases
-    output_spacecraft_data['nalpha'] = spacecraft_data['N_ALPHAS_CC']
-    output_spacecraft_data['nalpha_err'] = spacecraft_data['N_ALPHAS_CC_UNCERTAINTY']
+    output_spacecraft_data['n_alpha'] = spacecraft_data['N_ALPHAS_CC']
+    output_spacecraft_data['n_alpha_err'] = spacecraft_data['N_ALPHAS_CC_UNCERTAINTY']
     
     #  No conversion necessary, eV is good
-    output_spacecraft_data['Tproton'] = spacecraft_data['T_PROTONS_EV']
-    output_spacecraft_data['Tproton_err'] = spacecraft_data['T_PROTONS_EV_UNCERTAINTY']
+    output_spacecraft_data['T_proton'] = spacecraft_data['T_PROTONS_EV']
+    output_spacecraft_data['T_proton_err'] = spacecraft_data['T_PROTONS_EV_UNCERTAINTY']
     #
-    output_spacecraft_data['Talphas'] = spacecraft_data['T_ALPHAS_EV']
-    output_spacecraft_data['Talphas_err'] = spacecraft_data['T_ALPHAS_EV_UNCERTAINTY']
+    output_spacecraft_data['T_alpha'] = spacecraft_data['T_ALPHAS_EV']
+    output_spacecraft_data['T_alpha_err'] = spacecraft_data['T_ALPHAS_EV_UNCERTAINTY']
     
     #  No conversion necessary, pressure in nPa is good
-    output_spacecraft_data['pdynproton'] = spacecraft_data['RAM_PRESSURE_PROTONS_NPA']
-    output_spacecraft_data['pdynproton_err'] = spacecraft_data['RAM_PRESSURE_PROTONS_NPA_UNCERTAINTY']
+    output_spacecraft_data['p_dyn_proton'] = spacecraft_data['RAM_PRESSURE_PROTONS_NPA']
+    output_spacecraft_data['p_dyn_proton_err'] = spacecraft_data['RAM_PRESSURE_PROTONS_NPA_UNCERTAINTY']
     #
-    output_spacecraft_data['pdynalpha'] = spacecraft_data['RAM_PRESSURE_ALPHAS_NPA']
-    output_spacecraft_data['pdynalpha_err'] = spacecraft_data['RAM_PRESSURE_ALPHAS_NPA_UNCERTAINTY']
+    output_spacecraft_data['p_dyn_alpha'] = spacecraft_data['RAM_PRESSURE_ALPHAS_NPA']
+    output_spacecraft_data['p_dyn_alpha_err'] = spacecraft_data['RAM_PRESSURE_ALPHAS_NPA_UNCERTAINTY']
     
     #  Finally, set the index to be datetimes
     output_spacecraft_data.index = [dt.datetime.strptime(t, '%Y-%jT%H:%M:%S.%f') for t in spacecraft_data['UTC']]
@@ -165,14 +165,13 @@ def Ulysses(starttime, finaltime, basedir=None):
         filelist.sort()
         
         input_columns = ['iyr', 'iddoy', 'idhr',  #  decimal doy, decimal hour
-                         'Br', 'Bt', 'Bn', 'Bmag',  
-                         'nVectors']
+                         'B_r', 'B_t', 'B_n', 'B_mag',  
+                         'nBVectors']
         
         #  Make a generator to read csv data and concatenate into a single dataframe
         data_generator = (pd.read_csv(f, delim_whitespace=True, header=0, names=input_columns) 
                                      for f in filelist)
         spacecraft_data = pd.concat(data_generator, ignore_index=True)
-        
         
         spacecraft_data['idoy'] = [int(iddoy) for iddoy in spacecraft_data['iddoy']]
         spacecraft_data['ihr'] = [int(idhr) for idhr in spacecraft_data['idhr']]
@@ -191,7 +190,7 @@ def Ulysses(starttime, finaltime, basedir=None):
                       & (spacecraft_data.index < finaltime))
         spacecraft_data = spacecraft_data.iloc[time_index]
         
-        output_columns = ['Br', 'Bt', 'Bn', 'Bmag', 'nVectors']
+        output_columns = ['B_r', 'B_t', 'B_n', 'B_mag', 'nBVectors']
         output_columns_units = ['nT', 'nT', 'nT', 'nT', '#']
         spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
         
@@ -225,6 +224,7 @@ def read(spacecraft, starttime, finaltime, basedir=None):
             result = Ulysses(starttime, finaltime, basedir=basedir)
         case 'juno':
             result = Juno_Wilson2018(starttime, finaltime)
+        
             
     return(result)
             
