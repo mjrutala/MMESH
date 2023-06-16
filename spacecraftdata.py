@@ -7,16 +7,19 @@ Created on Mon Jun 12 16:35:56 2023
 """
 
 class SpacecraftData:
+    
+    import datetime as dt
+    import pandas as pd
+    
     #  Physical constants
     #  probably should be replaced with astropy call or something
     au_to_km = 1.496e8
     rj_to_km = 71492.
     
-    import datetime as dt
-    
     def __init__(self, name, 
                  basedir = '/Users/mrutala/'):
         import spiceypy as spice
+        import pandas as pd
         
         basedir_spice = basedir+'SPICE/'
         basedir_data = basedir+'Data/'
@@ -51,13 +54,26 @@ class SpacecraftData:
                 self.SPICE_METAKERNEL = basedir_spice+'pioneer/metakernel_pioneer.txt'
                 #self.basedir_data = '/Users/mrutala/Data/pioneer/'
             case 'voyager 1':   
-                self.SPICE_ID = -32
+                self.SPICE_ID = -31
                 self.SPICE_METAKERNEL = basedir_spice+'voyager/metakernel_voyager1.txt'
                 #self.basedir_data = '/Users/mrutala/Data/voyager/'
             case 'voyager 2':   
                 self.SPICE_ID = -32
                 self.SPICE_METAKERNEL = basedir_spice+'voyager/metakernel_voyager2.txt'
                 #self.basedir_data = '/Users/mrutala/Data/voyager/'
+             
+        data_column_names = ['x_pos', 'y_pos', 'z_pos',
+                             'x_vel', 'y_vel', 'z_vel',
+                             'l_time',
+                             'u_r', 'u_r_err', 'u_n', 'u_n_err', 'u_t', 'u_t_err', 
+                             'u_mag', 'u_mag_err',
+                             'n_proton', 'n_proton_err', 'n_alpha', 'n_alpha_err', 
+                             'p_dyn_proton', 'p_dyn_proton_err', 'p_dyn_alpha', 'p_dyn_alpha_err', 
+                             'p_dyn', 'p_dyn_err',
+                             'T_proton', 'T_proton_err', 'T_alpha', 'T_alpha_err',
+                             'B_r', 'B_r_err', 'B_n', 'B_n_err', 'B_t', 'B_t_err', 
+                             'B_mag', 'B_mag_err']
+        self.data = pd.DataFrame(columns=data_column_names)
         
     def find_timerange(self, starttime, stoptime, timedelta):
         #import datetime as dt
@@ -71,7 +87,9 @@ class SpacecraftData:
         import spiceypy as spice
         import pandas as pd
         
-        #!!! Add reference frame and observer to self
+        # Add reference frame and observer to self
+        self.reference_frame = reference_frame
+        self.observer = observer
         
         #  Essential solar system and timekeeping kernels
         spice.furnsh('/Users/mrutala/SPICE/generic/kernels/lsk/latest_leapseconds.tls')
@@ -90,16 +108,16 @@ class SpacecraftData:
         sc_state_arr = np.array(sc_state)
         sc_state_dataframe = pd.DataFrame(data=sc_state_arr, 
                                           index=self.datetimes,
-                                          columns=['xpos', 'ypos', 'zpos', 'xvel', 'yvel', 'zvel'])
+                                          columns=['x_pos', 'y_pos', 'z_pos', 'x_vel', 'y_vel', 'z_vel'])
+        sc_state_dataframe['l_time'] = sc_lt
         spice.kclear()
         
-        #  !!! Check is self.data is a dataframe, if not, make it
-        try:
-            self.data = pd.concat([sc_state_dataframe, self.data], axis=1)
-        except AttributeError:
-            self.data = sc_state_dataframe
+        self.data.update(sc_state_dataframe)
+        #self.data = pd.concat([self.data, sc_state_dataframe.reindex(columns=self.data.columns)], 
+        #                      axis=0)
         
-    def read_processeddata(self, starttime=dt.datetime.now(), stoptime=dt.datetime.now(), everything=False):
+    def read_processeddata(self, starttime=dt.datetime.now(), stoptime=dt.datetime.now(), 
+                           everything=False, strict=True):
         import read_SWData
         import pandas as pd
         import spiceypy as spice
@@ -115,10 +133,20 @@ class SpacecraftData:
         processed_data = read_SWData.read(self.name, starttime, stoptime, basedir=self.basedir + 'Data/')
         
         #  If self.data exists, add to it, else, make it
-        try:
-            self.data = pd.concat([self.data, processed_data], axis=1)
-        except AttributeError:
-            self.data = processed_data
+        if strict:
+            processed_data = processed_data.reindex(columns=self.data.columns)
+            
+        #self.data = pd.concat([self.data, processed_data], 
+        #                      axis=0)
+        #self.data = processed_data.combine_first(self.data)
+        desired_column_order = list(self.data.columns)
+        unmatched_columns = list(set(processed_data.columns) - set(self.data.columns))
+        unmatched_columns.sort()
+        
+        self.data = self.data.combine_first(processed_data)
+        
+        #  Put the dataframe back in order
+        self.data = self.data[(desired_column_order + unmatched_columns)]
         
         self.data_type = 'processed'
         self.datetimes = processed_data.index.to_pydatetime()
