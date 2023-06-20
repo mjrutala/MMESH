@@ -8,7 +8,7 @@ Created on Tue Apr 11 10:09:36 2023
 """
 target = string, startdate & finaldata = datetime
 """
-def TaoSW(target, starttime, finaltime, data_path=''):
+def TaoSW(target, starttime, finaltime, basedir=''):
     
     #from astropy.io import ascii
     
@@ -17,24 +17,29 @@ def TaoSW(target, starttime, finaltime, data_path=''):
     import numpy as np
     m_p = 1.67e-27
     
+    #  basedir is expected to be the folder /SolarWindEM
+    model_path = 'models/tao/'
+    full_path = basedir + model_path + target.lower() + '/'
+    
     match target.lower():
         case 'jupiter':
             filenames = ['jupiter_tao_model_2016_v2.txt', 'jupiter_tao_model_2020_v1.txt']
         case 'juno':
-            filenames = ['jupiter_tao_model_juno_2016_v1.txt']
+            filenames = ['amdaoutput_tao_juno_2015.txt',
+                         'amdaoutput_tao_juno_2016.txt']
         case 'galileo':
             filenames = []
         case 'cassini':
             filenames = ['Cassini_2000_jupflyby_tao_model_v1.txt']
     
-    column_headers = ['datetime', 'Umag', 'Pdyn', 'delta_angle', 'Bt', 'Br']
+    column_headers = ['datetime', 'n_proton', 'u_r', 'u_t', 'T_proton', 'p_dyn_proton', 'B_t', 'B_r', 'angle_JSE']
     
     data = pd.DataFrame(columns=column_headers)
     
     for filename in filenames:
         
-        temp_data = pd.read_table(data_path + filename, \
-                             names=column_headers, \
+        temp_data = pd.read_table(full_path + filename, 
+                             names=column_headers, 
                              comment='#', delim_whitespace=True)
         temp_data['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%dT%H:%M:%S.%f')
         
@@ -43,11 +48,15 @@ def TaoSW(target, starttime, finaltime, data_path=''):
         
         data = pd.concat([data, sub_data])
         
-    data['rho'] = ((data['Pdyn'] * 1e-9) / (data['Umag']**2 * 1e6)) * (1e-6) 
-    data['n'] = data['rho'] / m_p
-    data['Bmag'] = np.sqrt(data['Br']**2 + data['Bt']**2)
+    #data['rho'] = ((data['Pdyn'] * 1e-9) / (data['Umag']**2 * 1e6)) * (1e-6) 
+    #data['n'] = data['rho'] / m_p
+    data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2)
+    data['B_mag'] = np.sqrt(data['B_r']**2 + data['B_t']**2)
+    data['p_dyn'] = data['p_dyn_proton']
     
-    return(data.reset_index(drop=True))
+    data = data.set_index('datetime')
+    
+    return(data)
 
 def TaoSW_x01(target, starttime, finaltime, smooth=1, delta=False, data_path=''):
     
@@ -89,29 +98,53 @@ def TaoSW_x01(target, starttime, finaltime, smooth=1, delta=False, data_path='')
     
     return(data.reset_index(drop=True))
 
-def VogtSW(target, starttime, finaltime, data_path=''):
+def VogtSW(target, starttime, finaltime, basedir=''):
     
     import pandas as pd
     import numpy as np
     m_p = 1.67e-27 # proton mass
     
+    #  basedir is expected to be the folder /SolarWindEM
+    model_path = 'models/swmf-oh/'
+    full_path = basedir + model_path + target.lower() + '/'
+    
     match target.lower():
         case 'jupiter':
-            filenames = ['sw_jupiter_rtn_vogt_2016_v2.txt', 'sw_jupiter_rtn_2020_Vogt.txt']
+            filenames = ['vogt_swmf-oh_jupiter_2014.txt', 
+                         'vogt_swmf-oh_jupiter_2015.txt', 
+                         'vogt_swmf-oh_jupiter_2016.txt',
+                         'vogt_swmf-oh_jupiter_2017.txt',
+                         'vogt_swmf-oh_jupiter_2018.txt',
+                         'vogt_swmf-oh_jupiter_2019.txt',
+                         'vogt_swmf-oh_jupiter_2020.txt',
+                         'vogt_swmf-oh_jupiter_2021.txt',
+                         'vogt_swmf-oh_jupiter_2022.txt']
         case 'juno':
-            filenames = ['sw_juno_rtn_vogt_2016_v2.txt']
+            filenames = ['vogt_swmf-oh_juno_2014.txt', 
+                         'vogt_swmf-oh_juno_2015.txt', 
+                         'vogt_swmf-oh_juno_2016.txt']
         case 'galileo':
             filenames = []
         case 'cassini':
             filenames = []
+        case 'mars':
+            filenames = ['vogt_swmf-oh_mars_2014.txt', 
+                         'vogt_swmf-oh_mars_2015.txt', 
+                         'vogt_swmf-oh_mars_2016.txt',
+                         'vogt_swmf-oh_mars_2017.txt',
+                         'vogt_swmf-oh_mars_2018.txt',
+                         'vogt_swmf-oh_mars_2019.txt',
+                         'vogt_swmf-oh_mars_2020.txt',
+                         'vogt_swmf-oh_mars_2021.txt',
+                         'vogt_swmf-oh_mars_2022.txt']
         
-    column_headers = ['year', 'month', 'day', 'hour', 'X', 'Y', 'Z', 'n', 'Ur', 'Ut', 'Un', 'Br', 'Bt', 'Bn', 'pthermal', 'Jr', 'Jt', 'Jn']
+    column_headers = ['year', 'month', 'day', 'hour', 'X', 'Y', 'Z', 'n', 'u_r', 'u_t', 'u_n', 'B_r', 'B_t', 'B_n', 'p_thermal', 'J_r', 'J_t', 'J_n']
     
     data = pd.DataFrame(columns = column_headers + ['datetime'])
     
     for filename in filenames:
         
-        temp_data = pd.read_table(data_path + filename, \
+        temp_data = pd.read_table(full_path + filename, \
                              names=column_headers, \
                              header=0, delim_whitespace=True)
         temp_data['datetime'] = pd.to_datetime(temp_data[['year', 'month', 'day', 'hour']])
@@ -123,39 +156,45 @@ def VogtSW(target, starttime, finaltime, data_path=''):
     data = data.drop(columns=['year', 'month', 'day', 'hour'])
     
     data['rho'] = data['n'] * m_p
-    data['Umag'] = np.sqrt(data['Ur']**2 + data['Ut']**2 + data['Un']**2)
-    data['Bmag'] = np.sqrt(data['Br']**2 + data['Bt']**2 + data['Bn']**2)
-    data['Pdyn'] = data['rho'] * (1e6) * (data['Umag'] * 1e3)**2 * (1e9)
+    data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2 + data['u_n']**2)
+    data['B_mag'] = np.sqrt(data['B_r']**2 + data['B_t']**2 + data['B_n']**2)
+    data['p_dyn_proton'] = data['rho'] * (1e6) * (data['u_mag'] * 1e3)**2 * (1e9)
+    data['p_dyn'] = data['p_dyn_proton']
     
-    return(data.reset_index(drop=True))
+    data = data.set_index('datetime')
+    return(data)
 
-def MSWIM2DSW(target, starttime, finaltime, data_path=''):
+def MSWIM2DSW(target, starttime, finaltime, basedir=''):
     
     import pandas as pd
     import numpy as np
     kg_per_amu = 1.66e-27 # 
     m_p = 1.67e-27
     
+    model_path = 'models/MSWIM2D/'
+    full_path = basedir + model_path + target.lower() + '/'
+    
     match target.lower():
         case 'jupiter':
-            filenames = ['mswim2d_interp_output_2016.txt']
+            filenames = ['umich_mswim2d_jupiter_2016.txt']
         case 'juno':
-            filenames = []
+            filenames = ['umich_mswim2d_juno_2015.txt',
+                         'umich_mswim2d_juno_2016.txt']
         case 'galileo':
             filenames = []
         case 'cassini':
             filenames = []
         
-    column_headers = ['datetime', 'hour', 'r', 'phi', 'rho', 'Ux', 'Uy', 'Uz', 'Bx', 'By', 'Bz', 'Ti']
+    column_headers = ['datetime', 'hour', 'r', 'phi', 'rho', 'u_x', 'u_y', 'u_z', 'B_x', 'B_y', 'B_z', 'T_i']
     
     data = pd.DataFrame(columns = column_headers)
     
     for filename in filenames:
         
-        temp_data = pd.read_table(data_path + filename, \
+        temp_data = pd.read_table(full_path + filename, \
                              names=column_headers, \
-                             header=15, delim_whitespace=True)
-        temp_data['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%dT%H:%M:%S.%f')
+                             skiprows=16, delim_whitespace=True)
+        temp_data['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%dT%H:%M:%S')
         
         sub_data = temp_data.loc[(temp_data['datetime'] >= starttime) & (temp_data['datetime'] < finaltime)]
         
@@ -163,16 +202,20 @@ def MSWIM2DSW(target, starttime, finaltime, data_path=''):
     
     data['rho'] = data['rho'] * kg_per_amu  # kg / cm^3
     data['n'] = data['rho'] / m_p  # / cm^3
-    data['Umag'] = np.sqrt(data['Ux']**2 + data['Uy']**2 + data['Uz']**2) # km/s
-    data['Bmag'] = np.sqrt(data['Bx']**2 + data['By']**2 + data['Bz']**2) # nT
-    data['Pdyn'] = (data['rho'] * 1e6) * (data['Umag'] * 1e3)**2 * (1e9) # nPa
+    data['u_mag'] = np.sqrt(data['u_x']**2 + data['u_y']**2 + data['u_z']**2) # km/s
+    data['B_mag'] = np.sqrt(data['B_x']**2 + data['B_y']**2 + data['B_z']**2) # nT
+    data['p_dyn'] = (data['rho'] * 1e6) * (data['u_mag'] * 1e3)**2 * (1e9) # nPa
     
-    return(data.reset_index(drop=True))
+    data = data.set_index('datetime')
+    return(data)
 
-def HUXt(target, starttime, finaltime, data_path=''):
+def HUXt(target, starttime, finaltime, basedir=''):
         
     import pandas as pd
     import numpy as np
+    
+    model_path = 'models/HUXt/'
+    full_path = basedir + model_path + target.lower() + '/'
     
     match target.lower():
         case 'jupiter':
@@ -185,22 +228,23 @@ def HUXt(target, starttime, finaltime, data_path=''):
             filenames = []
     
     #  r [R_S], lon [radians], Umag [km/s], 
-    column_headers = ['datetime', 'r', 'lon', 'Umag', 'Bpol']
+    column_headers = ['datetime', 'r', 'lon', 'u_mag', 'B_pol']
     
     data = pd.DataFrame(columns = column_headers)
     
     for filename in filenames:
         
-        temp_data = pd.read_csv(data_path + filename, \
-                             names=column_headers, \
+        temp_data = pd.read_csv(full_path + filename, 
+                             names=column_headers, 
                              header=0)
-        temp_data['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%d %H:%M:%S.%f%')
+        temp_data['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
         
         sub_data = temp_data.loc[(temp_data['datetime'] >= starttime) & (temp_data['datetime'] < finaltime)]
         
         data = pd.concat([data, sub_data])
     
-    return(data.reset_index(drop=True))
+    data = data.set_index('datetime')
+    return(data)
 
 def Heliocast(target, starttime, finaltime, data_path=''):
     import pandas as pd
