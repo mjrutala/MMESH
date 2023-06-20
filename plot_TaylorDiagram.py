@@ -40,12 +40,13 @@ def plot_TaylorDiagram(test_data, ref_data, ax=None, **plt_kwargs):
     
     #  If no axis is included, look for a current one or make one
     if ax == None:
-        fig = plt.figure(figsize=(8,8))
-        ax = fig.add_subplot(111, projection='polar')
+        fig = plt.figure(figsize=(16,9))
+        ax = fig.add_subplot(121, projection='polar')
         
         # Set title and labels
-        ax.set_title('Taylor Diagram')
+        ax.set_title('Pearson Correlation Coefficient', pad=-80)
         ax.set_xlabel('Standard Deviation')
+        ax.xaxis.set_label_coords(0.5, 0.2)
         
         #  Default to include negative correlations
         ax.set_thetamin(0)
@@ -64,11 +65,12 @@ def plot_TaylorDiagram(test_data, ref_data, ax=None, **plt_kwargs):
             x2 = x + (np.std(ref_data))
             y2 = y #  Reference point is on y=0 by definition
             ax.plot(np.arctan2(y2,x2), np.sqrt(x2**2 + y2**2), color='gray', linestyle=':')
-            
+        
         #plt.autoscale(True)
         
         ax.plot(0, np.std(ref_data), marker='o', color='black', markersize=12)
-
+        ax.plot(np.linspace(0, np.pi, 180), np.zeros(180)+np.std(ref_data), color='black', linestyle='--')
+        #ax.set_position([0.5, -6.5, 14, 14])
         # Show plot
         #plt.show()
     
