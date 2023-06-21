@@ -66,6 +66,8 @@ def Juno_Wilson2018(starttime, finaltime, filepath=None):
     output_spacecraft_data['p_dyn_alpha'] = spacecraft_data['RAM_PRESSURE_ALPHAS_NPA']
     output_spacecraft_data['p_dyn_alpha_err'] = spacecraft_data['RAM_PRESSURE_ALPHAS_NPA_UNCERTAINTY']
     
+    output_spacecraft_data['p_dyn'] = output_spacecraft_data['p_dyn_proton'] #!!!
+    
     #  Finally, set the index to be datetimes
     output_spacecraft_data.index = [dt.datetime.strptime(t, '%Y-%jT%H:%M:%S.%f') for t in spacecraft_data['UTC']]
     
@@ -140,6 +142,7 @@ def Ulysses(starttime, finaltime, basedir=None):
         
         spacecraft_data['p_dyn_alpha'] = 0.5 * 4. * spacecraft_data['n_alpha'] * spacecraft_data['u_mag']**2. * defaultunits_to_nPa
         
+        spacecraft_data['p_dyn'] = spacecraft_data['p_dyn_proton'] #  !!!
         #  Within selected time range
         time_index = np.where((spacecraft_data.index >= starttime) 
                       & (spacecraft_data.index < finaltime))
