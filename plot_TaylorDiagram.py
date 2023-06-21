@@ -80,7 +80,7 @@ def plot_TaylorDiagram(test_data, ref_data, ax=None, **plt_kwargs):
     correlation_r, test_std = taylor_statistics
     ax.plot(np.arccos(correlation_r), test_std, **plt_kwargs)
     
-    return(ax)
+    return(fig, ax)
    
 
 def example_TaylorDiagram():
