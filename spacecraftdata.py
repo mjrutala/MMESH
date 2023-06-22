@@ -151,6 +151,39 @@ class SpacecraftData:
         self.data_type = 'processed'
         self.datetimes = processed_data.index.to_pydatetime()
     
+    def find_subset(self, coord1_range=None, coord2_range=None, coord3_range=None, transform=None):
+        import numpy as np
+        import spiceypy as spice
+        import spacecraftdata as SpacecraftData
+        
+        match transform.lower():
+            case None: spice_transform = lambda x, y, z : (x, y, z)
+            case 'reclat': spice_transform = spice.reclat
+            case 'recsph': spice_transform = spice.recsph
+        
+        #  Convert
+        spacecraft_coords = [spice_transform(row[['x_pos', 'y_pos', 'z_pos']].to_numpy(dtype='float64')) for index, row in self.data.iterrows()]
+        spacecraft_coords = np.array(spacecraft_coords)
+        
+        if np.all(coord1_range == None): 
+            coord1_range = (np.min(spacecraft_coords[:,0])-1, np.max(spacecraft_coords[:,0])+1)
+        if np.all(coord2_range == None): 
+            coord2_range = (np.min(spacecraft_coords[:,1])-1, np.max(spacecraft_coords[:,1])+1)
+        if np.all(coord3_range == None): 
+            coord3_range = (np.min(spacecraft_coords[:,2])-1, np.max(spacecraft_coords[:,2])+1)
+        
+        #  !!! could consider adding an option for <> vs <= >=
+        criteria = np.where((spacecraft_coords[:,0] > coord1_range[0]) &
+                            (spacecraft_coords[:,0] < coord1_range[1]) &
+                            (spacecraft_coords[:,1] > coord2_range[0]) &
+                            (spacecraft_coords[:,1] < coord2_range[1]) &
+                            (spacecraft_coords[:,2] > coord3_range[0]) &
+                            (spacecraft_coords[:,2] < coord3_range[1]) )
+                            
+                            
+        self.data = self.data.iloc[criteria]
+        return()
+    
         #self.start_date = None
         #self.stop_date = None
         #self.date_range = None
