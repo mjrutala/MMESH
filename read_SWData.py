@@ -138,9 +138,9 @@ def Ulysses(starttime, finaltime, basedir=None):
         
         defaultunits_to_nPa = ((1.0 * u.M_p / u.cm**3) * (u.km**2 / u.s**2)).to(u.nPa).value
         
-        spacecraft_data['p_dyn_proton'] = 0.5 * spacecraft_data['n_proton'] * spacecraft_data['u_mag']**2. * defaultunits_to_nPa
+        spacecraft_data['p_dyn_proton'] = spacecraft_data['n_proton'] * spacecraft_data['u_mag']**2. * defaultunits_to_nPa
         
-        spacecraft_data['p_dyn_alpha'] = 0.5 * 4. * spacecraft_data['n_alpha'] * spacecraft_data['u_mag']**2. * defaultunits_to_nPa
+        spacecraft_data['p_dyn_alpha'] = 4. * spacecraft_data['n_alpha'] * spacecraft_data['u_mag']**2. * defaultunits_to_nPa
         
         spacecraft_data['p_dyn'] = spacecraft_data['p_dyn_proton'] #  !!!
         #  Within selected time range
