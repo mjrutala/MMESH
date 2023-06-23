@@ -279,37 +279,44 @@ def QQplot_datacomparison():
     reference_frame = 'SUN_INERTIAL' # HGI  #'ECLIPJ2000'
     observer = 'SUN'
     
-    #  Read spacecraft data
-    ulys = SpacecraftData.SpacecraftData('Ulysses')     
-    ulys.read_processeddata(everything=True)
-    ulys.find_state(reference_frame, observer) 
-    ulys.find_subset(coord1_range=np.array((5.0, 5.4))*ulys.au_to_km, 
-                      coord3_range=np.array((-10,10))*np.pi/180., 
-                      transform='reclat')
+    #  Read spacecraft data: one abcissa, n ordinates
+    spacecraft_x = SpacecraftData.SpacecraftData('Juno')
+    spacecraft_x.read_processeddata(everything=True)
     #  We shouldn't need to limit the Juno data, because it's so limited already
-    juno = SpacecraftData.SpacecraftData('Juno')
-    juno.read_processeddata(everything=True)
+    
+    spacecraft_y = []
+    spacecraft_y.append(SpacecraftData.SpacecraftData('Ulysses'))
+    spacecraft_y.append(SpacecraftData.SpacecraftData('Voyager 1'))
+    spacecraft_y.append(SpacecraftData.SpacecraftData('Voyager 2'))
+    
+    for sc in spacecraft_y:
+        sc.read_processeddata(everything=True)
+        sc.find_state(reference_frame, observer) 
+        sc.find_subset(coord1_range=np.array((4.0, 6.0))*sc.au_to_km, 
+                       coord3_range=np.array((-10,10))*np.pi/180., 
+                       transform='reclat')
     
     #  Calculate percentiles (i.e., 100 quantiles)
-    juno_quantiles = np.nanquantile(juno.data[tag], np.linspace(0, 1, 100))
-    ulys_quantiles = np.nanquantile(ulys.data[tag], np.linspace(0, 1, 100))
+    x_quantiles = np.nanquantile(spacecraft_x.data[tag], np.linspace(0, 1, 100))
+    y_quantiles = [np.nanquantile(sc.data[tag], np.linspace(0, 1, 100)) for sc in spacecraft_y]
     
     #  Dictionaries of plotting and labelling parametes
     label_dict = {'u_mag': r'$u_{mag,SW}$ [km/s]', 
                   'p_dyn_proton': r'$p_{dyn,SW,p}$ [nPa]'}
     plot_params = {'xlabel':r'Juno JADE ' + label_dict[tag], 
                    'xlim': (300, 700), 
-                   'ylabel':r'Ulysses SWOOPS ' + label_dict[tag], 
+                   'ylabel':label_dict[tag], 
                    'ylim': (300, 700)}
     
     #  Plot the figure
     try: plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
     except: pass
 
-    fig = plt.figure(layout='constrained')
+    fig = plt.figure(figsize=(8,6))
     ax = fig.add_gridspec(left=0.05, bottom=0.05, top=0.75, right=0.75).subplots()
     
-    ax.plot(juno_quantiles, ulys_quantiles, marker='o', markersize=4, linestyle='None')
+    for y in y_quantiles:
+        ax.plot(x_quantiles, y, marker='o', markersize=4, linestyle='None')
     
     ax.plot([0, 1], [0, 1], transform=ax.transAxes,
              linestyle=':', color='black')
@@ -317,17 +324,23 @@ def QQplot_datacomparison():
            ylabel=plot_params['ylabel'], ylim=plot_params['ylim'],
            aspect=1.0)
     
-    ax_top = ax.inset_axes([0, 1.0, 1.0, 0.2], sharex=ax)
-    juno_hist, juno_bins = np.histogram(juno.data[tag], bins=50, range=plot_params['xlim'])
+    ax_top = ax.inset_axes([0, 1.05, 1.0, 0.2], sharex=ax)
+    x_hist, x_bins = np.histogram(spacecraft_x.data[tag], bins=50, range=plot_params['xlim'])
     #juno_kde = sns.kdeplot(data=juno.data, x=tag, bw_adjust=0.5, ax=ax_top)
-    ax_top.stairs(juno_hist, edges=juno_bins, orientation='vertical')
+    ax_top.stairs(x_hist, edges=x_bins, orientation='vertical')
+    ax_top.set(ylabel='Number')
+    ax_top.tick_params('x', labelbottom=False)
     
-    ax_right = ax.inset_axes([1.0, 0, 0.2, 1.0], sharey=ax)
-    ulys_hist, ulys_bins = np.histogram(ulys.data[tag], bins=50, range=plot_params['ylim'])
-    #ulys_kde = sns.kdeplot(data=ulys.data, y=tag, bw_adjust=0.5, ax=ax_right)
-    ax_right.stairs(ulys_hist, edges=ulys_bins, orientation='horizontal')
-    ax_right.scatter(np.zeros(len(ulys.data[tag])), ulys.data[tag], marker='+', s=2)
+    ax_right = ax.inset_axes([1.05, 0, 0.2, 1.0], sharey=ax)
+    for sc in spacecraft_y:
+        y_hist, y_bins = np.histogram(sc.data[tag], bins=50, range=plot_params['ylim'])
+        #ulys_kde = sns.kdeplot(data=ulys.data, y=tag, bw_adjust=0.5, ax=ax_right)
+        ax_right.stairs(y_hist, edges=y_bins, orientation='horizontal')
+        #ax_right.scatter(np.zeros(len(ulys.data[tag])), ulys.data[tag], marker='+', s=2)
+    ax_right.set(xlabel='Number')
+    ax_right.tick_params('y', labelleft=False)
     
+    fig.align_labels()
     plt.savefig('QQplot_datacomparison_'+tag+'.png')
     plt.show()
     
@@ -431,7 +444,6 @@ def plot_spacecraftcoverage_solarcycle():
     #spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
     
     ulys = SpacecraftData.SpacecraftData('Ulysses')
-    SpacecraftData.SpacecraftData.find_subset = find_subset
     
     ulys.read_processeddata(everything=True)
     ulys.find_state(reference_frame, observer)
