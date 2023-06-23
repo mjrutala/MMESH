@@ -17,7 +17,7 @@ import astropy.units as u
 # =============================================================================
 # 
 # =============================================================================
-def Juno_Wilson2018(starttime, finaltime, filepath=None):
+def Juno_Wilson2018(starttime, stoptime, filepath=None):
     
     import pandas as pd
     import datetime as dt
@@ -76,7 +76,7 @@ def Juno_Wilson2018(starttime, finaltime, filepath=None):
     
     #  Within selected time range
     time_index = np.where((output_spacecraft_data.index >= starttime) 
-                  & (output_spacecraft_data.index < finaltime))
+                  & (output_spacecraft_data.index < stoptime))
     output_spacecraft_data = output_spacecraft_data.iloc[time_index]
     
     # # Adding MAG total B magnitude
@@ -87,7 +87,7 @@ def Juno_Wilson2018(starttime, finaltime, filepath=None):
 # =============================================================================
 # 
 # =============================================================================
-def Ulysses(starttime, finaltime, basedir=None):
+def Ulysses(starttime, stoptime, basedir=None):
     #  Keep basefilepath flexible such that it can point to a static path or a 
     #  relative path
     #  Default to current working directory
@@ -102,7 +102,7 @@ def Ulysses(starttime, finaltime, basedir=None):
     def read_Ulysses_plasma(starttime, finalttime):
         #  List only the relevant files by generating filenames
         filename_template_ion = 'hourav_%Y.asc'
-        in_range = np.arange(starttime.year, finaltime.year+1, 1)                                       # !!! Repeated
+        in_range = np.arange(starttime.year, stoptime.year+1, 1)                                       # !!! Repeated
         filename_datetimes_in_range = [dt.datetime(iyr, 1, 1) for iyr in in_range]                      # !!! Repeated
         filenames_in_range = [t.strftime(filename_template_ion) for t in filename_datetimes_in_range]   # !!! Repeated
         
@@ -145,7 +145,7 @@ def Ulysses(starttime, finaltime, basedir=None):
         spacecraft_data['p_dyn'] = spacecraft_data['p_dyn_proton'] #  !!!
         #  Within selected time range
         time_index = np.where((spacecraft_data.index >= starttime) 
-                      & (spacecraft_data.index < finaltime))
+                      & (spacecraft_data.index < stoptime))
         spacecraft_data = spacecraft_data.iloc[time_index]
         
         output_columns = ['rau', 'hlat', 'hlong', 'n_proton', 'n_alpha', 'T_large', 'T_small', 'u_r', 'u_t', 'u_n', 'p_dyn_proton', 'p_dyn_alpha']
@@ -157,10 +157,10 @@ def Ulysses(starttime, finaltime, basedir=None):
         
         return(spacecraft_data)
     
-    def read_Ulysses_MAG(starttime, finaltime):
+    def read_Ulysses_MAG(starttime, stoptime):
         filename_template = 'ulymaghr_%Y.asc'
         
-        in_range = np.arange(starttime.year, finaltime.year+1, 1)                                       # !!! Repeated
+        in_range = np.arange(starttime.year, stoptime.year+1, 1)                                       # !!! Repeated
         filename_datetimes_in_range = [dt.datetime(iyr, 1, 1) for iyr in in_range]                      # !!! Repeated
         filenames_in_range = [t.strftime(filename_template) for t in filename_datetimes_in_range]   # !!! Repeated
     
@@ -190,7 +190,7 @@ def Ulysses(starttime, finaltime, basedir=None):
         
         #  Within selected time range
         time_index = np.where((spacecraft_data.index >= starttime) 
-                      & (spacecraft_data.index < finaltime))
+                      & (spacecraft_data.index < stoptime))
         spacecraft_data = spacecraft_data.iloc[time_index]
         
         output_columns = ['B_r', 'B_t', 'B_n', 'B_mag', 'nBVectors']
@@ -205,8 +205,8 @@ def Ulysses(starttime, finaltime, basedir=None):
     # =============================================================================
     #     
     # =============================================================================
-    plasma_data = read_Ulysses_plasma(starttime, finaltime)
-    mag_data = read_Ulysses_MAG(starttime, finaltime)
+    plasma_data = read_Ulysses_plasma(starttime, stoptime)
+    mag_data = read_Ulysses_MAG(starttime, stoptime)
     
     #  manually concatenate the attributes
     
@@ -216,19 +216,156 @@ def Ulysses(starttime, finaltime, basedir=None):
         
     return(data)
 
+def Voyager(starttime, stoptime, spacecraft_number=1, basedir=None):
+    #  Keep basefilepath flexible such that it can point to a static path or a 
+    #  relative path
+    #  Default to current working directory
+    if basedir == None:
+        basedir = ''
+    spacecraft_number = str(spacecraft_number)
+        
+    #  
+    spacecraft_dir = 'Voyager/Voyager' + spacecraft_number + '/'
+    filepath_ions = basedir + spacecraft_dir + 'plasma/hour/'
+    filepath_mag = basedir + spacecraft_dir + 'mag/hour/'
+    
+    def read_Voyager_plasma(starttime, finalttime):
+        #  List only the relevant files by generating filenames
+        filename_template_ion = 'v'+spacecraft_number+'_hour_%Y.asc'
+        in_range = np.arange(starttime.year, stoptime.year+1, 1)                                       # !!! Repeated
+        filename_datetimes_in_range = [dt.datetime(iyr, 1, 1) for iyr in in_range]                      # !!! Repeated
+        filenames_in_range = [t.strftime(filename_template_ion) for t in filename_datetimes_in_range]   # !!! Repeated
+        
+        filelist = [filepath_ions + filename for filename in filenames_in_range if os.path.exists(filepath_ions + filename)]
+        filelist.sort()
+        
+        #  Read all the data into one dataframe
+        input_columns = ['iyr', 'idoy', 'ihr',
+                         'u_mag_proton', 'n_proton', 'v_kin_proton', 
+                         'u_r', 'u_t', 'u_n']
+        
+        #  Make a generator to read csv data and concatenate into a single dataframe
+        #  Voyager 1 1977 plasma data has one line with an extra 0 at the end...
+        #  Since 0 marks missing data, not sure what to make of it
+        #  so 'on_bad_lines='skip'' skips that line completely
+        data_generator = (pd.read_csv(f, delim_whitespace=True, header=0, names=input_columns, on_bad_lines='skip') 
+                                     for f in filelist)
+        spacecraft_data = pd.concat(data_generator, ignore_index=True)
+        
+        
+        datetime_generator = ('{:02n}-{:03n}T{:02n}:00:00'
+                              .format(*row[['iyr', 'idoy', 'ihr']])
+                              for indx, row in spacecraft_data.iterrows())
+            
+        spacecraft_data.index = [dt.datetime.strptime(
+                                 gen, '%Y-%jT%H:%M:%S') 
+                                 for gen in datetime_generator]
+        
+        spacecraft_data = spacecraft_data.drop(['iyr', 'idoy', 'ihr'], axis=1)
+        
+        spacecraft_data['u_mag'] = spacecraft_data['u_mag_proton']
+        spacecraft_data['T_proton'] = 0.0052 * spacecraft_data['v_kin_proton']**2
+        
+        defaultunits_to_nPa = ((u.M_p / u.cm**3) * (u.km**2 / u.s**2)).to(u.nPa)
+                                
+        
+        spacecraft_data['p_dyn_proton'] = spacecraft_data['n_proton'] * spacecraft_data['u_mag']**2. * defaultunits_to_nPa
+        
+        spacecraft_data['p_dyn'] = spacecraft_data['p_dyn_proton'] #  !!!
+        
+        #  Within selected time range
+        time_index = np.where((spacecraft_data.index >= starttime) 
+                      & (spacecraft_data.index < stoptime))
+        spacecraft_data = spacecraft_data.iloc[time_index]
+        
+        output_columns = ['n_proton', 'T_proton', 'u_mag', 'u_r', 'u_t', 'u_n', 'p_dyn_proton', 'p_dyn_alpha']
+        output_columns_units = ['cm^{-3}', 'cm^{-3}', 'K', 'K', 'km/s', 'km/s', 'km/s', 'nPa', 'nPa']
+        spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        
+        output_columns_eqns = ['', '', '', '', '', '', '', '', '', '', '0.5*n_proton*u_mag**2', '0.5*n_alpha*u_mag**2']
+        spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
+        
+        return(spacecraft_data)
+    
+    def read_Voyager_MAG(starttime, stoptime):
+        filename_template = 'vy'+spacecraft_number+'mag_1h.asc'
+         
+        filenames_in_range = [filename_template]  # !!! Repeated
+    
+        filelist = [filepath_mag + filename for filename in filenames_in_range if os.path.exists(filepath_mag + filename)]
+        filelist.sort()
+        
+        input_columns = ['sc#', 'iyr', 'idoy', 'ihr',
+                         'x_ihg', 'y_ihg', 'z_ihg', 'r_ihg',
+                         'B_mag_avg', 'B_mag',  
+                         'lat_ihg', 'lon_ihg']
+        
+        #  Make a generator to read csv data and concatenate into a single dataframe
+        data_generator = (pd.read_csv(f, delim_whitespace=True, header=0, names=input_columns) 
+                                     for f in filelist)
+        spacecraft_data = pd.concat(data_generator, ignore_index=True)
+        
+        datetime_generator = ('{:02n}-{:03n}T{:02n}:00:00'
+                              .format(*row[['iyr', 'idoy', 'ihr']])
+                              for indx, row in spacecraft_data.iterrows())
+        spacecraft_data.index = [dt.datetime.strptime(
+                                 gen, '%y-%jT%H:%M:%S') 
+                                 for gen in datetime_generator]
+        spacecraft_data = spacecraft_data.drop(['iyr', 'idoy', 'ihr'], axis=1)
+        
+        #  Within selected time range
+        time_index = np.where((spacecraft_data.index >= starttime) 
+                      & (spacecraft_data.index < stoptime))
+        spacecraft_data = spacecraft_data.iloc[time_index]
+        
+        spacecraft_data['B_r'] = spacecraft_data['B_mag'] \
+                                 * np.cos(spacecraft_data['lat_ihg']*np.pi/180.) \
+                                 * np.cos(spacecraft_data['lon_ihg']*np.pi/180.)
+        spacecraft_data['B_t'] = spacecraft_data['B_mag'] \
+                                 * np.cos(spacecraft_data['lat_ihg']*np.pi/180.) \
+                                 * np.sin(spacecraft_data['lon_ihg']*np.pi/180.)
+        spacecraft_data['B_n'] = spacecraft_data['B_mag'] \
+                                 * np.sin(spacecraft_data['lat_ihg']*np.pi/180.)
+        
+        output_columns = ['B_r', 'B_t', 'B_n', 'B_mag']
+        output_columns_units = ['nT', 'nT', 'nT', 'nT']
+        spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        
+        output_columns_eqns = ['', '', '', '']
+        spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
+        
+        return(spacecraft_data)
+    
+    # =============================================================================
+    #     
+    # =============================================================================
+    plasma_data = read_Voyager_plasma(starttime, stoptime)
+    mag_data = read_Voyager_MAG(starttime, stoptime)
+    
+    #  manually concatenate the attributes
+    return(plasma_data, mag_data)
+    data = pd.concat([plasma_data, mag_data], axis=1)
+    data.attrs['units'] = {**plasma_data.attrs['units'], **mag_data.attrs['units']}
+    data.attrs['equations'] = {**plasma_data.attrs['equations'], **mag_data.attrs['equations']}
+        
+    return(data)
 # =============================================================================
 # A simple function which allows you to specify the spacecraft name as an argument
 # Which then calls the relrevant functions
 # =============================================================================
-def read(spacecraft, starttime, finaltime, basedir=None):
+def read(spacecraft, starttime, stoptime, basedir=None):
     
     match spacecraft.lower():
         case 'ulysses':
-            result = Ulysses(starttime, finaltime, basedir=basedir)
+            result = Ulysses(starttime, stoptime, basedir=basedir)
         case 'juno':
-            result = Juno_Wilson2018(starttime, finaltime)
-        
-            
+            result = Juno_Wilson2018(starttime, stoptime)
+        case 'voyager 1':
+            result = Voyager(starttime, stoptime, spacecraft_number='1', basedir=basedir)
+        case 'voyager 2':
+            result = Voyager(starttime, stoptime, spacecraft_number='2', basedir=basedir)
+        case _:
+            result = None
     return(result)
             
         
