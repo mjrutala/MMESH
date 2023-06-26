@@ -79,6 +79,9 @@ def Juno_Wilson2018(starttime, stoptime, filepath=None):
                   & (output_spacecraft_data.index < stoptime))
     output_spacecraft_data = output_spacecraft_data.iloc[time_index]
     
+    #  Check for duplicates in the datetime index
+    output_spacecraft_data = output_spacecraft_data[~output_spacecraft_data.index.duplicated(keep='last')]
+        
     # # Adding MAG total B magnitude
     #(date_mag,b) = juno_b_mag_from_amda('juno_fgm_b_mag_cruise_2016.txt')
     
@@ -148,6 +151,9 @@ def Ulysses(starttime, stoptime, basedir=None):
                       & (spacecraft_data.index < stoptime))
         spacecraft_data = spacecraft_data.iloc[time_index]
         
+        #  Check for duplicates in the datetime index
+        spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
+        
         output_columns = ['rau', 'hlat', 'hlong', 'n_proton', 'n_alpha', 'T_large', 'T_small', 'u_r', 'u_t', 'u_n', 'p_dyn_proton', 'p_dyn_alpha']
         output_columns_units = ['AU', 'deg', 'deg', 'cm^{-3}', 'cm^{-3}', 'K', 'K', 'km/s', 'km/s', 'km/s', 'nPa', 'nPa']
         spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
@@ -192,6 +198,9 @@ def Ulysses(starttime, stoptime, basedir=None):
         time_index = np.where((spacecraft_data.index >= starttime) 
                       & (spacecraft_data.index < stoptime))
         spacecraft_data = spacecraft_data.iloc[time_index]
+        
+        #  Check for duplicates in the datetime index
+        spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
         
         output_columns = ['B_r', 'B_t', 'B_n', 'B_mag', 'nBVectors']
         output_columns_units = ['nT', 'nT', 'nT', 'nT', '#']
@@ -278,6 +287,9 @@ def Voyager(starttime, stoptime, spacecraft_number=1, basedir=None):
                       & (spacecraft_data.index < stoptime))
         spacecraft_data = spacecraft_data.iloc[time_index]
         
+        #  Check for duplicates in the datetime index
+        spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
+        
         output_columns = ['n_proton', 'T_proton', 'u_mag', 'u_r', 'u_t', 'u_n', 'p_dyn_proton', 'p_dyn_alpha']
         output_columns_units = ['cm^{-3}', 'cm^{-3}', 'K', 'K', 'km/s', 'km/s', 'km/s', 'nPa', 'nPa']
         spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
@@ -327,6 +339,9 @@ def Voyager(starttime, stoptime, spacecraft_number=1, basedir=None):
         spacecraft_data['B_n'] = spacecraft_data['B_mag'] \
                                  * np.sin(spacecraft_data['lat_ihg']*np.pi/180.)
         
+        #  Check for duplicates in the datetime index
+        spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
+        
         output_columns = ['B_r', 'B_t', 'B_n', 'B_mag']
         output_columns_units = ['nT', 'nT', 'nT', 'nT']
         spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
@@ -343,10 +358,10 @@ def Voyager(starttime, stoptime, spacecraft_number=1, basedir=None):
     mag_data = read_Voyager_MAG(starttime, stoptime)
     
     #  manually concatenate the attributes
-    return(plasma_data, mag_data)
+    #return(plasma_data, mag_data)
     data = pd.concat([plasma_data, mag_data], axis=1)
-    data.attrs['units'] = {**plasma_data.attrs['units'], **mag_data.attrs['units']}
-    data.attrs['equations'] = {**plasma_data.attrs['equations'], **mag_data.attrs['equations']}
+    #data.attrs['units'] = {**plasma_data.attrs['units'], **mag_data.attrs['units']}
+    #data.attrs['equations'] = {**plasma_data.attrs['equations'], **mag_data.attrs['equations']}
         
     return(data)
 # =============================================================================
