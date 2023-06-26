@@ -134,7 +134,12 @@ class SpacecraftData:
         
         #  If self.data exists, add to it, else, make it
         if strict:
-            processed_data = processed_data.reindex(columns=self.data.columns)
+            try:
+                processed_data = processed_data.reindex(columns=self.data.columns)
+            except ValueError:
+                print('VALUE ERROR!')
+                print(processed_data.columns)
+                print(processed_data.index.has_duplicates)
             
         #self.data = pd.concat([self.data, processed_data], 
         #                      axis=0)
