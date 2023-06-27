@@ -8,7 +8,7 @@ Created on Tue Apr 11 10:09:36 2023
 """
 target = string, startdate & finaldata = datetime
 """
-def TaoSW(target, starttime, finaltime, basedir=''):
+def Tao(target, starttime, finaltime, basedir=''):
     
     #from astropy.io import ascii
     
@@ -23,7 +23,8 @@ def TaoSW(target, starttime, finaltime, basedir=''):
     
     match target.lower():
         case 'jupiter':
-            filenames = ['jupiter_tao_model_2016_v2.txt', 'jupiter_tao_model_2020_v1.txt']
+            filenames = ['jupiter_tao_model_2016_v2.txt', 
+                         'jupiter_tao_model_2020_v1.txt']
         case 'juno':
             filenames = ['amdaoutput_tao_juno_2015.txt',
                          'amdaoutput_tao_juno_2016.txt']
@@ -98,7 +99,7 @@ def TaoSW_x01(target, starttime, finaltime, smooth=1, delta=False, data_path='')
     
     return(data.reset_index(drop=True))
 
-def VogtSW(target, starttime, finaltime, basedir=''):
+def SWMFOH(target, starttime, finaltime, basedir=''):
     
     import pandas as pd
     import numpy as np
@@ -138,7 +139,7 @@ def VogtSW(target, starttime, finaltime, basedir=''):
                          'vogt_swmf-oh_mars_2021.txt',
                          'vogt_swmf-oh_mars_2022.txt']
         
-    column_headers = ['year', 'month', 'day', 'hour', 'X', 'Y', 'Z', 'n', 'u_r', 'u_t', 'u_n', 'B_r', 'B_t', 'B_n', 'p_thermal', 'J_r', 'J_t', 'J_n']
+    column_headers = ['year', 'month', 'day', 'hour', 'X', 'Y', 'Z', 'n_proton', 'u_r', 'u_t', 'u_n', 'B_r', 'B_t', 'B_n', 'p_thermal', 'J_r', 'J_t', 'J_n']
     
     data = pd.DataFrame(columns = column_headers + ['datetime'])
     
@@ -155,16 +156,15 @@ def VogtSW(target, starttime, finaltime, basedir=''):
     
     data = data.drop(columns=['year', 'month', 'day', 'hour'])
     
-    data['rho'] = data['n'] * m_p
     data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2 + data['u_n']**2)
     data['B_mag'] = np.sqrt(data['B_r']**2 + data['B_t']**2 + data['B_n']**2)
-    data['p_dyn_proton'] = data['rho'] * (1e6) * (data['u_mag'] * 1e3)**2 * (1e9)
+    data['p_dyn_proton'] = data['n_proton'] * m_p * (1e6) * (data['u_mag'] * 1e3)**2 * (1e9)
     data['p_dyn'] = data['p_dyn_proton']
     
     data = data.set_index('datetime')
     return(data)
 
-def MSWIM2DSW(target, starttime, finaltime, basedir=''):
+def MSWIM2D(target, starttime, finaltime, basedir=''):
     
     import pandas as pd
     import numpy as np
@@ -185,7 +185,7 @@ def MSWIM2DSW(target, starttime, finaltime, basedir=''):
         case 'cassini':
             filenames = []
         
-    column_headers = ['datetime', 'hour', 'r', 'phi', 'rho', 'u_x', 'u_y', 'u_z', 'B_x', 'B_y', 'B_z', 'T_i']
+    column_headers = ['datetime', 'hour', 'r', 'phi', 'rho_proton', 'u_x', 'u_y', 'u_z', 'B_x', 'B_y', 'B_z', 'T_i']
     
     data = pd.DataFrame(columns = column_headers)
     
@@ -200,11 +200,12 @@ def MSWIM2DSW(target, starttime, finaltime, basedir=''):
         
         data = pd.concat([data, sub_data])
     
-    data['rho'] = data['rho'] * kg_per_amu  # kg / cm^3
-    data['n'] = data['rho'] / m_p  # / cm^3
+    data['rho_proton'] = data['rho_proton'] * kg_per_amu  # kg / cm^3
+    data['n_proton'] = data['rho_proton'] / m_p  # / cm^3
     data['u_mag'] = np.sqrt(data['u_x']**2 + data['u_y']**2 + data['u_z']**2) # km/s
     data['B_mag'] = np.sqrt(data['B_x']**2 + data['B_y']**2 + data['B_z']**2) # nT
-    data['p_dyn'] = (data['rho'] * 1e6) * (data['u_mag'] * 1e3)**2 * (1e9) # nPa
+    data['p_dyn'] = (data['rho_proton'] * 1e6) * (data['u_mag'] * 1e3)**2 * (1e9) # nPa
+    data['p_dyn_proton'] = data['p_dyn']
     
     data = data.set_index('datetime')
     return(data)
@@ -281,3 +282,19 @@ def Heliocast(target, starttime, finaltime, data_path=''):
     data['Pdyn'] = (data['rho'] * 1e6) * (data['Umag'] * 1e3)**2 * 1e9
     
     return(data.reset_index(drop=True))
+
+def choose(model, target, starttime, stoptime, basedir=''):
+    
+    match model.lower():
+        case 'tao':
+            result = Tao(target, starttime, stoptime, basedir=basedir)
+        case 'huxt':
+            result = HUXt(target, starttime, stoptime, basedir=basedir)
+        case 'mswim2d':
+            result = MSWIM2D(target, starttime, stoptime, basedir=basedir)
+        case 'swmf-oh':
+            result = SWMFOH(target, starttime, stoptime, basedir=basedir)
+        case _:
+            result = None
+            raise Exception("Model '" + model.lower() + "' is not currently supported.") 
+    return(result)
