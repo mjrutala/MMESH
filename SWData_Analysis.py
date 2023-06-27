@@ -15,6 +15,68 @@ import datetime as dt
 import pandas as pd
 import numpy as np
 
+def plot_StackedTimeseries(spacecraft_name, model_names):
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    
+    import spacecraftdata
+    import read_SWModel
+    
+    #  Load spacecraft data
+    spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
+    spacecraft.read_processeddata(everything=True)
+    
+    #  Get starttime and stoptime from the dataset
+    starttime = spacecraft.data.index[0]
+    stoptime = spacecraft.data.index[-1]
+    
+    #  Read models
+    models = dict.fromkeys(model_names, None)
+    for model in models.keys():
+        models[model] = read_SWModel.choose(model, spacecraft_name, 
+                                           starttime, stoptime)
+    
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, axs = plt.subplots(figsize=(8,6), nrows=4, sharex=True)
+        
+        axs[0].plot(spacecraft.data.index, 
+                    spacecraft.data['u_mag'], 
+                    color='gray', label='Juno/JADE (Wilson+ 2018)')
+        axs[0].set(ylim=[350,550], ylabel=r'$u_{mag,SW} [km s^{-1}]$')
+        axs[1].plot(spacecraft.data.index, 
+                    spacecraft.data['n_proton'], 
+                    color='gray')
+        axs[1].set(ylim=[1e-3, 5e0], yscale='log', ylabel=r'$n_{proton} [cm^{-3}]$')
+        axs[2].plot(spacecraft.data.index, 
+                    spacecraft.data['p_dyn'], 
+                    color='gray')     
+        axs[2].set(ylim=[1e-3, 5e0], yscale='log', ylabel=r'$p_{dyn} [nP]$')
+        axs[3].plot(spacecraft.data.index, 
+                    spacecraft.data['B_mag'], 
+                    color='gray')
+        axs[3].set(ylim=[0,3], ylabel=r'$B_{mag} [nT]$')
+        
+        for model, model_info in models.items():
+            if 'u_mag' in model_info.columns: 
+                axs[0].plot(model_info.index, model_info['u_mag'], label=model)
+            if 'n_proton' in model_info.columns: 
+                axs[1].plot(model_info.index, model_info['n_proton'], label=model)
+            if 'p_dyn' in model_info.columns: 
+                axs[2].plot(model_info.index, model_info['p_dyn'], label=model)
+            if 'B_mag' in model_info.columns: 
+                axs[3].plot(model_info.index, model_info['B_mag'], label=model)
+          
+        axs[0].legend(ncol=3, bbox_to_anchor=[0.0,1.05,1.0,0.15], loc='lower left', mode='expand')
+        
+        axs[0].set_xlim((starttime, stoptime))
+        axs[0].xaxis.set_major_locator(mdates.DayLocator(interval=5))
+        axs[0].xaxis.set_minor_locator(mdates.DayLocator(interval=1))
+        axs[0].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
+        
+        fig.align_ylabels()
+        plt.show()
+    
+    
 def SWData_TaylorDiagram():
     #import datetime as dt
     #import pandas as pd
@@ -262,6 +324,68 @@ def SWData_TaylorDiagram_JunoExample():
     
     return(shifted_stats)
 
+def SWData_MI():
+    #import datetime as dt
+    #import pandas as pd
+    #import numpy as np
+    import matplotlib.pyplot as plt
+    import spiceypy as spice
+    import matplotlib.dates as mdates
+    import scipy.signal as signal
+    
+    #import read_SWData
+    import read_SWModel
+    import spacecraftdata
+    import plot_TaylorDiagram as TD
+    
+    import sys
+    sys.path.append('/Users/mrutala/code/python/libraries/aaft/')
+    sys.path.append('/Users/mrutala/code/python/libraries/generic_MI_lag_finder/')
+    import generic_mutual_information_routines as mi_lib
+    
+    starttime = dt.datetime(2016, 5, 1)
+    stoptime = dt.datetime(2016, 7, 1)
+    reference_frame = 'SUN_INERTIAL'
+    observer = 'SUN'
+    
+    tag = 'u_mag'  #  solar wind property of interest
+    
+    juno = spacecraftdata.SpacecraftData('Juno')
+    juno.read_processeddata(starttime, stoptime)
+    juno.find_state(reference_frame, observer)
+    
+    tao = read_SWModel.TaoSW('Juno', starttime, stoptime)
+    #vogt = read_SWModel.VogtSW('Juno', starttime, stoptime)
+    #mich = read_SWModel.MSWIM2DSW('Juno', starttime, stoptime)
+    #huxt = read_SWModel.HUXt('Jupiter', starttime, stoptime)
+    
+    minutely_index = pd.date_range(juno.data.index[0], juno.data.index[-1], freq='T')
+    
+    juno_reindexed = juno.data.reindex(minutely_index, method='nearest')
+    tao_reindexed = tao.reindex(minutely_index, method='nearest')
+    #vogt_reindexed = vogt.reindex(minutely_index, method='nearest')
+    #mich_reindexed = mich.reindex(minutely_index, method='nearest')
+    #huxt_reindexed = huxt.reindex(minutely_index, method='nearest')
+    
+    jr = find_RollingDerivativeZScore(juno_reindexed, tag, 2)
+    tr = find_RollingDerivativeZScore(tao_reindexed, tag, 2)
+    
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, axs = plt.subplots(nrows=2)
+        axs[0].plot(juno_reindexed.index[0:19440], juno_reindexed['u_mag'][0:19440], color='gray')
+        axs[0].plot(tao_reindexed.index[0:19440], tao_reindexed['u_mag'][0:19440])
+        
+        axs[1].plot(jr.index[0:19440], jr['smooth_ddt_'+tag+'_zscore'][0:19440], color='gray')
+        axs[1].plot(tr.index[0:19440], tr['smooth_ddt_'+tag+'_zscore'][0:19440])
+    
+        ax, lags, mi, RPS_mi, x_sq, x_pw = mi_lib.mi_lag_finder(jr['smooth_ddt_'+tag+'_zscore'][0:19440], tr['smooth_ddt_'+tag+'_zscore'][0:19440], temporal_resolution=1, max_lag=4320, min_lag=-4320)
+    
+    plt.show()
+    return()
+
+    #ax, lags, mutual_information, RPS_mutual_information, x_squared_df, x_piecewise_df = generic_mutual_information_routines.mi_lag_finder(juno_reindexed['u_mag'][0:38880],tao_reindexed['u_mag'][0:38880],temporal_resolution=1,max_lag=4320,min_lag=-4320)
+
+
 def QQplot_datacomparison():
     import matplotlib.pyplot as plt
     import numpy as np
@@ -280,20 +404,23 @@ def QQplot_datacomparison():
     observer = 'SUN'
     
     #  Read spacecraft data: one abcissa, n ordinates
-    spacecraft_x = SpacecraftData.SpacecraftData('Juno')
+    spacecraft_x = SpacecraftData.SpacecraftData('Ulysses')
     spacecraft_x.read_processeddata(everything=True)
-    #  We shouldn't need to limit the Juno data, because it's so limited already
+    spacecraft_x.find_state(reference_frame, observer) 
+    spacecraft_x.find_subset(coord1_range=np.array((4.4, 6.0))*spacecraft_x.au_to_km, 
+                       coord3_range=np.array((-8.5,8.5))*np.pi/180., 
+                       transform='reclat')
     
     spacecraft_y = []
-    spacecraft_y.append(SpacecraftData.SpacecraftData('Ulysses'))
+    spacecraft_y.append(SpacecraftData.SpacecraftData('Juno'))
     spacecraft_y.append(SpacecraftData.SpacecraftData('Voyager 1'))
     spacecraft_y.append(SpacecraftData.SpacecraftData('Voyager 2'))
     
     for sc in spacecraft_y:
         sc.read_processeddata(everything=True)
         sc.find_state(reference_frame, observer) 
-        sc.find_subset(coord1_range=np.array((4.0, 6.0))*sc.au_to_km, 
-                       coord3_range=np.array((-10,10))*np.pi/180., 
+        sc.find_subset(coord1_range=np.array((4.4, 6.0))*sc.au_to_km, 
+                       coord3_range=np.array((-8.5,8.5))*np.pi/180., 
                        transform='reclat')
     
     #  Calculate percentiles (i.e., 100 quantiles)
@@ -301,9 +428,9 @@ def QQplot_datacomparison():
     y_quantiles = [np.nanquantile(sc.data[tag], np.linspace(0, 1, 100)) for sc in spacecraft_y]
     
     #  Dictionaries of plotting and labelling parametes
-    label_dict = {'u_mag': r'$u_{mag,SW}$ [km/s]', 
-                  'p_dyn_proton': r'$p_{dyn,SW,p}$ [nPa]'}
-    plot_params = {'xlabel':r'Juno JADE ' + label_dict[tag], 
+    label_dict = {'u_mag': r'$U_{mag,SW}$ [km/s]', 
+                  'p_dyn_proton': r'$P_{dyn,SW,p}$ [nPa]'}
+    plot_params = {'xlabel':label_dict[tag], 
                    'xlim': (300, 700), 
                    'ylabel':label_dict[tag], 
                    'ylim': (300, 700)}
@@ -315,14 +442,15 @@ def QQplot_datacomparison():
     fig = plt.figure(figsize=(8,6))
     ax = fig.add_gridspec(left=0.05, bottom=0.05, top=0.75, right=0.75).subplots()
     
-    for y in y_quantiles:
-        ax.plot(x_quantiles, y, marker='o', markersize=4, linestyle='None')
+    for sc, y in zip(spacecraft_y, y_quantiles):
+        ax.plot(x_quantiles, y, marker='o', markersize=4, linestyle='None', label=sc.name)
     
     ax.plot([0, 1], [0, 1], transform=ax.transAxes,
              linestyle=':', color='black')
     ax.set(xlabel=plot_params['xlabel'], xlim=plot_params['xlim'], 
            ylabel=plot_params['ylabel'], ylim=plot_params['ylim'],
            aspect=1.0)
+    ax.legend()
     
     ax_top = ax.inset_axes([0, 1.05, 1.0, 0.2], sharex=ax)
     x_hist, x_bins = np.histogram(spacecraft_x.data[tag], bins=50, range=plot_params['xlim'])
@@ -424,65 +552,28 @@ def plot_spacecraftcoverage_solarcycle():
     #import read_SWData
     import spacecraftdata as SpacecraftData
     
-    
     # =============================================================================
     # Find when Ulysses was within +/- 30 deg. of the ecliptic, and near 5 AU
     # =============================================================================
     reference_frame = 'SUN_INERTIAL' # HGI  #'ECLIPJ2000'
     observer = 'SUN'
 
-    #  Essential solar system and timekeeping kernels
-    #spice.furnsh('/Users/mrutala/SPICE/generic/kernels/lsk/latest_leapseconds.tls')
-    #spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-1.bsp')
-    #spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-2.bsp')
-    #spice.furnsh('/Users/mrutala/SPICE/generic/kernels/pck/pck00011.tpc')
-
-    #  Ulysses s/c
-    #spice.furnsh('/Users/mrutala/SPICE/ulysses/metakernel_ulysses.txt')
+    spacecraft_list = []
+    spacecraft_list.append(SpacecraftData.SpacecraftData('Voyager 1'))
+    spacecraft_list.append(SpacecraftData.SpacecraftData('Voyager 2'))
+    spacecraft_list.append(SpacecraftData.SpacecraftData('Ulysses'))
+    spacecraft_list.append(SpacecraftData.SpacecraftData('Juno'))
     
-    #  Custom helio frames
-    #spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
-    
-    ulys = SpacecraftData.SpacecraftData('Ulysses')
-    
-    ulys.read_processeddata(everything=True)
-    ulys.find_state(reference_frame, observer)
-    
-    ulys.find_subset(coord1_range=np.array((4.5, 5.5))*ulys.au_to_km, 
-                     coord3_range=np.array((-10,10))*np.pi/180., 
-                     transform='reclat')
-    
-    #  Convert to r, lon, lat in HGI
-    #ulys_rlonlat = [spice.reclat(np.array(row[['x_pos', 'y_pos', 'z_pos']], dtype='float64')) for index, row in ulys.data.iterrows()]
-    #ulys_rlonlat = np.array(ulys_rlonlat)
-    
-    #lat_range = (-10, 10)
-    #r_range = (4.5, 5.5)
-    #ulys_criteria = np.where((ulys_rlonlat[:,0]/ulys.au_to_km >= r_range[0]) 
-    #                              & (ulys_rlonlat[:,0]/ulys.au_to_km <= r_range[1]) 
-    #                              & (ulys_rlonlat[:,2]*180/np.pi > lat_range[0]) 
-    #                              & (ulys_rlonlat[:,2]*180/np.pi < lat_range[1]))
-    #ulys.data = ulys.data.iloc[ulys_criteria]
-    
-    juno = SpacecraftData.SpacecraftData('Juno')
-    juno.read_processeddata(everything=True)
-    juno.find_state(reference_frame, observer)
-    
-# =============================================================================
-#     fig, axs = plt.subplots(nrows=3, sharex=True)
-#     axs[0].plot(sc_data.index, sc_data['rau'])
-#     axs[0].plot(sc_data.index, rlonlat[:,0])
-#     
-#     axs[1].plot(sc_data.index, sc_data['hlong'])
-#     axs[1].plot(sc_data.index, rlonlat[:,1])
-#     
-#     axs[2].plot(sc_data.index, sc_data['hlat'])
-#     axs[2].plot(sc_data.index, rlonlat[:,2])
-# =============================================================================
-    
-    #axs[0].plot(sc_dates, np.sqrt(sc_state.T[0,:]**2 + sc_state.T[1,:]**2 + sc_state.T[2,:]**2))
-    
-    #axs[1].plot(sc_dates, sc_state.T[5,:])
+    for sc in spacecraft_list:
+        sc.read_processeddata(everything=True)
+        sc.find_state(reference_frame, observer)
+        sc.find_subset(coord1_range=np.array((4.4, 6.0))*sc.au_to_km, 
+                       coord3_range=np.array((-8.5,8.5))*np.pi/180., 
+                       transform='reclat')
+    spacecraft_labels = {'Voyager 1': 1, 
+                         'Voyager 2': 2, 
+                         'Ulysses'  : 3, 
+                         'Juno'     : 4}
     
     # =============================================================================
     # F10.4 Radio flux from the sun
@@ -490,26 +581,49 @@ def plot_spacecraftcoverage_solarcycle():
     column_headers = ('date', 'observed_flux', 'adjusted_flux',)
     solar_radio_flux = pd.read_csv('/Users/mrutala/Data/Sun/DRAO/penticton_radio_flux.csv',
                                    header = 0, names = column_headers)
-    solar_radio_flux['date'] = [dt.datetime.strptime(d, '%Y-%m-%dT%H:%M:%S') 
+    solar_radio_flux['date'] = [dt.datetime.strptime(d, '%Y-%m-%dT%H:%M:%S')
                                 for d in solar_radio_flux['date']]
 
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig, ax0 = plt.subplots()
         ax0.plot(solar_radio_flux['date'], solar_radio_flux['observed_flux'], 
-                 marker='.', color='black', linestyle='None')
+                 marker='.', color='gray', markersize=2, linestyle='None')
         
+        # import matplotlib.patches as patch
+        # from matplotlib.collections import PatchCollection
         ax0twin = ax0.twinx()
-        ax0twin.plot(ulys.data.index, np.zeros(len(ulys.data.index))+1, linestyle='None', marker='o', color='red')
-        ax0twin.plot(juno.data.index, np.zeros(len(juno.data.index))+2, linestyle='None', marker='o', color='orange')
+        for sc in spacecraft_list:
+            
+            #  This bit splits the spacecraft data up into chunks to plot
+            sc_deltas = sc.data.index.to_series().diff()
+            gaps_indx = np.where(sc_deltas > dt.timedelta(days=30))[0]
+            start_indx = np.insert(gaps_indx, 0, 0)
+            stop_indx = np.append(gaps_indx, len(sc.data.index))-1
+            
+            print('Start and stop dates for ' + sc.name + ', 4.4-6.0 AU and +/-8.5 deg. lat:')
+            for first, final in zip(start_indx, stop_indx):
+                print(sc.data.index[first].strftime('%Y-%m-%d') + 
+                      ' -- ' + 
+                      sc.data.index[final].strftime('%Y-%m-%d'))
+            print('------------------------------------------')
+            # rectangle_list = []
+            # for x0, xf in zip(np.insert(start_indx, 0, 0), stop_indx):
+            #     ll_corner = (sc.data.index[x0].timestamp(), spacecraft_labels[sc.name]-0.333)
+            #     width = sc.data.index[xf-1].timestamp() - sc.data.index[x0].timestamp()
+            #     height = 0.666
+                
+            #     rectangle_list.append(patch.Rectangle(ll_corner, width, height))
+            # ax0twin.add_collection(PatchCollection(rectangle_list))
+            
+            ax0twin.plot(sc.data.index, np.zeros(len(sc.data.index))+spacecraft_labels[sc.name], linestyle='None', marker='|', markersize=36)
+
+        ax0.set_xlim((dt.datetime(1975, 1, 1), dt.datetime(2020, 1, 1)))
+        ax0.set_ylabel('Observed Radio Flux @ 10.7 cm [SFU]', fontsize=16)
         
-        ax0.set_xlim((dt.datetime(1970, 1, 1), dt.datetime(2020, 1, 1)))
-        ax0.set_ylabel('Observed Radio Flux @ 10.7 cm [SFU]', fontsize=18)
+        #ax0.set_title(r'Spacecraft data availability relative to the Solar Cycle between 4.5-5.5 $R_J$ and -10-10 deg. lat.', wrap=True, fontsize=18)
         
-        ax0.set_title(r'Spacecraft data availability relative to the Solar Cycle between 4.5-5.5 $R_J$ and -10-10 deg. lat.', wrap=True, fontsize=18)
+        ax0.set_ylim((50, 400))
         
-        ax0.set_ylim((0, 400))
-        
-        spacecraft_labels = {'Ulysses' : 1, 'Juno' : 2}
         ax0twin.set_ylim((0,5))
         ax0twin.set_yticks(list(spacecraft_labels.values()))
         ax0twin.set_yticklabels(list(spacecraft_labels.keys()))
