@@ -17,85 +17,128 @@ import astropy.units as u
 # =============================================================================
 # 
 # =============================================================================
-def Juno_Wilson2018(starttime, stoptime, filepath=None):
+def Juno_published(starttime, stoptime, basedir=''):
     
-    import pandas as pd
-    import datetime as dt
-    import numpy as np
+    spacecraft_dir = 'Juno/'
+    filepath_ions = basedir + spacecraft_dir + 'plasma/published/Wilson2018/'
+    filepath_mag = basedir + spacecraft_dir + 'mag/published/AMDA/'
     
-    if filepath == None:
-        filepath = '/Users/mrutala/projects/SolarWindProp/Wilson_JunoJADE_Cruise2016.csv'
-    
-    spacecraft_data = pd.read_csv(filepath)
-    
-    output_columns = ['u_mag', 'u_mag_err', 
-                      'n_proton', 'n_proton_err', 
-                      'n_alpha', 'n_alpha_err',
-                      'T_proton', 'T_proton_err', 
-                      'T_alpha', 'T_alpha_err',
-                      'p_dyn_alpha', 'p_dyn_alpha_err', 
-                      'p_dyn_proton', 'p_dyn_proton_err']
-    output_spacecraft_data = pd.DataFrame(columns=output_columns)
-    
-    #  Data quality is a boolean to determine whether to use (1) or not use (0) the respective measurement
-    dataquality = spacecraft_data['USED_IN_PAPER']
-    dataquality_index = np.where(dataquality == 1)[0]
-    
-    #  No conversion necessary, km/s is good
-    output_spacecraft_data['u_mag'] = spacecraft_data['V_KMPS']
-    output_spacecraft_data['u_mag_err'] = spacecraft_data['V_KMPS_UNCERTAINTY']
-    
-    #  No conversion necessary, cm^-3 is good
-    output_spacecraft_data['n_proton'] = spacecraft_data['N_PROTONS_CC']
-    output_spacecraft_data['n_proton_err'] = spacecraft_data['N_PROTONS_CC_UNCERTAINTY']  
-    # Alphas may contribute significantly during pressure/density increases
-    output_spacecraft_data['n_alpha'] = spacecraft_data['N_ALPHAS_CC']
-    output_spacecraft_data['n_alpha_err'] = spacecraft_data['N_ALPHAS_CC_UNCERTAINTY']
-    
-    #  No conversion necessary, eV is good
-    output_spacecraft_data['T_proton'] = spacecraft_data['T_PROTONS_EV']
-    output_spacecraft_data['T_proton_err'] = spacecraft_data['T_PROTONS_EV_UNCERTAINTY']
-    #
-    output_spacecraft_data['T_alpha'] = spacecraft_data['T_ALPHAS_EV']
-    output_spacecraft_data['T_alpha_err'] = spacecraft_data['T_ALPHAS_EV_UNCERTAINTY']
-    
-    #  No conversion necessary, pressure in nPa is good
-    output_spacecraft_data['p_dyn_proton'] = spacecraft_data['RAM_PRESSURE_PROTONS_NPA']
-    output_spacecraft_data['p_dyn_proton_err'] = spacecraft_data['RAM_PRESSURE_PROTONS_NPA_UNCERTAINTY']
-    #
-    output_spacecraft_data['p_dyn_alpha'] = spacecraft_data['RAM_PRESSURE_ALPHAS_NPA']
-    output_spacecraft_data['p_dyn_alpha_err'] = spacecraft_data['RAM_PRESSURE_ALPHAS_NPA_UNCERTAINTY']
-    
-    output_spacecraft_data['p_dyn'] = output_spacecraft_data['p_dyn_proton'] #!!!
-    
-    #  Finally, set the index to be datetimes
-    output_spacecraft_data.index = [dt.datetime.strptime(t, '%Y-%jT%H:%M:%S.%f') for t in spacecraft_data['UTC']]
-    
-    #  Only pass on data with dataquality == 1, and reset the indices to reflect this
-    output_spacecraft_data = output_spacecraft_data.iloc[dataquality_index]
-    
-    #  Within selected time range
-    time_index = np.where((output_spacecraft_data.index >= starttime) 
-                  & (output_spacecraft_data.index < stoptime))
-    output_spacecraft_data = output_spacecraft_data.iloc[time_index]
-    
-    #  Check for duplicates in the datetime index
-    output_spacecraft_data = output_spacecraft_data[~output_spacecraft_data.index.duplicated(keep='last')]
+    # =========================================================================
+    #     
+    # =========================================================================
+    def read_Juno_Wilson2018():
+        fullfilename = filepath_ions + 'Wilson2018_juno_cruise_jade_2016.csv'
         
-    # # Adding MAG total B magnitude
-    #(date_mag,b) = juno_b_mag_from_amda('juno_fgm_b_mag_cruise_2016.txt')
+        spacecraft_data = pd.read_csv(fullfilename)
+        
+        output_columns = ['u_mag', 'u_mag_err', 
+                          'n_proton', 'n_proton_err', 
+                          'n_alpha', 'n_alpha_err',
+                          'T_proton', 'T_proton_err', 
+                          'T_alpha', 'T_alpha_err',
+                          'p_dyn_alpha', 'p_dyn_alpha_err', 
+                          'p_dyn_proton', 'p_dyn_proton_err']
+        output_spacecraft_data = pd.DataFrame(columns=output_columns)
+        
+        #  Data quality is a boolean to determine whether to use (1) or not use (0) the respective measurement
+        dataquality = spacecraft_data['USED_IN_PAPER']
+        dataquality_index = np.where(dataquality == 1)[0]
+        
+        #  No conversion necessary, km/s is good
+        output_spacecraft_data['u_mag'] = spacecraft_data['V_KMPS']
+        output_spacecraft_data['u_mag_err'] = spacecraft_data['V_KMPS_UNCERTAINTY']
+        
+        #  No conversion necessary, cm^-3 is good
+        output_spacecraft_data['n_proton'] = spacecraft_data['N_PROTONS_CC']
+        output_spacecraft_data['n_proton_err'] = spacecraft_data['N_PROTONS_CC_UNCERTAINTY']  
+        # Alphas may contribute significantly during pressure/density increases
+        output_spacecraft_data['n_alpha'] = spacecraft_data['N_ALPHAS_CC']
+        output_spacecraft_data['n_alpha_err'] = spacecraft_data['N_ALPHAS_CC_UNCERTAINTY']
+        
+        #  No conversion necessary, eV is good
+        output_spacecraft_data['T_proton'] = spacecraft_data['T_PROTONS_EV']
+        output_spacecraft_data['T_proton_err'] = spacecraft_data['T_PROTONS_EV_UNCERTAINTY']
+        #
+        output_spacecraft_data['T_alpha'] = spacecraft_data['T_ALPHAS_EV']
+        output_spacecraft_data['T_alpha_err'] = spacecraft_data['T_ALPHAS_EV_UNCERTAINTY']
+        
+        #  No conversion necessary, pressure in nPa is good
+        output_spacecraft_data['p_dyn_proton'] = spacecraft_data['RAM_PRESSURE_PROTONS_NPA']
+        output_spacecraft_data['p_dyn_proton_err'] = spacecraft_data['RAM_PRESSURE_PROTONS_NPA_UNCERTAINTY']
+        #
+        output_spacecraft_data['p_dyn_alpha'] = spacecraft_data['RAM_PRESSURE_ALPHAS_NPA']
+        output_spacecraft_data['p_dyn_alpha_err'] = spacecraft_data['RAM_PRESSURE_ALPHAS_NPA_UNCERTAINTY']
+        
+        output_spacecraft_data['p_dyn'] = output_spacecraft_data['p_dyn_proton'] #!!!
+        
+        #  Finally, set the index to be datetimes
+        output_spacecraft_data.index = [dt.datetime.strptime(t, '%Y-%jT%H:%M:%S.%f') for t in spacecraft_data['UTC']]
+        
+        #  Only pass on data with dataquality == 1, and reset the indices to reflect this
+        output_spacecraft_data = output_spacecraft_data.iloc[dataquality_index]
+        
+        #  Within selected time range
+        time_index = np.where((output_spacecraft_data.index >= starttime) 
+                      & (output_spacecraft_data.index < stoptime))
+        output_spacecraft_data = output_spacecraft_data.iloc[time_index]
+        
+        #  Check for duplicates in the datetime index
+        output_spacecraft_data = output_spacecraft_data[~output_spacecraft_data.index.duplicated(keep='last')]
+        
+        return(output_spacecraft_data)
     
-    return(output_spacecraft_data)
-
+    # =========================================================================
+    #     
+    # =========================================================================
+    def read_Juno_AMDAMAG():
+        
+        filename_template = 'amda_juno_cruise_fgm_%Y.txt'
+        
+        in_range = np.arange(starttime.year, stoptime.year+1, 1)                                       # !!! Repeated
+        filename_datetimes_in_range = [dt.datetime(iyr, 1, 1) for iyr in in_range]                      # !!! Repeated
+        filenames_in_range = [t.strftime(filename_template) for t in filename_datetimes_in_range]   # !!! Repeated
+    
+        filelist = [filepath_mag + filename for filename in filenames_in_range if os.path.exists(filepath_mag + filename)]
+        filelist.sort()
+        
+        input_columns = ['datestr',
+                         'B_r', 'B_t', 'B_n', 'B_mag']
+        
+        #  Make a generator to read csv data and concatenate into a single dataframe
+        data_generator = (pd.read_csv(f, delim_whitespace=True, skiprows=73, names=input_columns) 
+                                     for f in filelist)
+        spacecraft_data = pd.concat(data_generator, ignore_index=True)
+        
+        #  Set index to the datetime
+        spacecraft_data.index = [dt.datetime.strptime(
+                                 row['datestr'], '%Y-%m-%dT%H:%M:%S.%f') 
+                                 for indx, row in spacecraft_data.iterrows()]
+        
+        #  Within selected time range
+        time_index = np.where((spacecraft_data.index >= starttime) 
+                      & (spacecraft_data.index < stoptime))
+        spacecraft_data = spacecraft_data.iloc[time_index]
+        
+        #  Check for duplicates in the datetime index
+        spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
+        return(spacecraft_data)
+    # =========================================================================
+    #         
+    # =========================================================================
+    plasma_data = read_Juno_Wilson2018()
+    mag_data = read_Juno_AMDAMAG()
+    
+    data = pd.concat([plasma_data, mag_data], axis=1)
+    
+    return(data)
+    
 # =============================================================================
 # 
 # =============================================================================
-def Ulysses(starttime, stoptime, basedir=None):
+def Ulysses(starttime, stoptime, basedir=''):
     #  Keep basefilepath flexible such that it can point to a static path or a 
     #  relative path
     #  Default to current working directory
-    if basedir == None:
-        basedir = ''
     
     #  
     spacecraft_dir = 'Ulysses/'
@@ -374,7 +417,7 @@ def read(spacecraft, starttime, stoptime, basedir=None):
         case 'ulysses':
             result = Ulysses(starttime, stoptime, basedir=basedir)
         case 'juno':
-            result = Juno_Wilson2018(starttime, stoptime)
+            result = Juno_published(starttime, stoptime, basedir=basedir)
         case 'voyager 1':
             result = Voyager(starttime, stoptime, spacecraft_number='1', basedir=basedir)
         case 'voyager 2':
