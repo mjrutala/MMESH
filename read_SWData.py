@@ -113,7 +113,7 @@ def Juno_published(starttime, stoptime, basedir=''):
         spacecraft_data.index = [dt.datetime.strptime(
                                  row['datestr'], '%Y-%m-%dT%H:%M:%S.%f') 
                                  for indx, row in spacecraft_data.iterrows()]
-        
+        spacecraft_data = spacecraft_data.drop(['datestr'], axis=1)
         #  Within selected time range
         time_index = np.where((spacecraft_data.index >= starttime) 
                       & (spacecraft_data.index < stoptime))
