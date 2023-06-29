@@ -15,7 +15,7 @@ import datetime as dt
 import pandas as pd
 import numpy as np
 
-def plot_StackedTimeseries(spacecraft_name, model_names):
+def plot_StackedTimeseries(spacecraft_name, model_names, starttime, stoptime):
     import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
     
@@ -24,47 +24,55 @@ def plot_StackedTimeseries(spacecraft_name, model_names):
     
     #  Load spacecraft data
     spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
-    spacecraft.read_processeddata(everything=True)
+    spacecraft.read_processeddata(starttime, stoptime)
+    spacecraft.data = spacecraft.data.resample("15Min").mean()
     
     #  Get starttime and stoptime from the dataset
-    starttime = spacecraft.data.index[0]
-    stoptime = spacecraft.data.index[-1]
+    #starttime = spacecraft.data.index[0]
+    #stoptime = spacecraft.data.index[-1]
     
     #  Read models
     models = dict.fromkeys(model_names, None)
     for model in models.keys():
         models[model] = read_SWModel.choose(model, spacecraft_name, 
                                            starttime, stoptime)
+    colors = ['#E63946', '#FFB703', '#46ACAF', '#386480', '#192F4D']
+    model_colors = dict(zip(model_names, colors[0:len(model_names)]))
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig, axs = plt.subplots(figsize=(8,6), nrows=4, sharex=True)
         
-        axs[0].plot(spacecraft.data.index, 
-                    spacecraft.data['u_mag'], 
+        #mask = np.isfinite(spacecraft.data['u_mag']) 
+        axs[0].plot(spacecraft.data.dropna(subset='u_mag').index, 
+                    spacecraft.data.dropna(subset='u_mag')['u_mag'],
                     color='gray', label='Juno/JADE (Wilson+ 2018)')
-        axs[0].set(ylim=[350,550], ylabel=r'$u_{mag,SW} [km s^{-1}]$')
-        axs[1].plot(spacecraft.data.index, 
-                    spacecraft.data['n_proton'], 
+        axs[0].set(ylim=[350,550], ylabel=r'$u_{mag} [km s^{-1}]$')
+        axs[1].plot(spacecraft.data.dropna(subset='n_proton').index, 
+                    spacecraft.data.dropna(subset='n_proton')['n_proton'], 
                     color='gray')
         axs[1].set(ylim=[1e-3, 5e0], yscale='log', ylabel=r'$n_{proton} [cm^{-3}]$')
-        axs[2].plot(spacecraft.data.index, 
-                    spacecraft.data['p_dyn'], 
+        axs[2].plot(spacecraft.data.dropna(subset='p_dyn').index, 
+                    spacecraft.data.dropna(subset='p_dyn')['p_dyn'], 
                     color='gray')     
         axs[2].set(ylim=[1e-3, 5e0], yscale='log', ylabel=r'$p_{dyn} [nP]$')
-        axs[3].plot(spacecraft.data.index, 
-                    spacecraft.data['B_mag'], 
+        axs[3].plot(spacecraft.data.dropna(subset='B_mag').index, 
+                    spacecraft.data.dropna(subset='B_mag')['B_mag'], 
                     color='gray')
         axs[3].set(ylim=[0,3], ylabel=r'$B_{mag} [nT]$')
         
         for model, model_info in models.items():
             if 'u_mag' in model_info.columns: 
-                axs[0].plot(model_info.index, model_info['u_mag'], label=model)
+                axs[0].plot(model_info.index, model_info['u_mag'], 
+                            color=model_colors[model], label=model)
             if 'n_proton' in model_info.columns: 
-                axs[1].plot(model_info.index, model_info['n_proton'], label=model)
+                axs[1].plot(model_info.index, model_info['n_proton'],
+                            color=model_colors[model], label=model)
             if 'p_dyn' in model_info.columns: 
-                axs[2].plot(model_info.index, model_info['p_dyn'], label=model)
+                axs[2].plot(model_info.index, model_info['p_dyn'],
+                            color=model_colors[model], label=model)
             if 'B_mag' in model_info.columns: 
-                axs[3].plot(model_info.index, model_info['B_mag'], label=model)
+                axs[3].plot(model_info.index, model_info['B_mag'],
+                            color=model_colors[model], label=model)
           
         axs[0].legend(ncol=3, bbox_to_anchor=[0.0,1.05,1.0,0.15], loc='lower left', mode='expand')
         
@@ -72,10 +80,240 @@ def plot_StackedTimeseries(spacecraft_name, model_names):
         axs[0].xaxis.set_major_locator(mdates.DayLocator(interval=5))
         axs[0].xaxis.set_minor_locator(mdates.DayLocator(interval=1))
         axs[0].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
+        axs[3].set_xlabel('Day of Year 2016')
         
         fig.align_ylabels()
+        plt.savefig('figures/Timeseries_Juno_Stacked.png', dpi=300)
         plt.show()
+        return()
+
+def plot_NormalizedTimeseries(spacecraft_name, model_names, starttime, stoptime):
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
     
+    import spacecraftdata
+    import read_SWModel
+    
+    #  Load spacecraft data
+    spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
+    spacecraft.read_processeddata(starttime, stoptime)
+    spacecraft.data = spacecraft.data.resample("15Min").mean()
+    spacecraft.data = (spacecraft.data - spacecraft.data.min()) / (spacecraft.data.max()-spacecraft.data.min())
+    
+    #  Get starttime and stoptime from the dataset
+    #starttime = spacecraft.data.index[0]
+    #stoptime = spacecraft.data.index[-1]
+    
+    #  Read models
+    models = dict.fromkeys(model_names, None)
+    for model in models.keys():
+        model_in = read_SWModel.choose(model, spacecraft_name, 
+                                       starttime, stoptime)
+        models[model] = (model_in - model_in.min()) / (model_in.max() - model_in.min())
+    colors = ['#E63946', '#FFB703', '#46ACAF', '#386480', '#192F4D']
+    model_colors = dict(zip(model_names, colors[0:len(model_names)]))
+    
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, axs = plt.subplots(figsize=(8,6), nrows=4, sharex=True)
+        
+        #mask = np.isfinite(spacecraft.data['u_mag']) 
+        axs[0].plot(spacecraft.data.dropna(subset='u_mag').index, 
+                    spacecraft.data.dropna(subset='u_mag')['u_mag'],
+                    color='gray', label='Juno/JADE (Wilson+ 2018)')
+        axs[0].set(ylim=[0,1], ylabel=r'$u_{mag} [arb.]$')
+        axs[1].plot(spacecraft.data.dropna(subset='n_proton').index, 
+                    spacecraft.data.dropna(subset='n_proton')['n_proton'], 
+                    color='gray')
+        axs[1].set(ylim=[1e-3, 1e0], yscale='log', ylabel=r'$n_{proton} [arb.]$')
+        axs[2].plot(spacecraft.data.dropna(subset='p_dyn').index, 
+                    spacecraft.data.dropna(subset='p_dyn')['p_dyn'], 
+                    color='gray')     
+        axs[2].set(ylim=[1e-3, 1e0], yscale='log', ylabel=r'$p_{dyn} [arb.]$')
+        axs[3].plot(spacecraft.data.dropna(subset='B_mag').index, 
+                    spacecraft.data.dropna(subset='B_mag')['B_mag'], 
+                    color='gray')
+        axs[3].set(ylim=[0,1], ylabel=r'$B_{mag} [arb.]$')
+        
+        for model, model_info in models.items():
+            if 'u_mag' in model_info.columns: 
+                axs[0].plot(model_info.index, model_info['u_mag'], 
+                            color=model_colors[model], label=model)
+            if 'n_proton' in model_info.columns: 
+                axs[1].plot(model_info.index, model_info['n_proton'],
+                            color=model_colors[model], label=model)
+            if 'p_dyn' in model_info.columns: 
+                axs[2].plot(model_info.index, model_info['p_dyn'],
+                            color=model_colors[model], label=model)
+            if 'B_mag' in model_info.columns: 
+                axs[3].plot(model_info.index, model_info['B_mag'],
+                            color=model_colors[model], label=model)
+          
+        axs[0].legend(ncol=3, bbox_to_anchor=[0.0,1.05,1.0,0.15], loc='lower left', mode='expand')
+        
+        axs[0].set_xlim((starttime, stoptime))
+        axs[0].xaxis.set_major_locator(mdates.DayLocator(interval=5))
+        axs[0].xaxis.set_minor_locator(mdates.DayLocator(interval=1))
+        axs[0].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
+        axs[3].set_xlabel('Day of Year 2016')
+        
+        fig.align_ylabels()
+        plt.savefig('figures/Timeseries_Juno_Normalized.png', dpi=300)
+        plt.show()
+        return()
+  
+def plot_JumpTimeseries(spacecraft_name, model_names, starttime, stoptime):
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    
+    import spacecraftdata
+    import read_SWModel
+    
+    #  Load spacecraft data
+    spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
+    spacecraft.read_processeddata(starttime, stoptime)
+    spacecraft.data = spacecraft.data.resample("15Min").mean()
+    spacecraft.data = (spacecraft.data - spacecraft.data.min()) / (spacecraft.data.max()-spacecraft.data.min())
+    #spacecraft.data = find_RollingDerivativeZScore(spacecraft.data, 'u_mag', 4)
+    
+    
+    #  Get starttime and stoptime from the dataset
+    #starttime = spacecraft.data.index[0]
+    #stoptime = spacecraft.data.index[-1]
+    
+    #  Read models
+    models = dict.fromkeys(model_names, None)
+    for model in models.keys():
+        model_in = read_SWModel.choose(model, spacecraft_name, 
+                                       starttime, stoptime)
+        models[model] = model_in
+        
+    colors = ['#E63946', '#FFB703', '#46ACAF', '#386480', '#192F4D']
+    model_colors = dict(zip(model_names, colors[0:len(model_names)]))
+    
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, axs = plt.subplots(figsize=(8,6), nrows=4, sharex=True)
+        
+        #mask = np.isfinite(spacecraft.data['u_mag']) 
+        axs[0].plot(spacecraft.data.dropna(subset='u_mag').index, 
+                    spacecraft.data.dropna(subset='u_mag')['u_mag'],
+                    color='gray', label='Juno/JADE (Wilson+ 2018)')
+        axs[0].set(ylim=[0,1], ylabel=r'$u_{mag} [arb.]$')
+        axs[1].plot(spacecraft.data.dropna(subset='n_proton').index, 
+                    spacecraft.data.dropna(subset='n_proton')['n_proton'], 
+                    color='gray')
+        axs[1].set(ylim=[-1,4], ylabel=r'$n_{proton} [arb.]$')
+        axs[2].plot(spacecraft.data.dropna(subset='p_dyn').index, 
+                    spacecraft.data.dropna(subset='p_dyn')['p_dyn'], 
+                    color='gray')     
+        axs[2].set(ylim=[-1,4], yscale='log', ylabel=r'$p_{dyn} [arb.]$')
+        axs[3].plot(spacecraft.data.dropna(subset='B_mag').index, 
+                    spacecraft.data.dropna(subset='B_mag')['B_mag'], 
+                    color='gray')
+        axs[3].set(ylim=[-1,4], ylabel=r'$B_{mag} [arb.]$')
+        
+        for index, (model, model_info) in enumerate(models.items()):
+            print(model)
+            if ('u_mag' in model_info.columns) and len(model_info['u_mag'] > 0):
+                dummy = find_RollingDerivativeZScore(model_info, 'u_mag', 4)
+                points = np.where(dummy['smooth_ddt_u_mag_zscore'] > 4, 0.2*(index+1), None)
+                axs[0].plot(model_info.index, points, 
+                            color=model_colors[model], marker='o', markersize=8, linestyle='None', label=model)
+            if ('n_proton' in model_info.columns) and len(model_info['n_proton'] > 0):
+                dummy = find_RollingDerivativeZScore(model_info, 'n_proton', 4)
+                points = np.where(dummy['smooth_ddt_n_proton_zscore'] > 4, 0.2*(index+1), None)
+                axs[1].plot(model_info.index, points,
+                            color=model_colors[model], marker='|', markersize=16, linestyle='None', label=model)
+            if ('p_dyn' in model_info.columns) and len(model_info['p_dyn'] > 0):
+                dummy = find_RollingDerivativeZScore(model_info, 'p_dyn', 4)
+                points = np.where(dummy['smooth_ddt_p_dyn_zscore'] > 4, 0.2*(index+1), None)
+                axs[2].plot(model_info.index, points,
+                            color=model_colors[model], marker='|', markersize=16, linestyle='None', label=model)
+            if ('B_mag' in model_info.columns) and len(model_info['B_mag'] > 0):
+                dummy = find_RollingDerivativeZScore(model_info, 'B_mag', 4)
+                points = np.where(dummy['smooth_ddt_B_mag_zscore'] > 4, 0.2*(index+1), None)
+                axs[3].plot(model_info.index, points,
+                            color=model_colors[model], marker='|', markersize=8, linestyle='None', label=model)
+          
+        axs[0].legend(ncol=3, bbox_to_anchor=[0.0,1.05,1.0,0.15], loc='lower left', mode='expand')
+        
+        axs[0].set_xlim((starttime, stoptime))
+        axs[0].xaxis.set_major_locator(mdates.DayLocator(interval=5))
+        axs[0].xaxis.set_minor_locator(mdates.DayLocator(interval=1))
+        axs[0].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
+        axs[3].set_xlabel('Day of Year 2016')
+        
+        fig.align_ylabels()
+        plt.savefig('figures/Timeseries_Juno_Jumps.png', dpi=300)
+        plt.show()
+        return()
+    
+def plot_SpreadTimeseries(spacecraft_name, model_names, starttime, stoptime):
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    
+    import spacecraftdata
+    import read_SWModel
+    
+    #  Load spacecraft data
+    spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
+    spacecraft.read_processeddata(starttime, stoptime)
+    spacecraft.data = spacecraft.data.resample("15Min").mean()
+    
+    #  Get starttime and stoptime from the dataset
+    #starttime = spacecraft.data.index[0]
+    #stoptime = spacecraft.data.index[-1]
+    
+    #  Read models
+    models = dict.fromkeys(model_names, None)
+    for model in models.keys():
+        model_in = read_SWModel.choose(model, spacecraft_name, 
+                                       starttime, stoptime)
+        models[model] = model_in
+        
+    colors = ['#E63946', '#FFB703', '#46ACAF', '#386480', '#192F4D']
+    model_colors = dict(zip(model_names, colors[0:len(model_names)]))
+    
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, axs = plt.subplots(figsize=(8,6), nrows=4, sharex=True)
+        
+        #mask = np.isfinite(spacecraft.data['u_mag']) 
+        axs[0].plot(spacecraft.data.dropna(subset='u_mag').index, 
+                    spacecraft.data.dropna(subset='u_mag')['u_mag'],
+                    color='gray', alpha=0.5, label='Juno/JADE (Wilson+ 2018)')
+        axs[0].set(ylim=[350,550], ylabel=r'$u_{mag}$ [km s$^{-1}$]')
+        axs[1].plot(spacecraft.data.dropna(subset='u_mag').index, 
+                    spacecraft.data.dropna(subset='u_mag')['u_mag'],
+                    color='gray', alpha=0.5)
+        axs[1].set(ylim=[350,550], ylabel=r'$u_{mag}$ [km s$^{-1}$]')
+        axs[2].plot(spacecraft.data.dropna(subset='u_mag').index, 
+                    spacecraft.data.dropna(subset='u_mag')['u_mag'],
+                    color='gray', alpha=0.5)
+        axs[2].set(ylim=[350,550], ylabel=r'$u_{mag}$ [km s$^{-1}$]')
+        axs[3].plot(spacecraft.data.dropna(subset='u_mag').index, 
+                    spacecraft.data.dropna(subset='u_mag')['u_mag'],
+                    color='gray', alpha=0.5)
+        axs[3].set(ylim=[350,550], ylabel=r'$u_{mag}$ [km s$^{-1}$]')
+        
+        for indx, (model, model_info) in enumerate(models.items()):
+            if 'u_mag' in model_info.columns: 
+                axs[indx].plot(model_info.index, model_info['u_mag'], 
+                               color=model_colors[model], label=model)
+        
+        # labels, handles = list(zip(*[ax.get_legend_handles_labels() for ax in axs]))
+        
+        # axs[0].legend(handles=handles, labels=labels, ncol=3, bbox_to_anchor=[0.0,1.05,1.0,0.15], loc='lower left', mode='expand')
+        
+        axs[0].set_xlim((starttime, stoptime))
+        axs[0].xaxis.set_major_locator(mdates.DayLocator(interval=5))
+        axs[0].xaxis.set_minor_locator(mdates.DayLocator(interval=1))
+        axs[0].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
+        axs[3].set_xlabel('Day of Year 2016')
+        
+        fig.align_ylabels()
+        fig.legend(ncol=3, bbox_to_anchor=[0.1,0.9,0.8,0.1], loc='lower left', mode='expand')
+        plt.savefig('figures/Timeseries_Juno_Spread_u_mag.png', dpi=300)
+        plt.show()
+        return()
     
 def SWData_TaylorDiagram():
     #import datetime as dt
@@ -343,8 +581,8 @@ def SWData_MI():
     sys.path.append('/Users/mrutala/code/python/libraries/generic_MI_lag_finder/')
     import generic_mutual_information_routines as mi_lib
     
-    starttime = dt.datetime(2016, 5, 1)
-    stoptime = dt.datetime(2016, 7, 1)
+    starttime = dt.datetime(2016, 5, 15)
+    stoptime = dt.datetime(2016, 6, 22)
     reference_frame = 'SUN_INERTIAL'
     observer = 'SUN'
     
@@ -353,34 +591,43 @@ def SWData_MI():
     juno = spacecraftdata.SpacecraftData('Juno')
     juno.read_processeddata(starttime, stoptime)
     juno.find_state(reference_frame, observer)
+    juno.data = juno.data.resample("15Min").mean()
     
-    tao = read_SWModel.TaoSW('Juno', starttime, stoptime)
+    tao = read_SWModel.Tao('Juno', starttime, stoptime)
+    #tao = tao.resample("15Min").mean()
+    tao = tao.reindex(juno.data.index, method='nearest')  #!!! is this better, or is lining both up from the start better?
     #vogt = read_SWModel.VogtSW('Juno', starttime, stoptime)
     #mich = read_SWModel.MSWIM2DSW('Juno', starttime, stoptime)
     #huxt = read_SWModel.HUXt('Jupiter', starttime, stoptime)
     
-    minutely_index = pd.date_range(juno.data.index[0], juno.data.index[-1], freq='T')
+    #minutely_index = pd.date_range(juno.data.index[0], juno.data.index[-1], freq='T')
     
-    juno_reindexed = juno.data.reindex(minutely_index, method='nearest')
-    tao_reindexed = tao.reindex(minutely_index, method='nearest')
+    #juno_reindexed = juno.data.reindex(minutely_index, method='nearest')
+    #tao_reindexed = tao.reindex(minutely_index, method='nearest')
     #vogt_reindexed = vogt.reindex(minutely_index, method='nearest')
     #mich_reindexed = mich.reindex(minutely_index, method='nearest')
     #huxt_reindexed = huxt.reindex(minutely_index, method='nearest')
     
-    jr = find_RollingDerivativeZScore(juno_reindexed, tag, 2)
-    tr = find_RollingDerivativeZScore(tao_reindexed, tag, 2)
-    
+    jr = find_RollingDerivativeZScore(juno.data, tag, 2) # !!! vvv
+    tr = find_RollingDerivativeZScore(tao, tag, 2) # !!! Rolling derivative of the 15 min resample?
+    print(len(juno.data))
+    print(len(tao))
+    print(len(jr))
+    print(len(tr))
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig, axs = plt.subplots(nrows=2)
-        axs[0].plot(juno_reindexed.index[0:19440], juno_reindexed['u_mag'][0:19440], color='gray')
-        axs[0].plot(tao_reindexed.index[0:19440], tao_reindexed['u_mag'][0:19440])
+        axs[0].plot(juno.data.index[0:1296], juno.data['u_mag'][0:1296], color='gray')
+        axs[0].plot(tao.index[0:1296], tao['u_mag'][0:1296])
         
-        axs[1].plot(jr.index[0:19440], jr['smooth_ddt_'+tag+'_zscore'][0:19440], color='gray')
-        axs[1].plot(tr.index[0:19440], tr['smooth_ddt_'+tag+'_zscore'][0:19440])
+        axs[1].plot(jr.index[0:1296], jr['smooth_ddt_'+tag+'_zscore'][0:1296], color='gray')
+        axs[1].plot(tr.index[0:1296], tr['smooth_ddt_'+tag+'_zscore'][0:1296])
+        
+        plt.show()
+        
+        ax, lags, mi, RPS_mi, x_sq, x_pw = mi_lib.mi_lag_finder(juno.data['u_mag'][0:1296].to_numpy(dtype='float64'), tao['u_mag'][0:1296].to_numpy(dtype='float64'), temporal_resolution=15, max_lag=4320, min_lag=-4320, remove_nan_rows=True)
+        #ax, lags, mi, RPS_mi, x_sq, x_pw = mi_lib.mi_lag_finder(np.array(jr['smooth_ddt_'+tag+'_zscore'][0:1296]), np.array(tr['smooth_ddt_'+tag+'_zscore'][0:1296]), temporal_resolution=15, max_lag=288, min_lag=-288, remove_nan_rows=True)
     
-        ax, lags, mi, RPS_mi, x_sq, x_pw = mi_lib.mi_lag_finder(jr['smooth_ddt_'+tag+'_zscore'][0:19440], tr['smooth_ddt_'+tag+'_zscore'][0:19440], temporal_resolution=1, max_lag=4320, min_lag=-4320)
-    
-    plt.show()
+    #plt.show()
     return()
 
     #ax, lags, mutual_information, RPS_mutual_information, x_squared_df, x_piecewise_df = generic_mutual_information_routines.mi_lag_finder(juno_reindexed['u_mag'][0:38880],tao_reindexed['u_mag'][0:38880],temporal_resolution=1,max_lag=4320,min_lag=-4320)
@@ -567,7 +814,7 @@ def plot_spacecraftcoverage_solarcycle():
     for sc in spacecraft_list:
         sc.read_processeddata(everything=True)
         sc.find_state(reference_frame, observer)
-        sc.find_subset(coord1_range=np.array((4.4, 6.0))*sc.au_to_km, 
+        sc.find_subset(coord1_range=np.array((4.0, 6.4))*sc.au_to_km, # 4.4 - 6
                        coord3_range=np.array((-8.5,8.5))*np.pi/180., 
                        transform='reclat')
     spacecraft_labels = {'Voyager 1': 1, 
