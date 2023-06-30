@@ -314,7 +314,12 @@ def plot_SpreadTimeseries(spacecraft_name, model_names, starttime, stoptime):
         plt.savefig('figures/Timeseries_Juno_Spread_u_mag.png', dpi=300)
         plt.show()
         return()
+
+
+def plot_histograms():
     
+    return()
+
 def SWData_TaylorDiagram():
     #import datetime as dt
     #import pandas as pd
@@ -651,7 +656,7 @@ def QQplot_datacomparison():
     observer = 'SUN'
     
     #  Read spacecraft data: one abcissa, n ordinates
-    spacecraft_x = SpacecraftData.SpacecraftData('Ulysses')
+    spacecraft_x = SpacecraftData.SpacecraftData('Juno')
     spacecraft_x.read_processeddata(everything=True)
     spacecraft_x.find_state(reference_frame, observer) 
     spacecraft_x.find_subset(coord1_range=np.array((4.4, 6.0))*spacecraft_x.au_to_km, 
@@ -659,9 +664,9 @@ def QQplot_datacomparison():
                        transform='reclat')
     
     spacecraft_y = []
-    spacecraft_y.append(SpacecraftData.SpacecraftData('Juno'))
     spacecraft_y.append(SpacecraftData.SpacecraftData('Voyager 1'))
     spacecraft_y.append(SpacecraftData.SpacecraftData('Voyager 2'))
+    spacecraft_y.append(SpacecraftData.SpacecraftData('Ulysses'))
     
     for sc in spacecraft_y:
         sc.read_processeddata(everything=True)
@@ -716,7 +721,8 @@ def QQplot_datacomparison():
     ax_right.tick_params('y', labelleft=False)
     
     fig.align_labels()
-    plt.savefig('QQplot_datacomparison_'+tag+'.png')
+    plt.tight_layout()
+    plt.savefig('figures/QQplot_datacomparison_'+tag+'.png')
     plt.show()
     
 def QQplot_modelcomparison():
@@ -879,7 +885,62 @@ def plot_spacecraftcoverage_solarcycle():
         
         ax0.tick_params(labelsize=18)
         
-        plt.savefig('SolarCycleComparison.png')
+        plt.tight_layout()
+        plt.savefig('figures/SolarCycleComparison.png')
+        plt.show()
+        
+        fig, axs = plt.subplots(nrows=2, ncols=2)
+        
+        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/lsk/latest_leapseconds.tls')
+        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-1.bsp')
+        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-2.bsp')
+        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/pck/pck00011.tpc')
+        spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
+        for ax, sc in zip(axs.reshape(-1),spacecraft_list):
+            
+            observer='Jupiter Barycenter'
+            reference_frame = 'ECLIPJ2000'
+            sc.find_state(reference_frame, observer, keep_kernels=True)
+            
+            sc_full = SpacecraftData.SpacecraftData(sc.name)
+            sc_full.find_lifetime(keep_kernels=True)
+            sc_full.make_timeseries(timedelta=dt.timedelta(days=10))
+            sc_full.find_state(reference_frame, observer, keep_kernels=True)
+            
+            xyz_in_AU = np.array([row[['x_pos', 'y_pos', 'z_pos']]/sc.au_to_km
+                                  for indx, row in sc.data.iterrows()])
+            
+            xyz_full_in_AU = np.array([row[['x_pos', 'y_pos', 'z_pos']]/sc.au_to_km
+                                  for indx, row in sc_full.data.iterrows()])
+            
+            ax.plot(xyz_full_in_AU[:,0], xyz_full_in_AU[:,1],
+                    color='gray', linewidth=1)
+            ax.plot(xyz_in_AU[:,0], xyz_in_AU[:,1], 
+                     label=sc.name, marker='o', markersize=1, linestyle='None')
+            
+            ax.set_aspect(1)
+
+            times = [spice.str2et(t.strftime('%b %d, %Y %H:%M:%S.%f')) for t in sc.data.index]
+            ear_pos, ear_lt = spice.spkpos('EARTH BARYCENTER', times, reference_frame, 'NONE', observer)
+            ear_pos = np.array(ear_pos) / sc.au_to_km
+            jup_pos, jup_lt = spice.spkpos('JUPITER BARYCENTER', times, reference_frame, 'NONE', observer)
+            jup_pos = np.array(jup_pos) / sc.au_to_km
+            
+            ax.plot(ear_pos[:,0], ear_pos[:,1], 
+                    label='Earth', color='xkcd:kelly green', marker='o', markersize=1, linestyle='None')
+            ax.plot(ear_pos[-1,0], ear_pos[-1,1],  
+                    color='xkcd:kelly green', marker='o', markersize=4)
+            
+            ax.plot(jup_pos[:,0], jup_pos[:,1], 
+                    label='Jupiter', color='xkcd:peach', marker='o', markersize=1, linestyle='None')
+            ax.plot(jup_pos[-1,0], jup_pos[-1,1],
+                    color='xkcd:peach', marker='o', markersize=4)
+            
+            ax.set(xlim=[-6,6], xlabel='J2000 Ecliptic X [AU]', 
+                   ylim=[-6,6], ylabel='J2000 Ecliptic Y [AU]')
+        spice.kclear()
+        
+        #fig.legend()
         plt.show()
     
     #return(sc_data) 
