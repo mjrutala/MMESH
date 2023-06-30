@@ -5,6 +5,9 @@ Created on Mon Jun 12 16:35:56 2023
 
 @author: mrutala
 """
+import datetime as dt
+import pandas as pd
+import numpy as np
 
 class SpacecraftData:
     
@@ -76,13 +79,49 @@ class SpacecraftData:
                              'B_mag', 'B_mag_err']
         self.data = pd.DataFrame(columns=data_column_names)
         
-    def find_timerange(self, starttime, stoptime, timedelta):
+        self.starttime = None
+        self.stoptime = None
+        
+    def find_lifetime(self, keep_kernels=False):
         #import datetime as dt
+        #import numpy as np
+        import spiceypy as spice
+        
+        import spiceypy_metakernelcontext as spice_mkc
+        
+        
+        spice.furnsh(self.SPICE_METAKERNEL)
+        starttime, stoptime = spice_mkc.kernelrange(self.SPICE_ID, kw_verbose=False)
+        self.starttime = starttime
+        self.stoptime = stoptime
+        if not keep_kernels: spice.kclear()
+    
+    def make_timeseries(self, starttime=None, stoptime=None, timedelta=dt.timedelta(days=1)):
         import numpy as np
         
-        self.datetimes = np.arange(starttime, stoptime, timedelta).astype(dt.datetime)
+        if starttime == None:
+            if self.starttime == None:
+                raise ValueError('No start time found.')
+        else: self.starttimme = starttime
+        
+        if stoptime == None:
+            if self.stoptime == None:
+                raise ValueError('No stop tme found.')
+        else: self.stoptime = stoptime
+        
+        
+        datetimes = np.arange(self.starttime, self.stoptime, timedelta).astype(dt.datetime)
+        
+        if self.data.empty:
+            self.data = pd.concat([self.data, pd.DataFrame(index=datetimes)])
+        #  In principle, this function could reindex the dataframe if it already exists
+        #  But it would be unwieldy to pass a bunch of method terms, i.e. mean(), into it
+        #  So I'm just going to return the datetimes if data exists...
+        else:
+            print('Spacecraft DataFrame already filled. Returning timeseries...')
+            return(datetimes)
     
-    def find_state(self, reference_frame, observer):
+    def find_state(self, reference_frame, observer, keep_kernels=False):
         #import datetime as dt
         import numpy as np
         import spiceypy as spice
@@ -103,15 +142,15 @@ class SpacecraftData:
         
         spice.furnsh(self.SPICE_METAKERNEL)
         
-        datetimes_str = [time.strftime('%Y-%m-%dT%H:%M:%S.%f') for time in self.datetimes]
+        datetimes_str = [time.strftime('%Y-%m-%dT%H:%M:%S.%f') for time in self.data.index]
         ets = spice.str2et(datetimes_str)
         sc_state, sc_lt = spice.spkezr(str(self.SPICE_ID), ets, reference_frame, 'NONE', observer)
         sc_state_arr = np.array(sc_state)
         sc_state_dataframe = pd.DataFrame(data=sc_state_arr, 
-                                          index=self.datetimes,
+                                          index=self.data.index,
                                           columns=['x_pos', 'y_pos', 'z_pos', 'x_vel', 'y_vel', 'z_vel'])
         sc_state_dataframe['l_time'] = sc_lt
-        spice.kclear()
+        if not keep_kernels: spice.kclear()
         
         self.data.update(sc_state_dataframe)
         #self.data = pd.concat([self.data, sc_state_dataframe.reindex(columns=self.data.columns)], 
@@ -123,15 +162,15 @@ class SpacecraftData:
         import pandas as pd
         import spiceypy as spice
         
-        import spiceypy_metakernelcontext as spice_mkc
+        
         
         #  everything keyword read in all available data, overwriting starttime and stoptime
         if everything == True:
-            spice.furnsh(self.SPICE_METAKERNEL)
-            starttime, stoptime = spice_mkc.kernelrange(self.SPICE_ID, kw_verbose=False)
-            spice.kclear()
+            self.find_lifetime()
         
-        processed_data = read_SWData.read(self.name, starttime, stoptime, basedir=self.basedir + 'Data/')
+        processed_data = read_SWData.read(self.name, 
+                                          self.starttime, self.stoptime, 
+                                          basedir=self.basedir + 'Data/')
         
         #  If self.data exists, add to it, else, make it
         if strict:
@@ -155,7 +194,7 @@ class SpacecraftData:
         self.data = self.data[(desired_column_order + unmatched_columns)]
         
         self.data_type = 'processed'
-        self.datetimes = processed_data.index.to_pydatetime()
+        #self.datetimes = processed_data.index.to_pydatetime()
     
     def find_subset(self, coord1_range=None, coord2_range=None, coord3_range=None, transform=None):
         import numpy as np
@@ -190,8 +229,7 @@ class SpacecraftData:
         self.data = self.data.iloc[criteria]
         return()
     
-        #self.start_date = None
-        #self.stop_date = None
+
         #self.date_range = None
         #self.date_delta = None
         #self.datetimes = None
