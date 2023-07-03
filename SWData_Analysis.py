@@ -599,7 +599,7 @@ def SWData_MI():
     juno.data = juno.data.resample("15Min").mean()
     
     tao = read_SWModel.Tao('Juno', starttime, stoptime)
-    #tao = tao.resample("15Min").mean()
+    tao = tao.resample("15Min").mean()
     tao = tao.reindex(juno.data.index, method='nearest')  #!!! is this better, or is lining both up from the start better?
     #vogt = read_SWModel.VogtSW('Juno', starttime, stoptime)
     #mich = read_SWModel.MSWIM2DSW('Juno', starttime, stoptime)
@@ -874,12 +874,12 @@ def plot_spacecraftcoverage_solarcycle():
             
             ax0twin.plot(sc.data.index, np.zeros(len(sc.data.index))+spacecraft_labels[sc.name], linestyle='None', marker='|', markersize=36)
 
-        ax0.set_xlim((dt.datetime(1975, 1, 1), dt.datetime(2020, 1, 1)))
+        ax0.set_xlim((dt.datetime(1970, 1, 1), dt.datetime(2020, 1, 1)))
         ax0.set_ylabel('Observed Radio Flux @ 10.7 cm [SFU]', fontsize=16)
         
         #ax0.set_title(r'Spacecraft data availability relative to the Solar Cycle between 4.5-5.5 $R_J$ and -10-10 deg. lat.', wrap=True, fontsize=18)
         
-        ax0.set_ylim((50, 400))
+        ax0.set_ylim((50, 300))
         
         ax0twin.set_ylim((0,7))
         ax0twin.set_yticks(list(spacecraft_labels.values()))
@@ -893,7 +893,7 @@ def plot_spacecraftcoverage_solarcycle():
         plt.savefig('figures/SolarCycleComparison.png')
         plt.show()
         
-        fig, axs = plt.subplots(nrows=2, ncols=2)
+        fig, axs = plt.subplots(nrows=2, ncols=3, sharex=True, sharey=True)
         
         spice.furnsh('/Users/mrutala/SPICE/generic/kernels/lsk/latest_leapseconds.tls')
         spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-1.bsp')
