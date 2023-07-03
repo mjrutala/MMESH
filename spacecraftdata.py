@@ -94,6 +94,12 @@ class SpacecraftData:
         starttime, stoptime = spice_mkc.kernelrange(self.SPICE_ID, kw_verbose=False)
         self.starttime = starttime
         self.stoptime = stoptime
+        
+        #  !!!! Hacky fix for a weird bug where the stoptime for Pioneers 10 and 11
+        #  is apparently earlier than what the spk kernels dictate...
+        if 'pioneer' in self.name.lower():
+            self.stoptime -= dt.timedelta(hours=1)
+            
         if not keep_kernels: spice.kclear()
     
     def make_timeseries(self, starttime=None, stoptime=None, timedelta=dt.timedelta(days=1)):
