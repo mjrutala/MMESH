@@ -812,6 +812,8 @@ def plot_spacecraftcoverage_solarcycle():
     observer = 'SUN'
 
     spacecraft_list = []
+    spacecraft_list.append(SpacecraftData.SpacecraftData('Pioneer 10'))
+    spacecraft_list.append(SpacecraftData.SpacecraftData('Pioneer 11'))
     spacecraft_list.append(SpacecraftData.SpacecraftData('Voyager 1'))
     spacecraft_list.append(SpacecraftData.SpacecraftData('Voyager 2'))
     spacecraft_list.append(SpacecraftData.SpacecraftData('Ulysses'))
@@ -823,10 +825,12 @@ def plot_spacecraftcoverage_solarcycle():
         sc.find_subset(coord1_range=np.array((4.0, 6.4))*sc.au_to_km, # 4.4 - 6
                        coord3_range=np.array((-8.5,8.5))*np.pi/180., 
                        transform='reclat')
-    spacecraft_labels = {'Voyager 1': 1, 
-                         'Voyager 2': 2, 
-                         'Ulysses'  : 3, 
-                         'Juno'     : 4}
+    spacecraft_labels = {'Pioneer 10': 1,
+                         'Pioneer 11': 2,
+                         'Voyager 1': 3, 
+                         'Voyager 2': 4, 
+                         'Ulysses'  : 5, 
+                         'Juno'     : 6}
     
     # =============================================================================
     # F10.4 Radio flux from the sun
@@ -877,7 +881,7 @@ def plot_spacecraftcoverage_solarcycle():
         
         ax0.set_ylim((50, 400))
         
-        ax0twin.set_ylim((0,5))
+        ax0twin.set_ylim((0,7))
         ax0twin.set_yticks(list(spacecraft_labels.values()))
         ax0twin.set_yticklabels(list(spacecraft_labels.keys()))
         ax0twin.set_ylabel('Spacecraft', fontsize=18)
