@@ -46,11 +46,11 @@ class SpacecraftData:
                 #self.basedir_data = '/Users/mrutala/Data/galileo/'
             case 'pioneer 10':  
                 self.SPICE_ID = -23
-                self.SPICE_METAKERNEL = basedir_spice+'pioneer/metakernel_pioneer.txt'
+                self.SPICE_METAKERNEL = basedir_spice+'pioneer10/metakernel_pioneer10.txt'
                 #self.basedir_data = '/Users/mrutala/Data/pioneer/'
             case 'pioneer 11':  
                 self.SPICE_ID = -24
-                self.SPICE_METAKERNEL = basedir_spice+'pioneer/metakernel_pioneer.txt'
+                self.SPICE_METAKERNEL = basedir_spice+'pioneer11/metakernel_pioneer11.txt'
                 #self.basedir_data = '/Users/mrutala/Data/pioneer/'
             case 'pioneer 12':  
                 self.SPICE_ID = -12
