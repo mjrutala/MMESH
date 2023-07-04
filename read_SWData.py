@@ -121,7 +121,7 @@ def Juno_published(starttime, stoptime, basedir=''):
     # =========================================================================
     #     
     # =========================================================================
-    def read_Juno_Wilson2018():
+    def read_Juno_Wilson2018(starttime, stoptime):
         fullfilename = filepath_ions + 'Wilson2018_juno_cruise_jade_2016.csv'
         
         spacecraft_data = pd.read_csv(fullfilename)
@@ -185,7 +185,7 @@ def Juno_published(starttime, stoptime, basedir=''):
     # =========================================================================
     #     
     # =========================================================================
-    def read_Juno_AMDAMAG():
+    def read_Juno_AMDAMAG(starttime, stoptime):
         
         filename_template = 'amda_juno_cruise_fgm_%Y.txt'
         
@@ -220,8 +220,8 @@ def Juno_published(starttime, stoptime, basedir=''):
     # =========================================================================
     #         
     # =========================================================================
-    plasma_data = read_Juno_Wilson2018()
-    mag_data = read_Juno_AMDAMAG()
+    plasma_data = read_Juno_Wilson2018(starttime, stoptime)
+    mag_data = read_Juno_AMDAMAG(starttime, stoptime)
     
     data = pd.concat([plasma_data, mag_data], axis=1)
     
