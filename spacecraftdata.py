@@ -162,7 +162,7 @@ class SpacecraftData:
         #self.data = pd.concat([self.data, sc_state_dataframe.reindex(columns=self.data.columns)], 
         #                      axis=0)
         
-    def read_processeddata(self, starttime=dt.datetime.now(), stoptime=dt.datetime.now(), 
+    def read_processeddata(self, starttime=None, stoptime=None, 
                            everything=False, strict=True):
         import read_SWData
         import pandas as pd
@@ -173,6 +173,10 @@ class SpacecraftData:
         #  everything keyword read in all available data, overwriting starttime and stoptime
         if everything == True:
             self.find_lifetime()
+        else:
+            if starttime != None: self.starttime = starttime
+            if stoptime != None: self.stoptime = stoptime
+        
         
         processed_data = read_SWData.read(self.name, 
                                           self.starttime, self.stoptime, 
