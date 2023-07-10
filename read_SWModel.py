@@ -8,42 +8,94 @@ Created on Tue Apr 11 10:09:36 2023
 """
 target = string, startdate & finaldata = datetime
 """
+import pandas as pd
+import numpy as np
+import datetime as dt
+import copy
+
+from pathlib import Path
+
+m_p = 1.67e-27
+
+default_df = pd.DataFrame(columns=['u_mag', 'n_tot', 'p_dyn', 'B_mag', 
+                                   'u_r', 'u_t', 'u_n', 
+                                   'n_proton', 'n_alpha',
+                                   'p_dyn_proton', 'p_dyn_alpha',
+                                   'T_proton', 'T_alpha',
+                                   'B_r', 'B_t', 'B_n', 'B_pol'])
+
 def Tao(target, starttime, finaltime, basedir=''):
     
-    #from astropy.io import ascii
-    
-    #import datetime as datetime
-    import pandas as pd
-    import numpy as np
-    m_p = 1.67e-27
-    
     #  basedir is expected to be the folder /SolarWindEM
-    model_path = 'models/tao/'
-    full_path = basedir + model_path + target.lower() + '/'
+    target = target.lower().replace(' ', '')
+    fullpath = Path(basedir) / 'models' / 'tao' / target
     
-    match target.lower():
+    match target:
+        case 'mars':
+            return(None)
         case 'jupiter':
-            filenames = ['jupiter_tao_model_2016_v2.txt', 
-                         'jupiter_tao_model_2020_v1.txt']
-        case 'juno':
-            filenames = ['amdaoutput_tao_juno_2015.txt',
-                         'amdaoutput_tao_juno_2016.txt']
+            return(None)
+        case 'saturn':
+            return(None)
+        case 'voyager1':
+            filenames = ['swmhd_tao_voyager1_1978.txt',
+                         'swmhd_tao_voyager1_1979.txt']    
+        case 'voyager2':
+            filenames = ['swmhd_tao_voyager2_1978.txt',
+                         'swmhd_tao_voyager2_1979.txt',
+                         'swmhd_tao_voyager2_1980.txt']
         case 'galileo':
-            filenames = []
-        case 'cassini':
-            filenames = ['Cassini_2000_jupflyby_tao_model_v1.txt']
+            return(None)
+        case 'ulysses':
+            filenames = ['swmhd_tao_ulysses_1991.txt',
+                         'swmhd_tao_ulysses_1992.txt',
+                         'swmhd_tao_ulysses_1998.txt',
+                         'swmhd_tao_ulysses_1999.txt',
+                         'swmhd_tao_ulysses_2003.txt',
+                         'swmhd_tao_ulysses_2004.txt']
+        case 'newhorizons':
+            filenames = ['swmhd_tao_newhorizons_2006-2007.txt']
+        case 'juno':
+            filenames = ['fromamda_tao_juno_2015.txt',
+                         'fromamda_tao_juno_2016.txt']
     
-    column_headers = ['datetime', 'n_proton', 'u_r', 'u_t', 'T_proton', 'p_dyn_proton', 'B_t', 'B_r', 'angle_JSE']
-    
-    data = pd.DataFrame(columns=column_headers)
+    data = default_df
     
     for filename in filenames:
+        #  Files downloaded from AMDA have a different order of columns than
+        #  those directly from Chihiro Tao
+        if 'fromamda' in filename:
+            column_headers =  ['datetime', 
+                               'n_proton', 'u_r', 'u_t', 'T_proton', 
+                               'p_dyn_proton', 'B_t', 'B_r', 'angle_EST']
+            def column_to_datetime(df):
+                df['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%dT%H:%M:%S.%f')
+                return(df)
+            
+        else:
+            column_headers = ['iyear', 'imonth', 'iday', 'stime',
+                              'n_proton', 'T_proton', 'u_r', 'u_t',
+                              'B_t', 'p_dyn',
+                              'angle_EST', 'data_quality']
+            def column_to_datetime(df):
+                df['datetime'] = [dt.datetime(row['iyear'], 
+                                              row['imonth'], 
+                                              row['iday'], 
+                                              dt.datetime.strptime(row['stime'], '%H:%M:%S').hour)
+                                  for indx, row in df.iterrows()]
+                
+                print(df.columns)
+                df.drop(columns=['iyear', 'imonth', 'iday', 'stime'], inplace=True)
+                return(df)
+                
+                
         
-        temp_data = pd.read_table(full_path + filename, 
+        temp_data = pd.read_table(fullpath / filename, 
                              names=column_headers, 
                              comment='#', delim_whitespace=True)
-        temp_data['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%dT%H:%M:%S.%f')
         
+        #temp_data['datetime'] = pd.to_datetime(temp_data['datetime'], format=)
+        temp_data = column_to_datetime(temp_data)
         
         sub_data = temp_data.loc[(temp_data['datetime'] >= starttime) & (temp_data['datetime'] < finaltime)]
         
@@ -51,9 +103,9 @@ def Tao(target, starttime, finaltime, basedir=''):
         
     #data['rho'] = ((data['Pdyn'] * 1e-9) / (data['Umag']**2 * 1e6)) * (1e-6) 
     #data['n'] = data['rho'] / m_p
-    data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2)
-    data['B_mag'] = np.sqrt(data['B_r']**2 + data['B_t']**2)
-    data['p_dyn'] = data['p_dyn_proton']
+    #data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2)
+    #data['B_mag'] = np.sqrt(data['B_r']**2 + data['B_t']**2)
+    #data['p_dyn'] = data['p_dyn_proton']
     
     data = data.set_index('datetime')
     
