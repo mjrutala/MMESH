@@ -605,107 +605,103 @@ def SWData_MI():
     timespan_int = int(6.75*24*60 / 15)
     timestep_int = int(0.5*24*60 / 15)
     
-    juno_windows = jr.rolling(timespan_int, center=True, step=timestep_int)
-    tao_windows = tr.rolling(timespan_int, center=True, step=timestep_int)
+    juno_windows = jr.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
+    tao_windows = tr.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
     
     window_centers = list()
+    max_relative_mi = list()
     max_lags = list()
-    console_output = sys.stdout
     for counter, (juno_window, tao_window) in enumerate(zip(juno_windows, tao_windows)):
+        if len(juno_window) == timespan_int:
         
-        
-        #with open('MI_lag_finder_output.txt', 'a') as sys.stdout:
-        juno_series = np.array(juno_window[tag]).astype(np.float64)
-        tao_series = np.array(tao_window[tag]).astype(np.float64)
-        print(len(juno_series))
-        mi_out = mi_lib.mi_lag_finder(juno_series, tao_series, 
-                                      temporal_resolution=15, 
-                                      max_lag=4320, min_lag=-4320, 
-                                      remove_nan_rows=True, no_plot=True)
-        
-        juno_series = np.array(juno_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
-        tao_series = np.array(tao_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
-        mi_out_zscore = mi_lib.mi_lag_finder(juno_series, tao_series, 
-                                             temporal_resolution=15, 
-                                             max_lag=4320, min_lag=-4320, 
-                                             remove_nan_rows=True, no_plot=True)
-        #sys.stdout = console_output
-        
-        with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-            # fig, axs = plt.subplot_mosaic('''
-            #                               aac
-            #                               bbc
-            #                               ''')
-            plt.rcParams.update({'font.size': 10})
-            fig, axs = plt.subplots(nrows=2, ncols=2, sharex='col', width_ratios=(2,1), figsize=(8,6))
+            #with open('MI_lag_finder_output.txt', 'a') as sys.stdout:
+            juno_series = np.array(juno_window[tag]).astype(np.float64)
+            tao_series = np.array(tao_window[tag]).astype(np.float64)
             
-            axs[0,0].plot((juno_window.index-jr.index[0]).total_seconds()/60.,
-                          juno_window[tag], color='gray')
-            axs[0,0].plot((tao_window.index-jr.index[0]).total_seconds()/60.,
-                          tao_window[tag])
-            axs[0,0].set(ylim=(350,550), ylabel=r'u$_{sw}$ [km/s]')
+            mi_out = mi_lib.mi_lag_finder(juno_series, tao_series, 
+                                          temporal_resolution=15, 
+                                          max_lag=4320, min_lag=-4320, 
+                                          remove_nan_rows=True, no_plot=True)
             
-            axs[1,0].plot((juno_window.index-jr.index[0]).total_seconds()/60.,
-                          juno_window['smooth_ddt_'+tag+'_zscore'], color='gray')
-            axs[1,0].plot((tao_window.index-jr.index[0]).total_seconds()/60.,
-                          tao_window['smooth_ddt_'+tag+'_zscore'])
-            axs[1,0].set(xlabel='Elapsed time [min.]',
-                         ylim=(-1,12), ylabel=r'$Z(\frac{d u_{sw}}{dt})$')
+            juno_series = np.array(juno_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
+            tao_series = np.array(tao_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
+            mi_out_zscore = mi_lib.mi_lag_finder(juno_series, tao_series, 
+                                                 temporal_resolution=15, 
+                                                 max_lag=4320, min_lag=-4320, 
+                                                 remove_nan_rows=True, no_plot=True)
             
-            lags, mi, RPS_mi, x_sq, x_pw = mi_out
-            axs[0,1].plot(lags, mi, marker='x', linestyle='None', color='black')
-            axs[0,1].set(ylabel='MI (nats)')
+            with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+                plt.rcParams.update({'font.size': 10})
+                fig, axs = plt.subplots(nrows=2, ncols=2, sharex='col', width_ratios=(2,1), figsize=(8,6))
+                plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, hspace=0.0, wspace=0.1)
+                
+                #  Unmodified timeseries
+                axs[0,0].plot((juno_window.index-jr.index[0]).total_seconds()/60.,
+                              juno_window[tag], color='gray')
+                axs[0,0].plot((tao_window.index-jr.index[0]).total_seconds()/60.,
+                              tao_window[tag])
+                axs[0,0].set(ylim=(350,550), ylabel=r'u$_{sw}$ [km/s]')
+                
+                #  Modified timeseries to highlight jumps
+                axs[1,0].plot((juno_window.index-jr.index[0]).total_seconds()/60.,
+                              juno_window['smooth_ddt_'+tag+'_zscore'], color='gray')
+                axs[1,0].plot((tao_window.index-jr.index[0]).total_seconds()/60.,
+                              tao_window['smooth_ddt_'+tag+'_zscore'])
+                axs[1,0].set(xlabel='Elapsed time [min.]',
+                             ylim=(-1,12), ylabel=r'$Z(\frac{d u_{sw}}{dt})$')
+                
+                #  Unmodified timeseries MI
+                lags, mi, RPS_mi, x_sq, x_pw = mi_out
+                axs[0,1].plot(lags, mi, marker='x', linestyle='None', color='black')
+                axs[0,1].plot(lags, RPS_mi, color='xkcd:light blue')
+                axs[0,1].set(ylabel='MI (nats)')
+                
+                #  Modified timeseries MI
+                lags, mi, RPS_mi, x_sq, x_pw = mi_out_zscore
+                axs[1,1].plot(lags, mi, marker='x', linestyle='None', color='black')
+                axs[1,1].plot(lags, RPS_mi, color='xkcd:light blue')
+                axs[1,1].set(xlabel='Lags [min.]',
+                             ylabel='MI (nats)')
             
-            lags, mi, RPS_mi, x_sq, x_pw = mi_out_zscore
-            axs[1,1].plot(lags, mi, marker='x', linestyle='None', color='black')
-            axs[1,1].set(xlabel='Lags [min.]',
-                         ylabel='MI (nats)')
-        
-        window_centers.append(juno_window.index[int(len(juno_window)*0.5-1)])
-        max_lags.append(lags[np.nanargmax(np.ma.masked_invalid(mi))])
-        
-        #plt.tight_layout()
-        #figurename = 'garbage'
-        #for suffix in ['.png', '.pdf']:
-        #    plt.savefig('figures/' + figurename + suffix)
-        # plt.savefig('figures/Juno_MI_frames/frame_' + f'{counter:03}' + '.png')
-        plt.show()
-                                 
-        
-        print(counter)
-        #if counter == 1000:
-            #break
+            window_centers.append(juno_window.index[int(len(juno_window)*0.5-1)])
+            norm_mi = mi - RPS_mi
+            
+            max_relative_mi.append(np.nanmax(norm_mi))
+            max_lags.append(lags[np.nanargmax(norm_mi)])
+            
+            #plt.tight_layout()
+            #figurename = 'garbage'
+            #for suffix in ['.png', '.pdf']:
+            #    plt.savefig('figures/' + figurename + suffix)
+            # plt.savefig('figures/Juno_MI_frames/frame_' + f'{counter:03}' + '.png')
+            plt.show()
+                                     
+            
+            print(counter)
+            #if counter == 1000:
+                #break
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-        fig, axs = plt.subplots(nrows=1)
+        fig, axs = plt.subplots(nrows=2, sharex=True)
         
         window_centers_min = [(wc - jr.index[0]).total_seconds()/60. for wc in window_centers]
-        axs.plot(window_centers_min, max_lags, marker='o', linestyle='None')
-        axs.set(xlabel='Elapsed time [min.]', 
-                ylabel='Peak lags from MI [min.]', ylim=[-4320, 4320])
+        axs[0].plot(window_centers_min, max_lags, marker='o', linestyle='None')
+        axs[0].set(ylabel='Peak lags from MI [min.]', ylim=[-4320, 4320])
+        axs[1].plot(window_centers_min, max_relative_mi, marker='o')
+        axs[1].set(xlabel='Elapsed time [min.]', 
+                   ylabel='MI - RPS')
+        plt.show()
         
+        fig, ax = plt.subplots()
+        ax.plot(window_centers_min, np.array(window_centers_min)-np.array(max_lags), 
+                marker='x', linestyle='None')
+        ax.set(xlabel='Elapsed real time [min.]', 
+               ylabel='Effective model time [min.]')
         
-        
-        # juno_timedeltas = juno.data.index[0:1296] - juno.data.index[0]
-        # juno_time_elapsed_min = [te.total_seconds() / 60 for te in juno_timedeltas]
-        # tao_timedeltas = tao_data.index[0:1296] - juno.data.index[0]
-        # tao_time_elapsed_min = [te.total_seconds() / 60 for te in tao_timedeltas]
-        
-        # axs[0].plot(juno_time_elapsed_min, juno.data['u_mag'][0:1296], color='gray')
-        # axs[0].plot(tao_time_elapsed_min, tao_data['u_mag'][0:1296])
-        
-        # axs[1].plot(jr.index[0:1296], jr['smooth_ddt_'+tag+'_zscore'][0:1296], color='gray')
-        # axs[1].plot(tr.index[0:1296], tr['smooth_ddt_'+tag+'_zscore'][0:1296])
-        
-        # plt.show()
-        
-        # juno_series = juno.data['u_mag'][0:1296].to_numpy(dtype='float64')
-        # tao_series = tao_data['u_mag'][0:1296].to_numpy(dtype='float64')
-        # ax, lags, mi, RPS_mi, x_sq, x_pw = mi_lib.mi_lag_finder(juno_series, tao_series, temporal_resolution=15, max_lag=4320, min_lag=-4320, remove_nan_rows=True)
-        
+        plt.show()
     # plt.savefig('figures/Juno_MI_runningoffset_max_only.png', dpi=300)    
-    plt.show()
-    return(window_centers, max_lags)
+    
+    return(window_centers, max_relative_mi, max_lags)
 
     #ax, lags, mutual_information, RPS_mutual_information, x_squared_df, x_piecewise_df = generic_mutual_information_routines.mi_lag_finder(juno_reindexed['u_mag'][0:38880],tao_reindexed['u_mag'][0:38880],temporal_resolution=1,max_lag=4320,min_lag=-4320)
 
@@ -940,6 +936,13 @@ def plot_spacecraftcoverage_solarcycle():
                 print(sc.data.index[first].strftime('%Y-%m-%d') + 
                       ' -- ' + 
                       sc.data.index[final].strftime('%Y-%m-%d'))
+                print(str((sc.data.index[final] - sc.data.index[first]).total_seconds()/3600.) + ' total hours')
+                rlonlat = [spice.reclat(np.array(row[['x_pos', 'y_pos', 'z_pos']], dtype='float64')) for indx, row in sc.data.iterrows()]
+                rlonlat = np.array(rlonlat).T
+                print('Radial range of: ' + str(np.min(rlonlat[0,:])/sc.au_to_km) +
+                      ' - ' + str(np.max(rlonlat[0,:])/sc.au_to_km) + ' AU')
+                print('Heliolatitude range of: ' + str(np.min(rlonlat[2,:])) +
+                      ' - ' + str(np.max(rlonlat[2,:])) + 'deg.')
             print('------------------------------------------')
             # rectangle_list = []
             # for x0, xf in zip(np.insert(start_indx, 0, 0), stop_indx):
@@ -952,8 +955,6 @@ def plot_spacecraftcoverage_solarcycle():
             
             axs[0].plot(sc.data.index, np.zeros(len(sc.data.index))+spacecraft_labels[sc.name], 
                         linestyle='None', marker='|', markersize=12, color=spacecraft_colors[sc.name])
-            print(len(sc.data.index))
-            print(sc.data.index[0])
             
         axs[0].set_xlim((dt.datetime(1970, 1, 1), dt.datetime(2020, 1, 1)))
         
