@@ -107,46 +107,6 @@ def Tao(target, starttime, finaltime, basedir=''):
     
     return(data)
 
-def TaoSW_x01(target, starttime, finaltime, smooth=1, delta=False, data_path=''):
-    
-    #import datetime as datetime
-    import pandas as pd
-    import numpy as np
-    m_p = 1.67e-27
-    
-    match target.lower():
-        case 'jupiter':
-            filenames = ['jupiter_tao_model_2016_v2.txt', 'jupiter_tao_model_2020_v1.txt']
-        case 'juno':
-            filenames = ['jupiter_tao_model_juno_2016_v1.txt']
-        case 'galileo':
-            filenames = []
-        case 'cassini':
-            filenames = ['Cassini_2000_jupflyby_tao_model_v1.txt']
-    
-    column_headers = ['datetime', 'Umag', 'Pdyn', 'delta_angle', 'Bt', 'Br']
-    
-    data = pd.DataFrame(columns=column_headers)
-    
-    for filename in filenames:
-        
-        temp_data = pd.read_table(data_path + filename, \
-                             names=column_headers, \
-                             comment='#', delim_whitespace=True)
-        temp_data['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%dT%H:%M:%S.%f')
-        
-        
-        sub_data = temp_data.loc[(temp_data['datetime'] >= starttime) & (temp_data['datetime'] < finaltime)]
-        
-        data = pd.concat([data, sub_data])
-        
-    data['rho'] = ((data['Pdyn'] * 1e-9) / (data['Umag']**2 * 1e6)) * (1e-6) 
-    data['n'] = data['rho'] / m_p
-    data['Bmag'] = np.sqrt(data['Br']**2 + data['Bt']**2)
-
-    
-    return(data.reset_index(drop=True))
-
 def SWMFOH(target, starttime, finaltime, basedir=''):
     
     import pandas as pd
