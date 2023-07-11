@@ -83,31 +83,27 @@ def Tao(target, starttime, finaltime, basedir=''):
                                               row['iday'], 
                                               dt.datetime.strptime(row['stime'], '%H:%M:%S').hour)
                                   for indx, row in df.iterrows()]
-                
-                print(df.columns)
                 df.drop(columns=['iyear', 'imonth', 'iday', 'stime'], inplace=True)
                 return(df)
-                
-                
-        
-        temp_data = pd.read_table(fullpath / filename, 
+            
+        partial_data = pd.read_table(fullpath / filename, 
                              names=column_headers, 
                              comment='#', delim_whitespace=True)
+        partial_data = column_to_datetime(partial_data)
         
-        #temp_data['datetime'] = pd.to_datetime(temp_data['datetime'], format=)
-        temp_data = column_to_datetime(temp_data)
+        #  Ditch unrequested data now so you don't need to hold it all in memory
+        sub_data = partial_data.loc[(partial_data['datetime'] >= starttime) &
+                                    (partial_data['datetime'] < finaltime)]
         
-        sub_data = temp_data.loc[(temp_data['datetime'] >= starttime) & (temp_data['datetime'] < finaltime)]
-        
-        data = pd.concat([data, sub_data])
-        
-    #data['rho'] = ((data['Pdyn'] * 1e-9) / (data['Umag']**2 * 1e6)) * (1e-6) 
-    #data['n'] = data['rho'] / m_p
-    #data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2)
-    #data['B_mag'] = np.sqrt(data['B_r']**2 + data['B_t']**2)
-    #data['p_dyn'] = data['p_dyn_proton']
+        #  Keep all the segments requested
+        data = pd.concat([data, sub_data], ignore_index=True)
+ 
+    data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2)
+    data['B_mag'] = np.sqrt(data['B_r'].replace(np.nan, 0)**2 + data['B_t']**2)
+    data['p_dyn'] = data['p_dyn_proton']
     
     data = data.set_index('datetime')
+    data = data.reindex(columns=default_df.columns)
     
     return(data)
 
