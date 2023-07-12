@@ -220,9 +220,9 @@ def SWData_TaylorDiagram():
     juno.read_processeddata(starttime, stoptime)
     juno.find_state(reference_frame, observer)
     
-    tao = read_SWModel.TaoSW('Juno', starttime, stoptime)
-    vogt = read_SWModel.VogtSW('Juno', starttime, stoptime)
-    mich = read_SWModel.MSWIM2DSW('Juno', starttime, stoptime)
+    tao = read_SWModel.Tao('Juno', starttime, stoptime)
+    vogt = read_SWModel.SWMFOH('Juno', starttime, stoptime)
+    mich = read_SWModel.MSWIM2D('Juno', starttime, stoptime)
     huxt = read_SWModel.HUXt('Jupiter', starttime, stoptime)
     
     fig, axs = plt.subplots(nrows=3)
@@ -272,28 +272,32 @@ def SWData_TaylorDiagram():
     shifts = np.arange(-72, 72+6, 6)  #  -/+ hours of shift for the timeseries
     for model_key in model_dict.keys():
         focus_model = model_dict[model_key]
-        print(model_key)
-        for shift in shifts:
-            shifted_model = focus_model.copy()
-            shifted_model.index = shifted_model.index + pd.Timedelta(shift, 'hours')
-            shifted_model_reindexed = shifted_model.reindex(juno.data.index, method='nearest')
-            stats, rmse = TD.find_TaylorStatistics(shifted_model_reindexed[tag], juno.data[tag])
-            shifted_stats[model_key].append(stats)
+        print(focus_model[tag])
+        print(juno.data[tag])
+        stats, rmse = TD.find_TaylorStatistics(focus_model[tag], juno.data[tag])
+        unshifted_plot = ax.plot(np.arccos(stats[0]), stats[1], marker='x', markersize=12, color='cyan')
+        # print(model_key)
+        # for shift in shifts:
+        #     shifted_model = focus_model.copy()
+        #     shifted_model.index = shifted_model.index + pd.Timedelta(shift, 'hours')
+        #     shifted_model_reindexed = shifted_model.reindex(juno.data.index, method='nearest')
+        #     stats, rmse = TD.find_TaylorStatistics(shifted_model_reindexed[tag], juno.data[tag])
+        #     shifted_stats[model_key].append(stats)
             
-            if shift == 0.0:
-                unshifted_plot = ax.plot(np.arccos(stats[0]), stats[1], marker='x', markersize=12, color='cyan')
+        #     if shift == 0.0:
+        #         unshifted_plot = ax.plot(np.arccos(stats[0]), stats[1], marker='x', markersize=12, color='cyan')
          
-        coords_from_stats = [(np.arccos(e1), e2) for e1, e2 in shifted_stats[model_key]]
-        focus_model_plot = ax.scatter(*zip(*coords_from_stats), 
-                                      c=shifts, cmap='plasma', s=24, marker=marker_dict[model_key], 
-                                      label=label_dict[model_key])
+        # coords_from_stats = [(np.arccos(e1), e2) for e1, e2 in shifted_stats[model_key]]
+        # focus_model_plot = ax.scatter(*zip(*coords_from_stats), 
+        #                               c=shifts, cmap='plasma', s=24, marker=marker_dict[model_key], 
+        #                               label=label_dict[model_key])
              
     ax.set_ylim(0,60)
     ax.legend()
     plt.margins(0)
-    plt.colorbar(focus_model_plot, location='bottom', orientation='horizontal',
-                 label=r'$\Delta t$ [hours]', fraction=0.05, pad=-0.1,
-                 ticks=np.arange(-72, 72+12, 12))
+    # plt.colorbar(focus_model_plot, location='bottom', orientation='horizontal',
+    #              label=r'$\Delta t$ [hours]', fraction=0.05, pad=-0.1,
+    #              ticks=np.arange(-72, 72+12, 12))
     plt.tight_layout()
     plt.savefig('JunoModel_u_mag_TaylorDiagram.png', dpi=200)
     plt.show()
@@ -453,92 +457,125 @@ def MI_ProofOfConcept():
     n = 1e3
     faketime = np.linspace(0, n, int(n))
     
-    fig, axs = plt.subplots(nrows=5, ncols=2, figsize=(8,6))
+    fig, axs = plt.subplots(nrows=7, ncols=2, figsize=(8,6), sharex='col')
+    plt.subplots_adjust(left=0.15, bottom=0.05, right=0.95, top=0.95, wspace=0.25, hspace=0.05)
     
-    #  CASE 1: What does MI give is everything is flat (zero)?
-    fakedata_series = np.zeros(int(n))
-    fakemodel_series = np.zeros(int(n))
-    mi_case1 = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
-                                    temporal_resolution=1, 
-                                    max_lag=100, min_lag=-100, 
-                                    remove_nan_rows=True, no_plot=True)
-    axs[0,0].plot(faketime, fakedata_series, label='data')
-    axs[0,0].plot(faketime, fakemodel_series, label='model')
-    lags, mi, RPS_mi, x_sq, x_pw = mi_case1
-    axs[0,1].plot(lags, mi, color='indianred', marker='x', linestyle='None')
-    axs[0,1].plot(lags, RPS_mi, color='dodgerblue')
-    
-    #  CASE 2: What does MI give is everything is flat (constant)?
-    fakedata_series = np.zeros(int(n)) + 10.
-    fakemodel_series = np.zeros(int(n)) + 20.
-    mi_case2 = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
-                                    temporal_resolution=1, 
-                                    max_lag=100, min_lag=-100, 
-                                    remove_nan_rows=True, no_plot=True)
-    axs[1,0].plot(faketime, fakedata_series, label='data')
-    axs[1,0].plot(faketime, fakemodel_series, label='model')
-    lags, mi, RPS_mi, x_sq, x_pw = mi_case2
-    axs[1,1].plot(lags, mi, color='indianred', marker='x', linestyle='None')
-    axs[1,1].plot(lags, RPS_mi, color='dodgerblue')
-    
-    #  CASE 3: What does MI give with a single defined peak in each timeseries?
-    fakedata_series = np.zeros(int(n))
-    fakemodel_series = np.zeros(int(n))
-    fakedata_series[100:120] = 10.
-    fakemodel_series[150:170] = 20.
-    mi_case3 = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
-                                    temporal_resolution=1, 
-                                    max_lag=100, min_lag=-100, 
-                                    remove_nan_rows=True, no_plot=True)
-    axs[2,0].plot(faketime, fakedata_series, label='data')
-    axs[2,0].plot(faketime, fakemodel_series, label='model')
-    lags, mi, RPS_mi, x_sq, x_pw = mi_case3
-    axs[2,1].plot(lags, mi, color='indianred', marker='x', linestyle='None')
-    axs[2,1].plot(lags, RPS_mi, color='dodgerblue')
-    
-    #  CASE 4: What does MI give with multiple, regular defined peaks in each timeseries?
-    fakedata_series = np.zeros(int(n))
-    fakemodel_series = np.zeros(int(n))
-    for start in np.arange(0, 1000, 400): fakedata_series[start:start+20] = 10.
-    for start in np.arange(0, 1000, 400): fakemodel_series[start+50:start+70] = 20.
-    mi_case4 = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
-                                    temporal_resolution=1, 
-                                    max_lag=100, min_lag=-100, 
-                                    remove_nan_rows=True, no_plot=True)
-    axs[3,0].plot(faketime, fakedata_series, label='data')
-    axs[3,0].plot(faketime, fakemodel_series, label='model')
-    lags, mi, RPS_mi, x_sq, x_pw = mi_case4
-    axs[3,1].plot(lags, mi, color='indianred', marker='x', linestyle='None')
-    axs[3,1].plot(lags, RPS_mi, color='dodgerblue')
-    
-    #  CASE 5: What does MI give with multiple, irregular defined peaks in each timeseries?
-    fakedata_series = np.zeros(int(n))
-    fakemodel_series = np.zeros(int(n))
-    for start in np.arange(0, 1000, 400): fakedata_series[start:start+20] = 10.
-    for start in np.arange(0, 1000, 400): fakemodel_series[int(start*1.05):int(start*1.05)+20] = 20.
-    mi_case5 = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
-                                    temporal_resolution=1, 
-                                    max_lag=100, min_lag=-100, 
-                                    remove_nan_rows=True, no_plot=True)
-    axs[4,0].plot(faketime, fakedata_series, label='data')
-    axs[4,0].plot(faketime, fakemodel_series, label='model')
-    lags, mi, RPS_mi, x_sq, x_pw = mi_case5
-    axs[4,1].plot(lags, mi, color='indianred', marker='x', linestyle='None')
-    axs[4,1].plot(lags, RPS_mi, color='dodgerblue')
-    
-    
-    # fakedata_series = np.sin(faketime/60.)
-    # fakemodel_series = np.sin((faketime+20)/60.)
-    # mi_out = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
-    #                               temporal_resolution=1, 
-    #                               max_lag=100, min_lag=-100, 
-    #                               remove_nan_rows=True, no_plot=True)
-    # lags, mi, RPS_mi, x_sq, x_pw = mi_out
-    # axs[4].plot(lags, mi, color='red', marker='x', linestyle='None')
-    # axs[4].plot(lags, RPS_mi, color='black')
-    
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        #  CASE 1: What does MI give is everything is flat (zero)?
+        fakedata_series = np.zeros(int(n))
+        fakemodel_series = np.zeros(int(n))
+        mi_case1 = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
+                                        temporal_resolution=1, 
+                                        max_lag=100, min_lag=-100, 
+                                        remove_nan_rows=True, no_plot=True)
+        axs[0,0].plot(faketime, fakedata_series, label='data')
+        axs[0,0].plot(faketime, fakemodel_series, color='xkcd:gold', label='model')
+        lags, mi, RPS_mi, x_sq, x_pw = mi_case1
+        axs[0,1].plot(lags, mi, color='indianred', marker='x', linestyle='None')
+        axs[0,1].plot(lags, RPS_mi, color='grey')
+        
+        #  CASE 2: What does MI give is everything is flat (constant)?
+        fakedata_series = np.zeros(int(n)) + 10.
+        fakemodel_series = np.zeros(int(n)) + 20.
+        mi_case2 = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
+                                        temporal_resolution=1, 
+                                        max_lag=100, min_lag=-100, 
+                                        remove_nan_rows=True, no_plot=True)
+        axs[1,0].plot(faketime, fakedata_series, label='data')
+        axs[1,0].plot(faketime, fakemodel_series, color='xkcd:gold', label='model')
+        lags, mi, RPS_mi, x_sq, x_pw = mi_case2
+        axs[1,1].plot(lags, mi, color='indianred', marker='x', linestyle='None')
+        axs[1,1].plot(lags, RPS_mi, color='grey')
+        
+        #  CASE 3: What does MI give with a single defined peak in each timeseries?
+        fakedata_series = np.zeros(int(n))
+        fakemodel_series = np.zeros(int(n))
+        fakedata_series[100:120] = 10.
+        fakemodel_series[150:170] = 20.
+        mi_case3 = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
+                                        temporal_resolution=1, 
+                                        max_lag=100, min_lag=-100, 
+                                        remove_nan_rows=True, no_plot=True)
+        axs[2,0].plot(faketime, fakedata_series, label='data')
+        axs[2,0].plot(faketime, fakemodel_series, color='xkcd:gold', label='model')
+        lags, mi, RPS_mi, x_sq, x_pw = mi_case3
+        axs[2,1].plot(lags, mi, color='indianred', marker='x', linestyle='None')
+        axs[2,1].plot(lags, RPS_mi, color='grey')
+        
+        #  CASE 4: What does MI give with multiple, regular defined peaks in each timeseries?
+        fakedata_series = np.zeros(int(n))
+        fakemodel_series = np.zeros(int(n))
+        for start in np.arange(0, 1000, 400): fakedata_series[start:start+20] = 10.
+        for start in np.arange(0, 1000, 400): fakemodel_series[start+50:start+70] = 20.
+        mi_case4 = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
+                                        temporal_resolution=1, 
+                                        max_lag=100, min_lag=-100, 
+                                        remove_nan_rows=True, no_plot=True)
+        axs[3,0].plot(faketime, fakedata_series, label='data')
+        axs[3,0].plot(faketime, fakemodel_series, color='xkcd:gold', label='model')
+        lags, mi, RPS_mi, x_sq, x_pw = mi_case4
+        axs[3,1].plot(lags, mi, color='indianred', marker='x', linestyle='None')
+        axs[3,1].plot(lags, RPS_mi, color='grey')
+        
+        #  CASE 5: What does MI give with multiple, irregular defined peaks in each timeseries?
+        fakedata_series = np.zeros(int(n))
+        fakemodel_series = np.zeros(int(n))
+        for start in np.arange(0, 1000, 400): fakedata_series[start:start+20] = 10.
+        for start in np.arange(0, 1000, 400): fakemodel_series[int(start*1.05):int(start*1.05)+20] = 20.
+        mi_case5 = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
+                                        temporal_resolution=1, 
+                                        max_lag=100, min_lag=-100, 
+                                        remove_nan_rows=True, no_plot=True)
+        axs[4,0].plot(faketime, fakedata_series, label='data')
+        axs[4,0].plot(faketime, fakemodel_series, color='xkcd:gold', label='model')
+        lags, mi, RPS_mi, x_sq, x_pw = mi_case5
+        axs[4,1].plot(lags, mi, color='indianred', marker='x', linestyle='None')
+        axs[4,1].plot(lags, RPS_mi, color='grey')
+        
+        #  CASE 6: What does MI give with multiple, irregular defined peaks in each timeseries, but with some added variation?
+        fakedata_series = np.zeros(int(n))
+        fakemodel_series = np.zeros(int(n)) + np.random.normal(0, 0.5, int(n))
+        for start in np.arange(0, 1000, 400): fakedata_series[start:start+20] = 10.
+        for start in np.arange(0, 1000, 400): fakemodel_series[int(start*1.05):int(start*1.05)+20] = 20.
+        mi_case5 = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
+                                        temporal_resolution=1, 
+                                        max_lag=100, min_lag=-100, 
+                                        remove_nan_rows=True, no_plot=True)
+        axs[5,0].plot(faketime, fakedata_series, label='data')
+        axs[5,0].plot(faketime, fakemodel_series, color='xkcd:gold', label='model')
+        lags, mi, RPS_mi, x_sq, x_pw = mi_case5
+        axs[5,1].plot(lags, mi, color='indianred', marker='x', linestyle='None')
+        axs[5,1].plot(lags, RPS_mi, color='grey')
+        
+        #  CASE 6: What does MI give with multiple, irregular defined peaks in each timeseries, but with some added variation?
+        fakedata_series = np.zeros(int(n)) + np.random.normal(0, 1.5, int(n))
+        fakemodel_series = np.zeros(int(n)) + np.random.normal(0, 0.5, int(n))
+        for start in np.arange(0, 1000, 400): fakedata_series[start:start+20] = 10.
+        for start in np.arange(0, 1000, 400): fakemodel_series[int(start*1.05):int(start*1.05)+20] = 20.
+        mi_case5 = mi_lib.mi_lag_finder(fakedata_series, fakemodel_series, 
+                                        temporal_resolution=1, 
+                                        max_lag=100, min_lag=-100, 
+                                        remove_nan_rows=True, no_plot=True)
+        axs[6,0].plot(faketime, fakedata_series, label='data')
+        axs[6,0].plot(faketime, fakemodel_series, color='xkcd:gold', label='model')
+        lags, mi, RPS_mi, x_sq, x_pw = mi_case5
+        axs[6,1].plot(lags, mi, color='indianred', marker='x', linestyle='None')
+        axs[6,1].plot(lags, RPS_mi, color='grey')
+        
+        axs[6,0].set(xlabel='Elapsed time [min.]')
+        axs[6,1].set(xlabel='Time lags [min.]')
+        
+        axs[3,0].text(-0.2, 0.5, 'Signal [arb.]', 
+                      horizontalalignment='center', verticalalignment='center', rotation='vertical',
+                      transform = axs[3,0].transAxes)
+        axs[3,1].text(-0.2, 0.5, 'MI [nats]', 
+                      horizontalalignment='center', verticalalignment='center', rotation='vertical',
+                      transform = axs[3,1].transAxes)
+        
+    figurename = 'MI_DeltaFunctions_ProofOfConcept'
+    for suffix in ['.png', '.pdf']:
+        plt.savefig('figures/' + figurename + suffix, bbox_inches='tight')
     plt.show()
-    
 
 def SWData_MI():
     #import datetime as dt
@@ -577,8 +614,8 @@ def SWData_MI():
     #!!! Two options here: align then resample, or resample then align
     #  Resampling first allows the mean to occur first, and then they should
     #  be resampled to the same indices, and align shouldn't change much...
-    juno.data = juno.data.resample("15Min").mean()
-    tao_data = tao_data.resample("15Min").mean()
+    juno.data = juno.data.resample("5Min").mean()
+    tao_data = tao_data.resample("5Min").mean()
     
       
     #vogt = read_SWModel.VogtSW('Juno', starttime, stoptime)
@@ -596,21 +633,21 @@ def SWData_MI():
     jr = find_RollingDerivativeZScore(juno.data, tag, 2) # !!! vvv
     jr['smooth_ddt_'+tag+'_zscore'] = jr['smooth_ddt_'+tag+'_zscore'].where(jr['smooth_ddt_'+tag+'_zscore'] > 3, 0)
     tr = find_RollingDerivativeZScore(tao_data, tag, 2) # !!! Rolling derivative of the 15 min resample?
-    tr['smooth_ddt_'+tag+'_zscore'] = tr['smooth_ddt_'+tag+'_zscore'].where(tr['smooth_ddt_'+tag+'_zscore'] > 3, 0)
+    #tr['smooth_ddt_'+tag+'_zscore'] = tr['smooth_ddt_'+tag+'_zscore'].where(tr['smooth_ddt_'+tag+'_zscore'] > 3, 0)
     
     #timespan = dt.timedelta(days=13.5)
     #  Dataframes are indexed so that there's data every 15 minutes
     #  So timedelta can be replaced with the equivalent integer
     #  Which allows step size larger than 1
-    timespan_int = int(6.75*24*60 / 15)
-    timestep_int = int(0.5*24*60 / 15)
+    timespan_int = int(13.5*24*60 / 5.)
+    timestep_int = int(0.5*24*60 / 5.)
     
     juno_windows = jr.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
     tao_windows = tr.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
     
     window_centers = list()
-    max_relative_mi = list()
-    max_lags = list()
+    rel_mi_lists =  [[] for i in range(10)]
+    lag_lists = [[] for i in range(10)]
     for counter, (juno_window, tao_window) in enumerate(zip(juno_windows, tao_windows)):
         if len(juno_window) == timespan_int:
         
@@ -619,21 +656,21 @@ def SWData_MI():
             tao_series = np.array(tao_window[tag]).astype(np.float64)
             
             mi_out = mi_lib.mi_lag_finder(juno_series, tao_series, 
-                                          temporal_resolution=15, 
+                                          temporal_resolution=5, 
                                           max_lag=4320, min_lag=-4320, 
                                           remove_nan_rows=True, no_plot=True)
             
             juno_series = np.array(juno_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
             tao_series = np.array(tao_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
             mi_out_zscore = mi_lib.mi_lag_finder(juno_series, tao_series, 
-                                                 temporal_resolution=15, 
+                                                 temporal_resolution=5, 
                                                  max_lag=4320, min_lag=-4320, 
                                                  remove_nan_rows=True, no_plot=True)
             
             with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
                 plt.rcParams.update({'font.size': 10})
                 fig, axs = plt.subplots(nrows=2, ncols=2, sharex='col', width_ratios=(2,1), figsize=(8,6))
-                plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, hspace=0.0, wspace=0.1)
+                plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, hspace=0.0, wspace=0.25)
                 
                 #  Unmodified timeseries
                 axs[0,0].plot((juno_window.index-jr.index[0]).total_seconds()/60.,
@@ -653,21 +690,24 @@ def SWData_MI():
                 #  Unmodified timeseries MI
                 lags, mi, RPS_mi, x_sq, x_pw = mi_out
                 axs[0,1].plot(lags, mi, marker='x', linestyle='None', color='black')
-                axs[0,1].plot(lags, RPS_mi, color='xkcd:light blue')
+                axs[0,1].plot(lags, RPS_mi, color='xkcd:light gray')
                 axs[0,1].set(ylabel='MI (nats)')
                 
                 #  Modified timeseries MI
                 lags, mi, RPS_mi, x_sq, x_pw = mi_out_zscore
                 axs[1,1].plot(lags, mi, marker='x', linestyle='None', color='black')
-                axs[1,1].plot(lags, RPS_mi, color='xkcd:light blue')
+                axs[1,1].plot(lags, RPS_mi, color='xkcd:light gray')
                 axs[1,1].set(xlabel='Lags [min.]',
                              ylabel='MI (nats)')
             
             window_centers.append(juno_window.index[int(len(juno_window)*0.5-1)])
             norm_mi = mi - RPS_mi
             
-            max_relative_mi.append(np.nanmax(norm_mi))
-            max_lags.append(lags[np.nanargmax(norm_mi)])
+            sort_indx = np.argsort(norm_mi, axis=None)
+            
+            for indx, (rel_mi, lag) in enumerate(zip(rel_mi_lists, lag_lists)):
+                rel_mi.append(np.array(norm_mi)[sort_indx][-(indx+1)])
+                lag.append(np.array(lags)[sort_indx][-(indx+1)])
             
             #plt.tight_layout()
             #figurename = 'garbage'
@@ -680,31 +720,35 @@ def SWData_MI():
             print(counter)
             #if counter == 1000:
                 #break
+    #indx = np.where(np.array(max_relative_mi) > 0)[0]
+    #window_centers = np.array(window_centers)[indx]
+    #max_relative_mi = np.array(max_relative_mi)[indx]
+    #max_lags = np.array(max_lags)[indx]
+    
+    return(window_centers, rel_mi_lists, lag_lists)
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-        fig, axs = plt.subplots(nrows=2, sharex=True)
         
-        window_centers_min = [(wc - jr.index[0]).total_seconds()/60. for wc in window_centers]
-        axs[0].plot(window_centers_min, max_lags, marker='o', linestyle='None')
-        axs[0].set(ylabel='Peak lags from MI [min.]', ylim=[-4320, 4320])
-        axs[1].plot(window_centers_min, max_relative_mi, marker='o')
-        axs[1].set(xlabel='Elapsed time [min.]', 
-                   ylabel='MI - RPS')
+        #window_centers_min = [(wc - jr.index[0]).total_seconds()/60. for wc in window_centers]
+        fig, ax = plt.subplots(figsize=(8,6))
+        # for indx, (rel_mi, lag) in enumerate(zip(rel_mi_lists, lag_lists)):
+        #     ax.plot(window_centers, [l/60. for l in lag], marker='o', markersize=6, linestyle='None')
+        
+        window_centers_flattened = window_centers * 10
+        lag_flattened = [item/60. for sublist in lag_lists for item in sublist]
+        color_flattened = []
+        for i in range(10):
+            color_flattened.extend([i] * len(window_centers))
+        scatterplot = ax.scatter(window_centers_flattened, lag_flattened, s=36, marker='_', c=color_flattened, cmap='viridis')
+        ax.set(xlabel='Date', ylabel='Time Lags [hours]', ylim=[-72, 72])
+        plt.colorbar(scatterplot, label='Order of MI from Maximum (i.e., 0=Largest, 1=Second Largest, ...)')
+        plt.setp(ax.get_xticklabels(), rotation=30, horizontalalignment='right')
+        fig.tight_layout()
         plt.show()
-        
-        fig, ax = plt.subplots()
-        ax.plot(window_centers_min, np.array(window_centers_min)-np.array(max_lags), 
-                marker='x', linestyle='None')
-        ax.set(xlabel='Elapsed real time [min.]', 
-               ylabel='Effective model time [min.]')
-        
-        plt.show()
+
     # plt.savefig('figures/Juno_MI_runningoffset_max_only.png', dpi=300)    
     
-    return(window_centers, max_relative_mi, max_lags)
-
-    #ax, lags, mutual_information, RPS_mutual_information, x_squared_df, x_piecewise_df = generic_mutual_information_routines.mi_lag_finder(juno_reindexed['u_mag'][0:38880],tao_reindexed['u_mag'][0:38880],temporal_resolution=1,max_lag=4320,min_lag=-4320)
-
+    return()
 
 def QQplot_datacomparison():
     import matplotlib.pyplot as plt
@@ -872,6 +916,9 @@ def plot_spacecraftcoverage_solarcycle():
     #import read_SWData
     import spacecraftdata as SpacecraftData
     
+    r_range = [4.9, 5.5]  #  [4.0, 6.4]
+    lat_range = [-6.1, 6.1]  #  [-10, 10]
+    
     # =============================================================================
     # Find when Ulysses was within +/- 30 deg. of the ecliptic, and near 5 AU
     # =============================================================================
@@ -887,20 +934,21 @@ def plot_spacecraftcoverage_solarcycle():
     spacecraft_list.append(SpacecraftData.SpacecraftData('Juno'))
     
     for sc in spacecraft_list:
-        temp_sc = copy.deepcopy(sc)
-        temp_sc.find_lifetime()
-        temp_sc.make_timeseries()
-        temp_sc.find_state(reference_frame, observer)
-        temp_sc.find_subset(coord1_range=np.array((4.0, 6.4))*sc.au_to_km, # 4.4 - 6
-                            coord3_range=np.array((-8.5,8.5))*np.pi/180., 
-                            transform='reclat')
-        startdate = temp_sc.data.index[0]
-        stopdate = temp_sc.data.index[-1]
-        sc.read_processeddata(startdate, stopdate)
+        # temp_sc = copy.deepcopy(sc)
+        # temp_sc.find_lifetime()
+        # temp_sc.make_timeseries()
+        # temp_sc.find_state(reference_frame, observer)
+        # temp_sc.find_subset(coord1_range=np.array(r_range)*sc.au_to_km, # 4.4 - 6
+        #                     coord3_range=np.array(lat_range)*np.pi/180., 
+        #                     transform='reclat')
+        # startdate = temp_sc.data.index[0]
+        # stopdate = temp_sc.data.index[-1]
+        sc.read_processeddata(everything=True)
         sc.find_state(reference_frame, observer)
-        sc.find_subset(coord1_range=np.array((4.0, 6.4))*sc.au_to_km, # 4.4 - 6
-                       coord3_range=np.array((-8.5,8.5))*np.pi/180., 
+        sc.find_subset(coord1_range=np.array(r_range)*sc.au_to_km, # 4.4 - 6
+                       coord3_range=np.array(lat_range)*np.pi/180., 
                        transform='reclat')
+    
     spacecraft_labels = {'Pioneer 10': 1,
                          'Pioneer 11': 2,
                          'Voyager 1': 3, 
@@ -931,7 +979,7 @@ def plot_spacecraftcoverage_solarcycle():
             start_indx = np.insert(gaps_indx, 0, 0)
             stop_indx = np.append(gaps_indx, len(sc.data.index))-1
             
-            print('Start and stop dates for ' + sc.name + ', 4.4-6.0 AU and +/-8.5 deg. lat:')
+            print('Start and stop dates for ' + sc.name)
             for first, final in zip(start_indx, stop_indx):
                 print(sc.data.index[first].strftime('%Y-%m-%d') + 
                       ' -- ' + 
@@ -941,8 +989,8 @@ def plot_spacecraftcoverage_solarcycle():
                 rlonlat = np.array(rlonlat).T
                 print('Radial range of: ' + str(np.min(rlonlat[0,:])/sc.au_to_km) +
                       ' - ' + str(np.max(rlonlat[0,:])/sc.au_to_km) + ' AU')
-                print('Heliolatitude range of: ' + str(np.min(rlonlat[2,:])) +
-                      ' - ' + str(np.max(rlonlat[2,:])) + 'deg.')
+                print('Heliolatitude range of: ' + str(np.min(rlonlat[2,:])*180/np.pi) +
+                      ' - ' + str(np.max(rlonlat[2,:])*180/np.pi) + 'deg.')
             print('------------------------------------------')
             # rectangle_list = []
             # for x0, xf in zip(np.insert(start_indx, 0, 0), stop_indx):
@@ -972,7 +1020,7 @@ def plot_spacecraftcoverage_solarcycle():
         #plt.tight_layout()
         figurename = 'Coverage_vs_SolarCycle'
         for suffix in ['.png', '.pdf']:
-            plt.savefig('figures/' + figurename + suffix)
+            plt.savefig('figures/' + figurename + suffix, bbox_inches='tight')
         plt.show()
         spice.kclear()
         
