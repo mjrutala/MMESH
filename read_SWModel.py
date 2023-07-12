@@ -69,7 +69,7 @@ def Tao(target, starttime, finaltime, basedir=''):
                                'n_proton', 'u_r', 'u_t', 'T_proton', 
                                'p_dyn_proton', 'B_t', 'B_r', 'angle_EST']
             def column_to_datetime(df):
-                df['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%dT%H:%M:%S.%f')
+                df['datetime'] = pd.to_datetime(df['datetime'], format='%Y-%m-%dT%H:%M:%S.%f')
                 return(df)
             
         else:
