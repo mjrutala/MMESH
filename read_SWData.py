@@ -112,7 +112,7 @@ def get_fromCDAWeb(spacecraft, basedir='',
 # =============================================================================
 # 
 # =============================================================================
-def Juno_published(starttime, stoptime, basedir=''):
+def Juno_published(starttime, stoptime, basedir='', resolution=None):
     
     spacecraft_dir = 'Juno/'
     filepath_ions = basedir + spacecraft_dir + 'plasma/published/Wilson2018/'
@@ -180,6 +180,10 @@ def Juno_published(starttime, stoptime, basedir=''):
         #  Check for duplicates in the datetime index
         output_spacecraft_data = output_spacecraft_data[~output_spacecraft_data.index.duplicated(keep='last')]
         
+        #  Find the time between the nth observation and the n+1th
+        output_spacecraft_data['t_delta'] = (output_spacecraft_data.index.to_series().shift(-1) - 
+                                                         output_spacecraft_data.index.to_series()).dt.total_seconds()
+        
         return(output_spacecraft_data)
     
     # =========================================================================
@@ -216,6 +220,9 @@ def Juno_published(starttime, stoptime, basedir=''):
         
         #  Check for duplicates in the datetime index
         spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
+        #  Find the time between the nth observation and the n+1th
+        spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
+                                      spacecraft_data.index.to_series()).dt.total_seconds()
         return(spacecraft_data)
     # =========================================================================
     #         
@@ -223,9 +230,20 @@ def Juno_published(starttime, stoptime, basedir=''):
     plasma_data = read_Juno_Wilson2018(starttime, stoptime)
     mag_data = read_Juno_AMDAMAG(starttime, stoptime)
     
+    match resolution:
+        case None:
+            #  Do not resample
+            a
+        case 'best':
+            #  Resample to the largest common t_delta in either plasma or mag
+            b
+        case _:
+            #  As long as the input is a string, use resample
+        
+    
     data = pd.concat([plasma_data, mag_data], axis=1)
     
-    return(data)
+    return(plasma_data, mag_data)
     
 # =============================================================================
 # 
