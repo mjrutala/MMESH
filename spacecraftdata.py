@@ -163,24 +163,26 @@ class SpacecraftData:
         #                      axis=0)
         
     def read_processeddata(self, starttime=None, stoptime=None, 
-                           everything=False, strict=True):
+                           everything=False, strict=True, resolution=None):
         import read_SWData
-        import pandas as pd
         import spiceypy as spice
         
-        
-        
-        #  everything keyword read in all available data, overwriting starttime and stoptime
+        #  everything keyword reads in all available data, overwriting starttime and stoptime
         if everything == True:
             self.find_lifetime()
         else:
             if starttime != None: self.starttime = starttime
             if stoptime != None: self.stoptime = stoptime
         
+        #  If resolution takes a Pandas resample code (i.e., "1Min"), None for
+        #  the raw resolution, and "[auto]matic" to use the coarsest resolution
+        #  in the raw data
         
-        processed_data = read_SWData.read(self.name, 
-                                          self.starttime, self.stoptime, 
-                                          basedir=self.basedir + 'Data/')
+        plasma_data, mag_data = read_SWData.read(self.name, 
+                                                 self.starttime, self.stoptime, 
+                                                 basedir=self.basedir + 'Data/')
+        
+        #  Get the temporal resolution...
         
         #  If self.data exists, add to it, else, make it
         if strict:
