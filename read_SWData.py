@@ -233,17 +233,27 @@ def Juno_published(starttime, stoptime, basedir='', resolution=None):
     match resolution:
         case None:
             #  Do not resample
-            a
-        case 'best':
-            #  Resample to the largest common t_delta in either plasma or mag
-            b
-        case _:
+            pass
+        case str():
             #  As long as the input is a string, use resample
+            plasma_data = plasma_data.resample(resolution).mean()
+            mag_data = mag_data.resample(resolution).mean()
+        case _:
+            #  Resample to the largest common t_delta in either plasma or mag
+            plasma_res = np.nanpercentile(plasma_data['t_delta'], resolution)
+            mag_res = np.nanpercentile(mag_data['t_delta'], resolution)
+            if plasma_res > mag_res:
+                resolution = plasma_res
+            else:
+                resolution = mag_res
+            plasma_data = plasma_data.resample('{:.0f}s'.format(resolution)).mean()
+            mag_data = mag_data.resample('{:.0f}s'.format(resolution)).mean()
         
-    
+    plasma_data.drop(['t_delta'], axis=1, inplace=True)
+    mag_data.drop(['t_delta'], axis=1, inplace=True)
     data = pd.concat([plasma_data, mag_data], axis=1)
     
-    return(plasma_data, mag_data)
+    return(data)
     
 # =============================================================================
 # 
