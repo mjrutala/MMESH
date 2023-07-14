@@ -59,55 +59,78 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
     import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
     
-    tag = parameter
+    #  Check which parameter was specified and set up some plotting keywords
+    match parameter:
+        case ('u_mag' | 'flow speed'):
+            tag = 'u_mag'
+            ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
+            plot_kw = {'yscale': 'linear',
+                       'ylim': (350, 550)}
+        case ('p_dyn' | 'pressure'):
+            tag = 'p_dyn'
+            ylabel = r'Solar Wind Dynamic Pressure $p_{dyn}$ [nPa]'
+            plot_kw = {'yscale': 'log',
+                       'ylim': (1e-3, 2e0)}
+        case ('n_tot' | 'density'):
+            tag = 'n_tot'
+            ylabel = r'Solar Wind Ion Density $n_{tot}$ [cm^{-3}]'
+            plot_kw = {'yscale': 'log',
+                       'ylim': (5e-3, 5e0)}
+        case ('B_mag' | 'magnetic field'):
+            tag = 'B_mag'
+            ylabel = r'Solar Wind Magnetic Field Magnitude $B_{mag}$ [nT]'
+            plot_kw = {'yscale': 'linear',
+                       'ylim': (0, 5)}
     
     #  Load spacecraft data
     spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
-    spacecraft.read_processeddata(starttime, stoptime)
-    spacecraft.data = spacecraft.data.resample("15Min").mean()
+    spacecraft.read_processeddata(starttime, stoptime, resolution=99)
     
     #  Read models
     models = dict.fromkeys(model_names, None)
     for model in models.keys():
-        model_in = read_SWModel.choose(model, spacecraft_name, 
+        models[model] = read_SWModel.choose(model, spacecraft_name, 
                                        starttime, stoptime)
-        models[model] = model_in
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig, axs = plt.subplots(figsize=(8,6), nrows=len(models), sharex=True)
         plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.0)
         
-        for ax in axs:
+        for indx, ax in enumerate(axs):
             
-            ax.plot(spacecraft.data.dropna(subset=[tag]).index, 
-                    spacecraft.data.dropna(subset=[tag])[tag],
-                    color='gray', alpha=0.5, label='Juno/JADE (Wilson+ 2018)')
+            ax.plot(spacecraft.data.index, 
+                    spacecraft.data[tag],
+                    color='xkcd:gray', label='Juno/JADE (Wilson+ 2018)')
             
-            ax.set(ylim=[350,550],
-                   yticks=[400, 450, 500, 550])
-            if tag in ['p_dyn', 'n_tot']:
-                ax.set(yscale='log')
-        axs[-1].set(yticks=[350, 400, 450, 500, 550])
+            ax.set(**plot_kw)
+            #  get_yticks() for log scale doesn't work as expected; workaround:
+            yticks = ax.get_yticks()
+            yticks = [yt for yt in yticks if ax.get_ylim()[0] <= yt <= ax.get_ylim()[1]]
+            if indx != len(axs)-1: ax.set(yticks=yticks[1:])
+              
         for ax, (model, model_info) in zip(axs, models.items()):
-            if 'u_mag' in model_info.columns: 
-                ax.plot(model_info.index, model_info['u_mag'], 
+            if tag in model_info.columns: 
+                ax.plot(model_info.index, model_info[tag], 
                         color=model_colors[model], label=model)
             
             ax.text(0.01, 0.99, model, color=model_colors[model],
                     horizontalalignment='left', verticalalignment='top',
                     transform = ax.transAxes)
-        # labels, handles = list(zip(*[ax.get_legend_handles_labels() for ax in axs]))
         
-        # axs[0].legend(handles=handles, labels=labels, ncol=3, bbox_to_anchor=[0.0,1.05,1.0,0.15], loc='lower left', mode='expand')
-        
-        fig.text(0.5, 0.025, 'Day of Year 2016', ha='center', va='center')
-        fig.text(0.025, 0.5, r'$u_{mag}$ [km s$^{-1}$]', ha='center', va='center', rotation='vertical')
+        fig.text(0.5, 0.025, 'Day of Year {:.0f}'.format(starttime.year), ha='center', va='center')
+        fig.text(0.025, 0.5, ylabel, ha='center', va='center', rotation='vertical')
         
         axs[0].set_xlim((starttime, stoptime))
         axs[0].xaxis.set_major_locator(mdates.DayLocator(interval=5))
         axs[0].xaxis.set_minor_locator(mdates.DayLocator(interval=1))
         axs[0].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
-        #axs[3].set_xlabel('Day of Year 2016')
+        
+        # #  Trying to set up year labels, showing the year once at the start
+        # #  and again every time it changes
+        # ax_year = axs[-1].secondary_xaxis(-0.15)
+        # ax_year.set_xticks([axs[-1].get_xticks()[0]])
+        # ax_year.visible=False
+        # ax_year.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
         
         fig.align_ylabels()
         plt.savefig('figures/Timeseries_Juno_Spread_u_mag.png', dpi=300)
