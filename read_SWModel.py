@@ -101,6 +101,7 @@ def Tao(target, starttime, finaltime, basedir=''):
     data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2)
     data['B_mag'] = np.sqrt(data['B_r'].replace(np.nan, 0)**2 + data['B_t']**2)
     data['p_dyn'] = data['p_dyn_proton']
+    data['n_tot'] = data['n_proton']
     
     data = data.set_index('datetime')
     data = data.reindex(columns=default_df.columns)
@@ -168,6 +169,7 @@ def SWMFOH(target, starttime, finaltime, basedir=''):
     data['B_mag'] = np.sqrt(data['B_r']**2 + data['B_t']**2 + data['B_n']**2)
     data['p_dyn_proton'] = data['n_proton'] * m_p * (1e6) * (data['u_mag'] * 1e3)**2 * (1e9)
     data['p_dyn'] = data['p_dyn_proton']
+    data['n_tot'] = data['n_proton']
     
     data = data.set_index('datetime')
     return(data)
@@ -212,8 +214,9 @@ def MSWIM2D(target, starttime, finaltime, basedir=''):
     data['n_proton'] = data['rho_proton'] / m_p  # / cm^3
     data['u_mag'] = np.sqrt(data['u_x']**2 + data['u_y']**2 + data['u_z']**2) # km/s
     data['B_mag'] = np.sqrt(data['B_x']**2 + data['B_y']**2 + data['B_z']**2) # nT
-    data['p_dyn'] = (data['rho_proton'] * 1e6) * (data['u_mag'] * 1e3)**2 * (1e9) # nPa
-    data['p_dyn_proton'] = data['p_dyn']
+    data['p_dyn_proton'] = (data['rho_proton'] * 1e6) * (data['u_mag'] * 1e3)**2 * (1e9) # nPa
+    data['p_dyn'] = data['p_dyn_proton']
+    data['n_tot'] = data['n_proton']
     
     data = data.set_index('datetime')
     return(data)
