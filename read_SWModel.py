@@ -16,6 +16,7 @@ import copy
 from pathlib import Path
 
 m_p = 1.67e-27
+kg_per_amu = 1.66e-27 # 
 
 default_df = pd.DataFrame(columns=['u_mag', 'n_tot', 'p_dyn', 'B_mag', 
                                    'u_r', 'u_t', 'u_n', 
@@ -110,10 +111,6 @@ def Tao(target, starttime, finaltime, basedir=''):
 
 def SWMFOH(target, starttime, finaltime, basedir=''):
     
-    import pandas as pd
-    import numpy as np
-    m_p = 1.67e-27 # proton mass
-    
     #  basedir is expected to be the folder /SolarWindEM
     model_path = 'models/swmf-oh/'
     full_path = basedir + model_path + target.lower() + '/'
@@ -176,11 +173,6 @@ def SWMFOH(target, starttime, finaltime, basedir=''):
 
 def MSWIM2D(target, starttime, finaltime, basedir=''):
     
-    import pandas as pd
-    import numpy as np
-    kg_per_amu = 1.66e-27 # 
-    m_p = 1.67e-27
-    
     model_path = 'models/MSWIM2D/'
     full_path = basedir + model_path + target.lower() + '/'
     
@@ -222,9 +214,6 @@ def MSWIM2D(target, starttime, finaltime, basedir=''):
     return(data)
 
 def HUXt(target, starttime, finaltime, basedir=''):
-        
-    import pandas as pd
-    import numpy as np
     
     model_path = 'models/HUXt/'
     full_path = basedir + model_path + target.lower() + '/'
@@ -294,6 +283,81 @@ def Heliocast(target, starttime, finaltime, data_path=''):
     
     return(data.reset_index(drop=True))
 
+def ENLIL(target, starttime, finaltime, basedir=''):
+    
+    target = target.lower().replace(' ', '')
+    #  basedir is expected to be the folder /SolarWindEM
+    model_path = 'models/enlil/'
+    full_path = basedir + model_path + target + '/'
+    
+    match target:
+        case 'earth':
+            filenames = ['ccmc_enlil_earth_20160509.txt',
+                         'ccmc_enlil_earth_20160606.txt']
+        case 'mars':
+            filenames = ['ccmc_enlil_mars_20160509.txt',
+                         'ccmc_enlil_mars_20160606.txt']
+        case 'jupiter':
+            filenames = ['ccmc_enlil_jupiter_20160509.txt', 
+                         'ccmc_enlil_jupiter_20160606.txt']
+        case 'stereoa':
+            filename = ['ccmc_enlil_stereoa_20160509.txt',
+                        'ccmc_enlil_stereoa_20160606.txt']
+        case 'stereob':
+            filename = ['ccmc_enlil_stereob_20160509.txt',
+                        'ccmc_enlil_stereob_20160606.txt']
+        case 'juno':
+            filenames = ['ccmc_enlil_juno_20160509.txt',
+                         'ccmc_enlil_juno_20160606.txt']
+        case 'galileo':
+            filenames = []
+        case 'cassini':
+            filenames = []
+        
+    #  NB switched labels from lon/lat to t/n-- should be the same?
+    column_headers = ['time', 'R', 'Lat', 'Lon', 
+                      'u_r', 'u_t', 'u_n', 
+                      'B_r', 'B_t', 'B_n', 
+                      'n_proton', 'T_proton', 'E_r', 'E_t', 'E_n', 
+                      'u_mag', 'B_mag', 'p_dyn', 'BP']
+    data = pd.DataFrame(columns = column_headers + ['datetime'])
+    
+    for filename in filenames:
+        
+        #  In these files, the start date is hidden in a comment, so read the first few lines
+        header = []
+        with open(full_path + filename) as f:
+            for indx, line in enumerate(f):
+                header.append(line.rstrip())
+                if indx == 6:
+                    break
+        for line in header:
+            if 'Start Date' in line:
+                file_starttime = dt.datetime.strptime(line.split(': ')[1], '%Y/%m/%d %H:%M:%S')
+        
+        temp_data = pd.read_table(full_path + filename, 
+                             names=column_headers, 
+                             comment='#', delim_whitespace=True)
+        
+
+        
+        temp_data['datetime'] = [file_starttime + dt.timedelta(days=time) for time in temp_data['time']]
+        
+        sub_data = temp_data.loc[(temp_data['datetime'] >= starttime) & (temp_data['datetime'] < finaltime)]
+        
+        data = pd.concat([data, sub_data])
+    
+    data = data.drop(columns=['time'])
+    
+    data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2 + data['u_n']**2)
+    data['B_mag'] = np.sqrt(data['B_r']**2 + data['B_t']**2 + data['B_n']**2)
+    data['p_dyn_proton'] = data['n_proton'] * m_p * (1e6) * (data['u_mag'] * 1e3)**2 * (1e9)
+    data['p_dyn'] = data['p_dyn_proton']
+    data['n_tot'] = data['n_proton']
+    
+    data = data.set_index('datetime')
+    return(data)
+
 def choose(model, target, starttime, stoptime, basedir=''):
     
     match model.lower():
@@ -305,6 +369,8 @@ def choose(model, target, starttime, stoptime, basedir=''):
             result = MSWIM2D(target, starttime, stoptime, basedir=basedir)
         case 'swmf-oh':
             result = SWMFOH(target, starttime, stoptime, basedir=basedir)
+        case 'enlil':
+            result = ENLIL(target, starttime, stoptime, basedir=basedir)
         case _:
             result = None
             raise Exception("Model '" + model.lower() + "' is not currently supported.") 
