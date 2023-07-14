@@ -165,6 +165,7 @@ def Juno_published(starttime, stoptime, basedir='', resolution=None):
         output_spacecraft_data['p_dyn_alpha_err'] = spacecraft_data['RAM_PRESSURE_ALPHAS_NPA_UNCERTAINTY']
         
         output_spacecraft_data['p_dyn'] = output_spacecraft_data['p_dyn_proton'] #!!!
+        output_spacecraft_data['n_tot'] = output_spacecraft_data['n_proton']
         
         #  Finally, set the index to be datetimes
         output_spacecraft_data.index = [dt.datetime.strptime(t, '%Y-%jT%H:%M:%S.%f') for t in spacecraft_data['UTC']]
@@ -818,21 +819,27 @@ def Pioneer(starttime, stoptime, spacecraft_number=10, basedir='', resolution=No
 # A simple function which allows you to specify the spacecraft name as an argument
 # Which then calls the relrevant functions
 # =============================================================================
-def read(spacecraft, starttime, stoptime, basedir=None):
+def read(spacecraft, starttime, stoptime, basedir=None, resolution=None):
     
     match spacecraft.lower():
         case 'ulysses':
-            result = Ulysses(starttime, stoptime, basedir=basedir)
+            result = Ulysses(starttime, stoptime, 
+                             basedir=basedir, resolution=resolution)
         case 'juno':
-            result = Juno_published(starttime, stoptime, basedir=basedir)
+            result = Juno_published(starttime, stoptime, 
+                                    basedir=basedir, resolution=resolution)
         case 'voyager 1':
-            result = Voyager(starttime, stoptime, spacecraft_number='1', basedir=basedir)
+            result = Voyager(starttime, stoptime, spacecraft_number='1', 
+                             basedir=basedir, resolution=resolution)
         case 'voyager 2':
-            result = Voyager(starttime, stoptime, spacecraft_number='2', basedir=basedir)
+            result = Voyager(starttime, stoptime, spacecraft_number='2', 
+                             basedir=basedir, resolution=resolution)
         case 'pioneer 10':
-            result = Pioneer(starttime, stoptime, spacecraft_number='10', basedir=basedir)
+            result = Pioneer(starttime, stoptime, spacecraft_number='10', 
+                             basedir=basedir, resolution=resolution)
         case 'pioneer 11':
-            result = Pioneer(starttime, stoptime, spacecraft_number='11', basedir=basedir)
+            result = Pioneer(starttime, stoptime, spacecraft_number='11', 
+                             basedir=basedir, resolution=resolution)
         case _:
             result = None
     return(result)
