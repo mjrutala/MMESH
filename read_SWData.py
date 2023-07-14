@@ -258,7 +258,7 @@ def Juno_published(starttime, stoptime, basedir='', resolution=None):
 # =============================================================================
 # 
 # =============================================================================
-def Ulysses(starttime, stoptime, basedir=''):
+def Ulysses(starttime, stoptime, basedir='', resolution=None):
     #  Keep basefilepath flexible such that it can point to a static path or a 
     #  relative path
     #  Default to current working directory
@@ -320,12 +320,16 @@ def Ulysses(starttime, stoptime, basedir=''):
         #  Check for duplicates in the datetime index
         spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
         
-        output_columns = ['rau', 'hlat', 'hlong', 'n_proton', 'n_alpha', 'T_large', 'T_small', 'u_r', 'u_t', 'u_n', 'p_dyn_proton', 'p_dyn_alpha']
-        output_columns_units = ['AU', 'deg', 'deg', 'cm^{-3}', 'cm^{-3}', 'K', 'K', 'km/s', 'km/s', 'km/s', 'nPa', 'nPa']
-        spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        #  Find the time between the nth observation and the n+1th
+        spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
+                                      spacecraft_data.index.to_series()).dt.total_seconds()
         
-        output_columns_eqns = ['', '', '', '', '', '', '', '', '', '', '0.5*n_proton*u_mag**2', '0.5*n_alpha*u_mag**2']
-        spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
+        #output_columns = ['rau', 'hlat', 'hlong', 'n_proton', 'n_alpha', 'T_large', 'T_small', 'u_r', 'u_t', 'u_n', 'p_dyn_proton', 'p_dyn_alpha']
+        #output_columns_units = ['AU', 'deg', 'deg', 'cm^{-3}', 'cm^{-3}', 'K', 'K', 'km/s', 'km/s', 'km/s', 'nPa', 'nPa']
+        #spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        
+        #output_columns_eqns = ['', '', '', '', '', '', '', '', '', '', '0.5*n_proton*u_mag**2', '0.5*n_alpha*u_mag**2']
+        #spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
         
         return(spacecraft_data)
     
@@ -368,12 +372,16 @@ def Ulysses(starttime, stoptime, basedir=''):
         #  Check for duplicates in the datetime index
         spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
         
-        output_columns = ['B_r', 'B_t', 'B_n', 'B_mag', 'nBVectors']
-        output_columns_units = ['nT', 'nT', 'nT', 'nT', '#']
-        spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        #  Find the time between the nth observation and the n+1th
+        spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
+                                      spacecraft_data.index.to_series()).dt.total_seconds()
         
-        output_columns_eqns = ['', '', '', '', '']
-        spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
+        #output_columns = ['B_r', 'B_t', 'B_n', 'B_mag', 'nBVectors']
+        #output_columns_units = ['nT', 'nT', 'nT', 'nT', '#']
+        #spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        
+        #output_columns_eqns = ['', '', '', '', '']
+        #spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
         
         return(spacecraft_data)
     
@@ -383,15 +391,37 @@ def Ulysses(starttime, stoptime, basedir=''):
     plasma_data = read_Ulysses_plasma(starttime, stoptime)
     mag_data = read_Ulysses_MAG(starttime, stoptime)
     
-    #  manually concatenate the attributes
-    
+    match resolution:
+        case None:
+            #  Do not resample
+            pass
+        case str():
+            #  As long as the input is a string, use resample
+            plasma_data = plasma_data.resample(resolution).mean()
+            mag_data = mag_data.resample(resolution).mean()
+        case _:
+            #  Resample to the largest common t_delta in either plasma or mag
+            plasma_res = np.nanpercentile(plasma_data['t_delta'], resolution)
+            mag_res = np.nanpercentile(mag_data['t_delta'], resolution)
+            if plasma_res > mag_res:
+                resolution = plasma_res
+            else:
+                resolution = mag_res
+            plasma_data = plasma_data.resample('{:.0f}s'.format(resolution)).mean()
+            mag_data = mag_data.resample('{:.0f}s'.format(resolution)).mean()
+        
+    plasma_data.drop(['t_delta'], axis=1, inplace=True)
+    mag_data.drop(['t_delta'], axis=1, inplace=True)
     data = pd.concat([plasma_data, mag_data], axis=1)
-    data.attrs['units'] = {**plasma_data.attrs['units'], **mag_data.attrs['units']}
-    data.attrs['equations'] = {**plasma_data.attrs['equations'], **mag_data.attrs['equations']}
+    
+    #  manually concatenate the attributes
+    #data = pd.concat([plasma_data, mag_data], axis=1)
+    #data.attrs['units'] = {**plasma_data.attrs['units'], **mag_data.attrs['units']}
+    #data.attrs['equations'] = {**plasma_data.attrs['equations'], **mag_data.attrs['equations']}
         
     return(data)
 
-def Voyager(starttime, stoptime, spacecraft_number=1, basedir=None):
+def Voyager(starttime, stoptime, spacecraft_number=1, basedir=None, resolution=None):
     #  Keep basefilepath flexible such that it can point to a static path or a 
     #  relative path
     #  Default to current working directory
@@ -456,12 +486,16 @@ def Voyager(starttime, stoptime, spacecraft_number=1, basedir=None):
         #  Check for duplicates in the datetime index
         spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
         
-        output_columns = ['n_proton', 'T_proton', 'u_mag', 'u_r', 'u_t', 'u_n', 'p_dyn_proton', 'p_dyn_alpha']
-        output_columns_units = ['cm^{-3}', 'cm^{-3}', 'K', 'K', 'km/s', 'km/s', 'km/s', 'nPa', 'nPa']
-        spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        #  Find the time between the nth observation and the n+1th
+        spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
+                                      spacecraft_data.index.to_series()).dt.total_seconds()
         
-        output_columns_eqns = ['', '', '', '', '', '', '', '', '', '', '0.5*n_proton*u_mag**2', '0.5*n_alpha*u_mag**2']
-        spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
+        #output_columns = ['n_proton', 'T_proton', 'u_mag', 'u_r', 'u_t', 'u_n', 'p_dyn_proton', 'p_dyn_alpha']
+        #output_columns_units = ['cm^{-3}', 'cm^{-3}', 'K', 'K', 'km/s', 'km/s', 'km/s', 'nPa', 'nPa']
+        #spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        
+        #output_columns_eqns = ['', '', '', '', '', '', '', '', '', '', '0.5*n_proton*u_mag**2', '0.5*n_alpha*u_mag**2']
+        #spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
         
         return(spacecraft_data)
     
@@ -508,12 +542,15 @@ def Voyager(starttime, stoptime, spacecraft_number=1, basedir=None):
         #  Check for duplicates in the datetime index
         spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
         
-        output_columns = ['B_r', 'B_t', 'B_n', 'B_mag']
-        output_columns_units = ['nT', 'nT', 'nT', 'nT']
-        spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        #  Find the time between the nth observation and the n+1th
+        spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
+                                      spacecraft_data.index.to_series()).dt.total_seconds()
+        # output_columns = ['B_r', 'B_t', 'B_n', 'B_mag']
+        # output_columns_units = ['nT', 'nT', 'nT', 'nT']
+        # spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
         
-        output_columns_eqns = ['', '', '', '']
-        spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
+        # output_columns_eqns = ['', '', '', '']
+        # spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
         
         return(spacecraft_data)
     
@@ -523,6 +560,29 @@ def Voyager(starttime, stoptime, spacecraft_number=1, basedir=None):
     plasma_data = read_Voyager_plasma(starttime, stoptime)
     mag_data = read_Voyager_MAG(starttime, stoptime)
     
+    match resolution:
+        case None:
+            #  Do not resample
+            pass
+        case str():
+            #  As long as the input is a string, use resample
+            plasma_data = plasma_data.resample(resolution).mean()
+            mag_data = mag_data.resample(resolution).mean()
+        case _:
+            #  Resample to the largest common t_delta in either plasma or mag
+            plasma_res = np.nanpercentile(plasma_data['t_delta'], resolution)
+            mag_res = np.nanpercentile(mag_data['t_delta'], resolution)
+            if plasma_res > mag_res:
+                resolution = plasma_res
+            else:
+                resolution = mag_res
+            plasma_data = plasma_data.resample('{:.0f}s'.format(resolution)).mean()
+            mag_data = mag_data.resample('{:.0f}s'.format(resolution)).mean()
+        
+    plasma_data.drop(['t_delta'], axis=1, inplace=True)
+    mag_data.drop(['t_delta'], axis=1, inplace=True)
+    #data = pd.concat([plasma_data, mag_data], axis=1)
+    
     #  manually concatenate the attributes
     #return(plasma_data, mag_data)
     data = pd.concat([plasma_data, mag_data], axis=1)
@@ -531,7 +591,7 @@ def Voyager(starttime, stoptime, spacecraft_number=1, basedir=None):
         
     return(data)
 
-def Pioneer(starttime, stoptime, spacecraft_number=10, basedir=''):
+def Pioneer(starttime, stoptime, spacecraft_number=10, basedir='', resolution=None):
     #  Keep basefilepath flexible such that it can point to a static path or a 
     #  relative path
     #  Default to current working directory
@@ -597,12 +657,16 @@ def Pioneer(starttime, stoptime, spacecraft_number=10, basedir=''):
         #  Check for duplicates in the datetime index
         spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
         
-        output_columns = ['rau', 'hlat', 'hlong', 'n_proton', 'n_alpha', 'T_large', 'T_small', 'u_r', 'u_t', 'u_n', 'p_dyn_proton', 'p_dyn_alpha']
-        output_columns_units = ['AU', 'deg', 'deg', 'cm^{-3}', 'cm^{-3}', 'K', 'K', 'km/s', 'km/s', 'km/s', 'nPa', 'nPa']
-        spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        #  Find the time between the nth observation and the n+1th
+        spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
+                                      spacecraft_data.index.to_series()).dt.total_seconds()
         
-        output_columns_eqns = ['', '', '', '', '', '', '', '', '', '', '0.5*n_proton*u_mag**2', '0.5*n_alpha*u_mag**2']
-        spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
+        # output_columns = ['rau', 'hlat', 'hlong', 'n_proton', 'n_alpha', 'T_large', 'T_small', 'u_r', 'u_t', 'u_n', 'p_dyn_proton', 'p_dyn_alpha']
+        # output_columns_units = ['AU', 'deg', 'deg', 'cm^{-3}', 'cm^{-3}', 'K', 'K', 'km/s', 'km/s', 'km/s', 'nPa', 'nPa']
+        # spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        
+        # output_columns_eqns = ['', '', '', '', '', '', '', '', '', '', '0.5*n_proton*u_mag**2', '0.5*n_alpha*u_mag**2']
+        # spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
         
         return(spacecraft_data)
     
@@ -645,12 +709,16 @@ def Pioneer(starttime, stoptime, spacecraft_number=10, basedir=''):
         #  Check for duplicates in the datetime index
         spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
         
-        output_columns = ['B_r', 'B_t', 'B_n', 'B_mag', 'nBVectors']
-        output_columns_units = ['nT', 'nT', 'nT', 'nT', '#']
-        spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        #  Find the time between the nth observation and the n+1th
+        spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
+                                      spacecraft_data.index.to_series()).dt.total_seconds()
         
-        output_columns_eqns = ['', '', '', '', '']
-        spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
+        # output_columns = ['B_r', 'B_t', 'B_n', 'B_mag', 'nBVectors']
+        # output_columns_units = ['nT', 'nT', 'nT', 'nT', '#']
+        # spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+        
+        # output_columns_eqns = ['', '', '', '', '']
+        # spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
         
         return(spacecraft_data)
     
@@ -705,12 +773,42 @@ def Pioneer(starttime, stoptime, spacecraft_number=10, basedir=''):
         #  Check for duplicates in the datetime index
         spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
         
+        #  Find the time between the nth observation and the n+1th
+        spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
+                                      spacecraft_data.index.to_series()).dt.total_seconds()
+        
         return(spacecraft_data)
     # =============================================================================
     #     
     # =============================================================================
     
     merge_data = read_Pioneer_merged(starttime, stoptime)
+    
+    match resolution:
+        case None:
+            #  Do not resample
+            pass
+        case str():
+            #  As long as the input is a string, use resample
+            merge_data = merge_data.resample(resolution).mean()
+            #plasma_data = plasma_data.resample(resolution).mean()
+            #mag_data = mag_data.resample(resolution).mean()
+        case _:
+            #  Resample to the largest common t_delta in either plasma or mag
+            merge_res = np.nanpercentile(merge_data['t_delta'], resolution)
+            #plasma_res = np.nanpercentile(plasma_data['t_delta'], resolution)
+            #mag_res = np.nanpercentile(mag_data['t_delta'], resolution)
+            #if plasma_res > mag_res:
+            #    resolution = plasma_res
+            #else:
+            #    resolution = mag_res
+            resolution = merge_res
+            plasma_data = plasma_data.resample('{:.0f}s'.format(resolution)).mean()
+            mag_data = mag_data.resample('{:.0f}s'.format(resolution)).mean()
+    
+    merge_data.drop(['t_delta'], axis=1, inplace=True)
+    #plasma_data.drop(['t_delta'], axis=1, inplace=True)
+    #mag_data.drop(['t_delta'], axis=1, inplace=True)
     
     data = pd.concat([merge_data], axis=1)
     
