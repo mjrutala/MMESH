@@ -174,13 +174,10 @@ class SpacecraftData:
             if starttime != None: self.starttime = starttime
             if stoptime != None: self.stoptime = stoptime
         
-        #  If resolution takes a Pandas resample code (i.e., "1Min"), None for
-        #  the raw resolution, and "[auto]matic" to use the coarsest resolution
-        #  in the raw data
-        
-        plasma_data, mag_data = read_SWData.read(self.name, 
-                                                 self.starttime, self.stoptime, 
-                                                 basedir=self.basedir + 'Data/')
+        processed_data = read_SWData.read(self.name, 
+                                          self.starttime, self.stoptime, 
+                                           basedir=self.basedir + 'Data/',
+                                           resolution=resolution)
         
         #  Get the temporal resolution...
         
