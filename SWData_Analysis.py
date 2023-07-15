@@ -24,6 +24,9 @@ model_colors = {'Tao'    : '#C59FE5',
                 'MSWIM2D': '#A9DBCA',
                 'ENLIL'  : '#DCED96'}
 
+# =============================================================================
+# Non-plotting analysis routines
+# =============================================================================
 def find_RollingDerivativeZScore(dataframe, tag, window):
     
     #  Test smoothing
@@ -50,7 +53,9 @@ def find_RollingDerivativeZScore(dataframe, tag, window):
     
     return(dataframe)
 
-
+# =============================================================================
+# Time Series plotting stuff
+# =============================================================================
 def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, stoptime):
     """
     Plot the time series of a single parameter from a single spacecraft,
@@ -64,23 +69,28 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
         case ('u_mag' | 'flow speed'):
             tag = 'u_mag'
             ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
-            plot_kw = {'yscale': 'linear',
-                       'ylim': (350, 550)}
+            plot_kw = {'yscale': 'linear', 'ylim': (350, 550),
+                       'yticks': np.arange(350,550+50,100)}
         case ('p_dyn' | 'pressure'):
             tag = 'p_dyn'
             ylabel = r'Solar Wind Dynamic Pressure $p_{dyn}$ [nPa]'
-            plot_kw = {'yscale': 'log',
-                       'ylim': (1e-3, 2e0)}
+            plot_kw = {'yscale': 'log', 'ylim': (1e-3, 2e0),
+                       'yticks': 10.**np.arange(-3,0+1,1)}
         case ('n_tot' | 'density'):
             tag = 'n_tot'
-            ylabel = r'Solar Wind Ion Density $n_{tot}$ [cm^{-3}]'
-            plot_kw = {'yscale': 'log',
-                       'ylim': (5e-3, 5e0)}
+            ylabel = r'Solar Wind Ion Density $n_{tot}$ [cm$^{-3}$]'
+            plot_kw = {'yscale': 'log', 'ylim': (5e-3, 5e0),
+                       'yticks': 10.**np.arange(-2, 0+1, 1)}
         case ('B_mag' | 'magnetic field'):
             tag = 'B_mag'
             ylabel = r'Solar Wind Magnetic Field Magnitude $B_{mag}$ [nT]'
-            plot_kw = {'yscale': 'linear',
-                       'ylim': (0, 5)}
+            plot_kw = {'yscale': 'linear', 'ylim': (0, 5),
+                       'yticks': np.arange(0, 5+1, 2)}
+    #
+    save_filestem = 'Timeseries_{}_{}_{}-{}'.format(spacecraft_name.replace(' ', ''),
+                                                    tag,
+                                                    starttime.strftime('%Y%m%d'),
+                                                    stoptime.strftime('%Y%m%d'))
     
     #  Load spacecraft data
     spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
@@ -91,30 +101,42 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
     for model in models.keys():
         models[model] = read_SWModel.choose(model, spacecraft_name, 
                                        starttime, stoptime)
+    #!!! Only because HUXt doesn't have Juno yet
+    models['HUXt'] = read_SWModel.choose('HUXt', 'Jupiter', starttime, stoptime)
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig, axs = plt.subplots(figsize=(8,6), nrows=len(models), sharex=True)
         plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.0)
         
         for indx, ax in enumerate(axs):
-            
+                
             ax.plot(spacecraft.data.index, 
                     spacecraft.data[tag],
-                    color='xkcd:gray', label='Juno/JADE (Wilson+ 2018)')
+                    color='xkcd:blue grey', alpha=0.6, linewidth=1.5,
+                    label='Juno/JADE (Wilson+ 2018)')
             
             ax.set(**plot_kw)
             #  get_yticks() for log scale doesn't work as expected; workaround:
             yticks = ax.get_yticks()
             yticks = [yt for yt in yticks if ax.get_ylim()[0] <= yt <= ax.get_ylim()[1]]
-            if indx != len(axs)-1: ax.set(yticks=yticks[1:])
-              
+            if indx != len(axs)-1: 
+                if (yticks[0] in ax.get_ylim()) and yticks[-1] in ax.get_ylim():
+                    ax.set(yticks=yticks[1:])
+            #ax.grid(linestyle='-', linewidth=2, alpha=0.1, color='xkcd:black')
+            
         for ax, (model, model_info) in zip(axs, models.items()):
             if tag in model_info.columns: 
                 ax.plot(model_info.index, model_info[tag], 
-                        color=model_colors[model], label=model)
+                        color=model_colors[model], label=model, linewidth=2)
             
-            ax.text(0.01, 0.99, model, color=model_colors[model],
+            model_label_box = dict(facecolor=model_colors[model], 
+                                   edgecolor=model_colors[model], 
+                                   pad=0.1, boxstyle='round')
+            # !!!! Again, special for HUXt
+            if model == 'HUXt': model += '*'
+            ax.text(0.01, 0.95, model, color='black',
                     horizontalalignment='left', verticalalignment='top',
+                    bbox = model_label_box,
                     transform = ax.transAxes)
         
         fig.text(0.5, 0.025, 'Day of Year {:.0f}'.format(starttime.year), ha='center', va='center')
@@ -133,7 +155,8 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
         # ax_year.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
         
         fig.align_ylabels()
-        plt.savefig('figures/Timeseries_Juno_Spread_u_mag.png', dpi=300)
+        for suffix in ['.png', '.pdf']:
+            plt.savefig('figures/' + save_filestem, dpi=300)
         plt.show()
         return(models)
 
@@ -209,18 +232,14 @@ def plot_StackedTimeseries(spacecraft_name, model_names, starttime, stoptime):
         plt.show()
         return()
 
-
-
-
-
 def plot_histograms():
     
     return()
 
+# =============================================================================
+# Taylor Diagrams for model baselining
+# =============================================================================
 def SWData_TaylorDiagram():
-    #import datetime as dt
-    #import pandas as pd
-    #import numpy as np
     import matplotlib.pyplot as plt
     import spiceypy as spice
     import matplotlib.dates as mdates
