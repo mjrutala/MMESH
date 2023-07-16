@@ -23,6 +23,11 @@ model_colors = {'Tao'    : '#C59FE5',
                 'SWMF-OH': '#98DBEB',
                 'MSWIM2D': '#A9DBCA',
                 'ENLIL'  : '#DCED96'}
+model_symbols = {'Tao'    : 'v',
+                'HUXt'   : '*',
+                'SWMF-OH': '^',
+                'MSWIM2D': 'd',
+                'ENLIL'  : 'h'}
 
 # =============================================================================
 # Non-plotting analysis routines
@@ -156,7 +161,7 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
         
         fig.align_ylabels()
         for suffix in ['.png', '.pdf']:
-            plt.savefig('figures/' + save_filestem, dpi=300)
+            plt.savefig('figures/' + save_filestem, dpi=300, bbox_inches='tight')
         plt.show()
         return(models)
 
@@ -239,7 +244,18 @@ def plot_histograms():
 # =============================================================================
 # Taylor Diagrams for model baselining
 # =============================================================================
-def plot_BaselineTaylorDiagram(parameter, spacecraft_name, model_names, starttime, stoptime):
+def plot_TaylorDiagrams():
+    
+    for parameter in ['u_mag', 'p_dyn', 'n_tot', 'B_mag']:
+        
+        _ = plot_TaylorDiagram_Baseline(parameter, 'Juno', 
+                                        ['Tao', 'SWMF-OH', 'MSWIM2D', 'ENLIL'], 
+                                        dt.datetime(2016, 5, 15), dt.datetime(2016, 6, 25))
+        _ = plot_TaylorDiagram_ConstantTimeWarping(parameter, 'Juno', 
+                                                   ['Tao', 'SWMF-OH', 'MSWIM2D', 'ENLIL'], 
+                                                   dt.datetime(2016, 5, 15), dt.datetime(2016, 6, 25))
+
+def plot_TaylorDiagram_Baseline(parameter, spacecraft_name, model_names, starttime, stoptime):
     import matplotlib.pyplot as plt
     import spiceypy as spice
     import matplotlib.dates as mdates
@@ -332,52 +348,152 @@ def plot_BaselineTaylorDiagram(parameter, spacecraft_name, model_names, starttim
                 stats, rmse = TD.find_TaylorStatistics(model_timeseries, sc_timeseries)
                 
                 ax.scatter(np.arccos(stats[0]), stats[1], 
-                        marker='X', s=48, c=model_colors[model], edgecolors='black',
+                        marker=model_symbols[model], s=48, c=model_colors[model], edgecolors='black',
                         label=model)
                 #print(stats)
                 
-        ax.set_ylim(plot_kw['ylim'])
+        ax.set_ylim([0, 1.5*np.nanstd(sc_timeseries)])
         ax.text(0.5, 0.9, ylabel,
                 horizontalalignment='center', verticalalignment='top',
                 transform = ax.transAxes)
-        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], loc='lower left', mode='expand')
-     
+        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand')
+        ax.set_axisbelow(True)
+    
+    extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+    
     for suffix in ['.png', '.pdf']:
-        plt.savefig('figures/' + save_filestem, dpi=300)
+        plt.savefig('figures/' + save_filestem, dpi=300, bbox_inches=extent)
     plt.show()
-    #shifted_stats = {'tao':list(), 'vogt':list(), 'mich':list(), 'huxt':list()}
-    # shifts = np.arange(-72, 72+6, 6)  #  -/+ hours of shift for the timeseries
-    # for model_key in model_dict.keys():
-    #     focus_model = model_dict[model_key]
-    #     print(focus_model[tag])
-    #     print(juno.data[tag])
-    #     stats, rmse = TD.find_TaylorStatistics(focus_model[tag], juno.data[tag])
-    #     unshifted_plot = ax.plot(np.arccos(stats[0]), stats[1], marker='x', markersize=12, color='cyan')
-    #     # print(model_key)
-    #     # for shift in shifts:
-    #     #     shifted_model = focus_model.copy()
-    #     #     shifted_model.index = shifted_model.index + pd.Timedelta(shift, 'hours')
-    #     #     shifted_model_reindexed = shifted_model.reindex(juno.data.index, method='nearest')
-    #     #     stats, rmse = TD.find_TaylorStatistics(shifted_model_reindexed[tag], juno.data[tag])
-    #     #     shifted_stats[model_key].append(stats)
+    
+    return()
+
+def plot_TaylorDiagram_ConstantTimeWarping(parameter, spacecraft_name, model_names, starttime, stoptime):
+    import matplotlib.pyplot as plt
+    import spiceypy as spice
+    import matplotlib.dates as mdates
+    from matplotlib.transforms import Bbox
+    
+    import sys
+    import read_SWModel
+    import spacecraftdata
+    import plot_TaylorDiagram as TD
+    
+    
+    reference_frame = 'SUN_INERTIAL'
+    observer = 'SUN'
+    
+    match parameter:
+        case ('u_mag' | 'flow speed'):
+            tag = 'u_mag'
+            ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
+            plot_kw = {'yscale': 'linear', 'ylim': (0, 60),
+                       'yticks': np.arange(350,550+50,100)}
+        case ('p_dyn' | 'pressure'):
+            tag = 'p_dyn'
+            ylabel = r'log Solar Wind Dynamic Pressure $log_{10}(p_{dyn})$ [$log_{10}(nPa)$]'
+            plot_kw = {'yscale': 'log', 'ylim': (0, 0.6),
+                       'yticks': 10.**np.arange(-3,0+1,1)}
+        case ('n_tot' | 'density'):
+            tag = 'n_tot'
+            ylabel = r'log Solar Wind Ion Density $log_{10}(n_{tot})$ [$log_{10}(cm^{-3})$]'
+            plot_kw = {'yscale': 'log', 'ylim': (0, 0.6),
+                       'yticks': 10.**np.arange(-2, 0+1, 1)}
+        case ('B_mag' | 'magnetic field'):
+            tag = 'B_mag'
+            ylabel = r'Solar Wind Magnetic Field Magnitude $B_{mag}$ [nT]'
+            plot_kw = {'yscale': 'linear', 'ylim': (0, 1),
+                       'yticks': np.arange(0, 5+1, 2)}
+    #
+    save_filestem = 'TaylorDiagram_ConstantTW_{}_{}_{}-{}'.format(spacecraft_name.replace(' ', ''),
+                                                       tag,
+                                                       starttime.strftime('%Y%m%d'),
+                                                       stoptime.strftime('%Y%m%d'))
+    
+    #  Load spacecraft data
+    spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
+    spacecraft.read_processeddata(starttime, stoptime, resolution=99)
+    spacecraft.find_state(reference_frame, observer)
+    
+    shifts = np.arange(-72, 72+6, 6)  #  -/+ hours of shift for the timeseries
+    shifted_stats = {name: [] for name in model_names}
+    shifted_stats['HUXt'] = []
+    for model, shifted_stat in shifted_stats.items():
+        for shift in shifts:
+            #  Shifting the start and stop times *before* reading the model
+            #  means that we don't need to cut the model/data later ->
+            #  means more information retained
+            shifted_starttime = starttime + dt.timedelta(hours = int(shift))
+            shifted_stoptime = stoptime + dt.timedelta(hours = int(shift))
             
-    #     #     if shift == 0.0:
-    #     #         unshifted_plot = ax.plot(np.arccos(stats[0]), stats[1], marker='x', markersize=12, color='cyan')
-         
-    #     # coords_from_stats = [(np.arccos(e1), e2) for e1, e2 in shifted_stats[model_key]]
-    #     # focus_model_plot = ax.scatter(*zip(*coords_from_stats), 
-    #     #                               c=shifts, cmap='plasma', s=24, marker=marker_dict[model_key], 
-    #     #                               label=label_dict[model_key])
-             
-    # ax.set_ylim(0,60)
-    # ax.legend()
-    # plt.margins(0)
-    # # plt.colorbar(focus_model_plot, location='bottom', orientation='horizontal',
-    # #              label=r'$\Delta t$ [hours]', fraction=0.05, pad=-0.1,
-    # #              ticks=np.arange(-72, 72+12, 12))
-    # plt.tight_layout()
-    # plt.savefig('JunoModel_u_mag_TaylorDiagram.png', dpi=200)
-    # plt.show()
+            model_info = read_SWModel.choose(model, spacecraft_name, 
+                                             shifted_starttime, shifted_stoptime)
+            if model == 'HUXt':
+                model_info = read_SWModel.choose(model, 'Jupiter', 
+                                                 shifted_starttime, shifted_stoptime)
+            model_info.index = model_info.index - dt.timedelta(hours = int(shift))
+            model_info = model_info.reindex(spacecraft.data.index, axis='index', method='nearest')
+            
+            if tag in model_info.columns:
+                model_timeseries = np.array(model_info[tag], dtype='float64')
+                sc_timeseries = np.array(spacecraft.data[tag], dtype='float64')
+                
+                if plot_kw['yscale'] == 'log':
+                    model_timeseries = np.log10(model_timeseries)
+                    sc_timeseries = np.log10(sc_timeseries)
+                
+                stats, rmse = TD.find_TaylorStatistics(model_timeseries, sc_timeseries)
+                shifted_stat.append(stats)
+            
+            else:
+                shifted_stat.append((np.nan, np.nan))
+            
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        """
+        It would be really ideal to write plot_TaylorDiagram such that there's a 
+        function I could call here which "initializes" ax1 (axs[0]) to be a 
+        Taylor Diagram-- i.e., I set aside the space in the figure, and then give 
+        that axis to a program which adds the axes, labels, names, etc.
+        Everything except the data, basically
+        
+        I guess it would make sense to additionally add a function to plot the 
+        RMS difference, rather than doing it with everything else
+        """
+        fig, ax = TD.plot_TaylorDiagram(model_timeseries, 
+                                        sc_timeseries,
+                                        color='red', marker='X', markersize='0')
+        
+        for model, shifted_stat in shifted_stats.items():
+            if not np.isnan(shifted_stat).all():
+                
+                plot_thetar = [(np.arccos(s1), s2) for s1, s2 in shifted_stat]
+                
+                shifted_stat_plot = ax.scatter(*zip(*plot_thetar), 
+                                               marker=model_symbols[model], s=24, c=shifts,
+                                               zorder=1)
+                center_indx = np.where(shifts == 0)[0][0]
+                ax.scatter(*plot_thetar[center_indx],
+                           marker=model_symbols[model], s=48, c=model_colors[model],
+                           edgecolors='black', zorder=2, label=model)
+            
+        ax.set_ylim([0, 1.5*np.nanstd(sc_timeseries)])
+        ax.text(0.5, 0.9, ylabel,
+                horizontalalignment='center', verticalalignment='top',
+                transform = ax.transAxes)
+        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand')
+        ax.set_axisbelow(True)
+        
+        plt.colorbar(shifted_stat_plot, location='right', orientation='vertical', 
+                     label='Model Shift [hr]',
+                     fraction=0.2, pad=0.08, shrink=0.6, aspect=15,
+                     ticks=[-72, -48, -24, 0, 24, 48, 72])
+        
+    extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+    extent = extent.expanded(1.5, 1.0)
+    extent.intervalx = extent.intervalx + 0.5
+
+    for suffix in ['.png', '.pdf']:
+        plt.savefig('figures/' + save_filestem, dpi=300, bbox_inches=extent)
+    plt.show()
     
     return()
     
