@@ -14,6 +14,16 @@ Options:
 import numpy as np
 import matplotlib.pyplot as plt
 
+def make_NaNFree(test_data, ref_data):
+    
+    nans_test = np.isnan(test_data)
+    nans_ref = np.isnan(ref_data)
+    
+    test_data = test_data[~nans_test][~nans_ref]
+    ref_data = ref_data[~nans_test][~nans_ref]
+    
+    return(test_data, ref_data)
+
 def find_TaylorStatistics(test_data, ref_data):
     
     N = float(len(test_data))
@@ -23,10 +33,13 @@ def find_TaylorStatistics(test_data, ref_data):
     
     
     test_data = np.array(test_data)
+    ref_data = np.array(ref_data)
+    test_data, ref_data = make_NaNFree(test_data, ref_data)
+    
     test_mean = np.mean(test_data)
     test_std = np.std(test_data)
     
-    ref_data = np.array(ref_data)
+    
     ref_mean = np.mean(ref_data)
     ref_std = np.std(ref_data)
     
@@ -38,14 +51,22 @@ def find_TaylorStatistics(test_data, ref_data):
 
 def plot_TaylorDiagram(test_data, ref_data, ax=None, **plt_kwargs):
     
+    test_data = np.array(test_data)
+    ref_data = np.array(ref_data)
+    test_data, ref_data = make_NaNFree(test_data, ref_data)
+    
     #  If no axis is included, look for a current one or make one
     if ax == None:
         fig = plt.figure(figsize=(16,9))
         ax = fig.add_subplot(121, projection='polar')
         
         # Set title and labels
-        ax.set_title('Pearson Correlation Coefficient', pad=-80)
-        ax.set_xlabel('Standard Deviation')
+        ax.text(0.5, 0.85, 'Pearson Correlation Coefficient (r)', 
+                color='black',
+                horizontalalignment='center', verticalalignment='top',
+                transform = ax.transAxes)
+        #ax.set_title('Pearson Correlation Coefficient', pad=-80)
+        ax.set_xlabel(r'Standard Deviation ($\sigma$)')
         ax.xaxis.set_label_coords(0.5, 0.2)
         
         #  Default to include negative correlations
@@ -58,7 +79,11 @@ def plot_TaylorDiagram(test_data, ref_data, ax=None, **plt_kwargs):
         
         #  Centered RMS difference circles, centered on reference
         #plt.autoscale(False)
-        RMS_r = np.arange(10, 120, 20)
+        ref_std = np.std(ref_data)
+        ax.plot(0, ref_std, marker='o', color='black', markersize=12)
+        ax.plot(np.linspace(0, np.pi, 180), np.zeros(180)+np.std(ref_data), color='black', linestyle='--')
+        
+        RMS_r = np.arange(ref_std/3., 3*ref_std+ref_std/3., ref_std/3.)
         for r in RMS_r:
             x = r * np.cos(np.linspace(0, 2*np.pi, 100))
             y = r * np.sin(np.linspace(0, 2*np.pi, 100))
@@ -67,9 +92,6 @@ def plot_TaylorDiagram(test_data, ref_data, ax=None, **plt_kwargs):
             ax.plot(np.arctan2(y2,x2), np.sqrt(x2**2 + y2**2), color='gray', linestyle=':')
         
         #plt.autoscale(True)
-        
-        ax.plot(0, np.std(ref_data), marker='o', color='black', markersize=12)
-        ax.plot(np.linspace(0, np.pi, 180), np.zeros(180)+np.std(ref_data), color='black', linestyle='--')
         #ax.set_position([0.5, -6.5, 14, 14])
         # Show plot
         #plt.show()
