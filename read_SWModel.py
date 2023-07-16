@@ -92,19 +92,41 @@ def Tao(target, starttime, finaltime, basedir=''):
                              comment='#', delim_whitespace=True)
         partial_data = column_to_datetime(partial_data)
         
+        partial_data = partial_data.set_index('datetime')
         #  Ditch unrequested data now so you don't need to hold it all in memory
-        sub_data = partial_data.loc[(partial_data['datetime'] >= starttime) &
-                                    (partial_data['datetime'] < finaltime)]
+        sub_data = partial_data.loc[(partial_data.index >= starttime) &
+                                    (partial_data.index < finaltime)]
         
-        #  Keep all the segments requested
-        data = pd.concat([data, sub_data], ignore_index=True)
+        #  !!! Need to comment this mess and clean it up
+        if len(data) > 0:
+            if sub_data.index[0] <= data.index[-1]:
+                data_indx = np.where(data.index >= sub_data.index[0])[0]
+                sub_data_indx = np.where(sub_data.index <= data.index[-1])[0]
+                
+                overlap_from_data = data.iloc[data_indx]
+                overlap_from_sub_data = sub_data.iloc[sub_data_indx]
+                
+                data.drop(data.iloc[data_indx].index, axis=0, inplace=True)
+                sub_data = sub_data.drop(labels=sub_data.iloc[sub_data_indx].index, axis='index')
+                
+                print(overlap_from_data)
+                print(overlap_from_sub_data)
+                print(overlap_from_data.index == overlap_from_sub_data.index)
+                overlap_from_data = overlap_from_data.reindex(index=overlap_from_sub_data.index, method='nearest')
+                overlap_concat = pd.concat([overlap_from_data, overlap_from_sub_data])
+                
+                temp = overlap_concat.groupby(overlap_concat.index).mean()
+                
+                sub_data = pd.concat([temp, sub_data])
+
+        data = pd.concat([data, sub_data])
  
     data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2)
     data['B_mag'] = np.sqrt(data['B_r'].replace(np.nan, 0)**2 + data['B_t']**2)
     data['p_dyn'] = data['p_dyn_proton']
     data['n_tot'] = data['n_proton']
     
-    data = data.set_index('datetime')
+    #data = data.set_index('datetime')
     data = data.reindex(columns=default_df.columns)
     
     return(data)
