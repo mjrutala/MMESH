@@ -239,112 +239,147 @@ def plot_histograms():
 # =============================================================================
 # Taylor Diagrams for model baselining
 # =============================================================================
-def SWData_TaylorDiagram():
+def plot_BaselineTaylorDiagram(parameter, spacecraft_name, model_names, starttime, stoptime):
     import matplotlib.pyplot as plt
     import spiceypy as spice
     import matplotlib.dates as mdates
     
     import sys
-    sys.path.append('/Users/mrutala/projects/SolarWindProp/')
+    #sys.path.append('/Users/mrutala/projects/SolarWindProp/')
     #import read_SWData
     import read_SWModel
     import spacecraftdata
     import plot_TaylorDiagram as TD
     
-    starttime = dt.datetime(2016, 5, 1)
-    stoptime = dt.datetime(2016, 7, 1)
     reference_frame = 'SUN_INERTIAL'
     observer = 'SUN'
     
-    tag =  'u_mag'  #  solar wind property of interest
+    match parameter:
+        case ('u_mag' | 'flow speed'):
+            tag = 'u_mag'
+            ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
+            plot_kw = {'yscale': 'linear', 'ylim': (0, 60),
+                       'yticks': np.arange(350,550+50,100)}
+        case ('p_dyn' | 'pressure'):
+            tag = 'p_dyn'
+            ylabel = r'log Solar Wind Dynamic Pressure $log_{10}(p_{dyn})$ [$log_{10}(nPa)$]'
+            plot_kw = {'yscale': 'log', 'ylim': (0, 0.6),
+                       'yticks': 10.**np.arange(-3,0+1,1)}
+        case ('n_tot' | 'density'):
+            tag = 'n_tot'
+            ylabel = r'log Solar Wind Ion Density $log_{10}(n_{tot})$ [$log_{10}(cm^{-3})$]'
+            plot_kw = {'yscale': 'log', 'ylim': (0, 0.6),
+                       'yticks': 10.**np.arange(-2, 0+1, 1)}
+        case ('B_mag' | 'magnetic field'):
+            tag = 'B_mag'
+            ylabel = r'Solar Wind Magnetic Field Magnitude $B_{mag}$ [nT]'
+            plot_kw = {'yscale': 'linear', 'ylim': (0, 1),
+                       'yticks': np.arange(0, 5+1, 2)}
+    #
+    save_filestem = 'TaylorDiagram_{}_{}_{}-{}'.format(spacecraft_name.replace(' ', ''),
+                                                       tag,
+                                                       starttime.strftime('%Y%m%d'),
+                                                       stoptime.strftime('%Y%m%d'))
     
-    juno = spacecraftdata.SpacecraftData('Juno')
-    juno.read_processeddata(starttime, stoptime)
-    juno.find_state(reference_frame, observer)
+    #  Load spacecraft data
+    spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
+    spacecraft.read_processeddata(starttime, stoptime, resolution=99)
+    spacecraft.find_state(reference_frame, observer)
     
-    tao = read_SWModel.Tao('Juno', starttime, stoptime)
-    vogt = read_SWModel.SWMFOH('Juno', starttime, stoptime)
-    mich = read_SWModel.MSWIM2D('Juno', starttime, stoptime)
-    huxt = read_SWModel.HUXt('Jupiter', starttime, stoptime)
+    #  Read models
+    models = dict.fromkeys(model_names, None)
+    for model in models.keys():
+        models[model] = read_SWModel.choose(model, spacecraft_name, 
+                                       starttime, stoptime)
+        
+        models[model] = models[model].reindex(spacecraft.data.index, 
+                                              axis='index', method='nearest')
+        
+    #!!! Only because HUXt doesn't have Juno yet
+    models['HUXt'] = read_SWModel.choose('HUXt', 'Jupiter', starttime, stoptime)
+    models['HUXt'] = models['HUXt'].reindex(spacecraft.data.index, axis='index', method='nearest')
     
-    fig, axs = plt.subplots(nrows=3)
-    
-    axs[0].plot(juno.data.index, juno.data[tag])
-    axs[0].plot(tao.index, tao[tag])
-    axs[0].plot(vogt.index, vogt[tag])
-    axs[0].plot(mich.index, mich[tag])
-    if tag == 'u_mag': axs[0].plot(huxt.index, huxt[tag])
-    
-    tao_reindexed = tao.reindex(juno.data.index, method='nearest')
-    vogt_reindexed = vogt.reindex(juno.data.index, method='nearest')
-    mich_reindexed = mich.reindex(juno.data.index, method='nearest')
-    huxt_reindexed = huxt.reindex(juno.data.index, method='nearest')
-    
-    axs[1].plot(juno.data.index, juno.data[tag])
-    axs[1].plot(tao_reindexed.index, tao_reindexed[tag])
-    axs[1].plot(vogt_reindexed.index, vogt_reindexed[tag])
-    axs[1].plot(mich_reindexed.index, mich_reindexed[tag])
-    if tag == 'u_mag': axs[1].plot(huxt_reindexed.index, huxt_reindexed[tag])
-    
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        """
+        It would be really ideal to write plot_TaylorDiagram such that there's a 
+        function I could call here which "initializes" ax1 (axs[0]) to be a 
+        Taylor Diagram-- i.e., I set aside the space in the figure, and then give 
+        that axis to a program which adds the axes, labels, names, etc.
+        Everything except the data, basically
+        
+        I guess it would make sense to additionally add a function to plot the 
+        RMS difference, rather than doing it with everything else
+        """
+        #  "Initialize" the plot by plotting a model, but with zero size
+        model_timeseries = np.array(models[model_names[0]][tag], dtype='float64')
+        sc_timeseries = np.array(spacecraft.data[tag], dtype='float64')
+        if plot_kw['yscale'] == 'log':
+            model_timeseries = np.log10(model_timeseries)
+            sc_timeseries = np.log10(sc_timeseries)
+        fig, ax = TD.plot_TaylorDiagram(model_timeseries, 
+                                        sc_timeseries,
+                                        color='red', marker='X', markersize='0')
+        
+        for model, model_info in models.items():
+            if tag in model_info.columns:
+                model_timeseries = np.array(model_info[tag], dtype='float64')
+                sc_timeseries = np.array(spacecraft.data[tag], dtype='float64')
+                
+                if plot_kw['yscale'] == 'log':
+                    model_timeseries = np.log10(model_timeseries)
+                    sc_timeseries = np.log10(sc_timeseries)
+                
+                stats, rmse = TD.find_TaylorStatistics(model_timeseries, sc_timeseries)
+                
+                ax.scatter(np.arccos(stats[0]), stats[1], 
+                        marker='X', s=48, c=model_colors[model], edgecolors='black',
+                        label=model)
+                #print(stats)
+                
+        ax.set_ylim(plot_kw['ylim'])
+        ax.text(0.5, 0.9, ylabel,
+                horizontalalignment='center', verticalalignment='top',
+                transform = ax.transAxes)
+        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], loc='lower left', mode='expand')
+     
+    for suffix in ['.png', '.pdf']:
+        plt.savefig('figures/' + save_filestem, dpi=300)
     plt.show()
-    
-    #fig = plt.figure(figsize=(16,9))
-    #ax1 = plt.subplot(211, projection='polar')
-    #ax2 = plt.subplot(212)
-    #axs = [ax1, ax2]
-    
-    """
-    It would be really ideal to write plot_TaylorDiagram such that there's a 
-    function I could call here which "initializes" ax1 (axs[0]) to be a 
-    Taylor Diagram-- i.e., I set aside the space in the figure, and then give 
-    that axis to a program which adds the axes, labels, names, etc.
-    Everything except the data, basically
-    
-    I guess it would make sense to additionally add a function to plot the 
-    RMS difference, rather than doing it with everything else
-    """
-    
-    fig, ax = TD.plot_TaylorDiagram(tao_reindexed[tag], juno.data[tag], color='red', marker='X', markersize='0')
-    
-    model_dict = {'tao':tao, 'vogt':vogt, 'mich':mich, 'huxt':huxt}
-    marker_dict = {'tao': '^', 'vogt': 'v', 'mich':'P', 'huxt':'X'}
-    label_dict = {'tao': 'Tao (2005)', 'vogt': 'SWMF-OH (BU)', 'mich':'MSWIM2D', 'huxt':'HUXt (@ Jupiter)'}
-    shifted_stats = {'tao':list(), 'vogt':list(), 'mich':list(), 'huxt':list()}
-    
-    shifts = np.arange(-72, 72+6, 6)  #  -/+ hours of shift for the timeseries
-    for model_key in model_dict.keys():
-        focus_model = model_dict[model_key]
-        print(focus_model[tag])
-        print(juno.data[tag])
-        stats, rmse = TD.find_TaylorStatistics(focus_model[tag], juno.data[tag])
-        unshifted_plot = ax.plot(np.arccos(stats[0]), stats[1], marker='x', markersize=12, color='cyan')
-        # print(model_key)
-        # for shift in shifts:
-        #     shifted_model = focus_model.copy()
-        #     shifted_model.index = shifted_model.index + pd.Timedelta(shift, 'hours')
-        #     shifted_model_reindexed = shifted_model.reindex(juno.data.index, method='nearest')
-        #     stats, rmse = TD.find_TaylorStatistics(shifted_model_reindexed[tag], juno.data[tag])
-        #     shifted_stats[model_key].append(stats)
+    #shifted_stats = {'tao':list(), 'vogt':list(), 'mich':list(), 'huxt':list()}
+    # shifts = np.arange(-72, 72+6, 6)  #  -/+ hours of shift for the timeseries
+    # for model_key in model_dict.keys():
+    #     focus_model = model_dict[model_key]
+    #     print(focus_model[tag])
+    #     print(juno.data[tag])
+    #     stats, rmse = TD.find_TaylorStatistics(focus_model[tag], juno.data[tag])
+    #     unshifted_plot = ax.plot(np.arccos(stats[0]), stats[1], marker='x', markersize=12, color='cyan')
+    #     # print(model_key)
+    #     # for shift in shifts:
+    #     #     shifted_model = focus_model.copy()
+    #     #     shifted_model.index = shifted_model.index + pd.Timedelta(shift, 'hours')
+    #     #     shifted_model_reindexed = shifted_model.reindex(juno.data.index, method='nearest')
+    #     #     stats, rmse = TD.find_TaylorStatistics(shifted_model_reindexed[tag], juno.data[tag])
+    #     #     shifted_stats[model_key].append(stats)
             
-        #     if shift == 0.0:
-        #         unshifted_plot = ax.plot(np.arccos(stats[0]), stats[1], marker='x', markersize=12, color='cyan')
+    #     #     if shift == 0.0:
+    #     #         unshifted_plot = ax.plot(np.arccos(stats[0]), stats[1], marker='x', markersize=12, color='cyan')
          
-        # coords_from_stats = [(np.arccos(e1), e2) for e1, e2 in shifted_stats[model_key]]
-        # focus_model_plot = ax.scatter(*zip(*coords_from_stats), 
-        #                               c=shifts, cmap='plasma', s=24, marker=marker_dict[model_key], 
-        #                               label=label_dict[model_key])
+    #     # coords_from_stats = [(np.arccos(e1), e2) for e1, e2 in shifted_stats[model_key]]
+    #     # focus_model_plot = ax.scatter(*zip(*coords_from_stats), 
+    #     #                               c=shifts, cmap='plasma', s=24, marker=marker_dict[model_key], 
+    #     #                               label=label_dict[model_key])
              
-    ax.set_ylim(0,60)
-    ax.legend()
-    plt.margins(0)
-    # plt.colorbar(focus_model_plot, location='bottom', orientation='horizontal',
-    #              label=r'$\Delta t$ [hours]', fraction=0.05, pad=-0.1,
-    #              ticks=np.arange(-72, 72+12, 12))
-    plt.tight_layout()
-    plt.savefig('JunoModel_u_mag_TaylorDiagram.png', dpi=200)
-    plt.show()
+    # ax.set_ylim(0,60)
+    # ax.legend()
+    # plt.margins(0)
+    # # plt.colorbar(focus_model_plot, location='bottom', orientation='horizontal',
+    # #              label=r'$\Delta t$ [hours]', fraction=0.05, pad=-0.1,
+    # #              ticks=np.arange(-72, 72+12, 12))
+    # plt.tight_layout()
+    # plt.savefig('JunoModel_u_mag_TaylorDiagram.png', dpi=200)
+    # plt.show()
     
-    return(shifted_stats)
+    return()
     
 def SWData_TaylorDiagram_Binary():
     #import datetime as dt
