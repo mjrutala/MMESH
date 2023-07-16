@@ -57,8 +57,8 @@ def plot_TaylorDiagram(test_data, ref_data, ax=None, **plt_kwargs):
     
     #  If no axis is included, look for a current one or make one
     if ax == None:
-        fig = plt.figure(figsize=(16,9))
-        ax = fig.add_subplot(121, projection='polar')
+        fig = plt.figure(figsize=(8,6))
+        ax = fig.add_subplot(111, projection='polar')
         
         # Set title and labels
         ax.text(0.5, 0.85, 'Pearson Correlation Coefficient (r)', 
