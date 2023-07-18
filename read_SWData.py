@@ -313,6 +313,7 @@ def Ulysses(starttime, stoptime, basedir='', resolution=None):
         spacecraft_data['p_dyn_alpha'] = 4. * spacecraft_data['n_alpha'] * spacecraft_data['u_mag']**2. * defaultunits_to_nPa
         
         spacecraft_data['p_dyn'] = spacecraft_data['p_dyn_proton'] #  !!!
+        spacecraft_data['n_tot'] = spacecraft_data['n_proton']
         #  Within selected time range
         time_index = np.where((spacecraft_data.index >= starttime) 
                       & (spacecraft_data.index < stoptime))
