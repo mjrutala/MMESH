@@ -430,10 +430,11 @@ def plot_TaylorDiagram_ConstantTimeWarping(parameter, spacecraft_name, model_nam
             if model == 'HUXt':
                 model_info = read_SWModel.choose(model, 'Jupiter', 
                                                  shifted_starttime, shifted_stoptime)
-            model_info.index = model_info.index - dt.timedelta(hours = int(shift))
-            model_info = model_info.reindex(spacecraft.data.index, axis='index', method='nearest')
-            
-            if tag in model_info.columns:
+            if len(model_info) > 0:
+                model_info.index = model_info.index - dt.timedelta(hours = int(shift))
+                model_info = model_info.reindex(spacecraft.data.index, axis='index', method='nearest')
+
+            #if tag in model_info.columns:
                 model_timeseries = np.array(model_info[tag], dtype='float64')
                 sc_timeseries = np.array(spacecraft.data[tag], dtype='float64')
                 
