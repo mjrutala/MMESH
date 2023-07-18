@@ -90,43 +90,18 @@ def Tao(target, starttime, finaltime, basedir=''):
                 df.drop(columns=['iyear', 'imonth', 'iday', 'stime'], inplace=True)
                 return(df)
             
-        partial_data = pd.read_table(fullpath / filename, 
+        file_data = pd.read_table(fullpath / filename, 
                              names=column_headers, 
                              comment='#', delim_whitespace=True)
-        partial_data = column_to_datetime(partial_data) 
-        partial_data = partial_data.set_index('datetime')
+        file_data = column_to_datetime(file_data) 
+        file_data = file_data.set_index('datetime')
         
         #  Ditch unrequested data now so you don't need to hold it all in memory
-        sub_data = partial_data.loc[(partial_data.index >= starttime) &
-                                    (partial_data.index < finaltime)]
+        span_data = file_data.loc[(file_data.index >= starttime) &
+                                    (file_data.index < finaltime)]
         
-        data = SWModel_Parameter_Concatenator(data, sub_data)
+        data = SWModel_Parameter_Concatenator(data, span_data)
         
-        # if partial_data.index.has_duplicates:
-        #     partial_data = partial_data.groupby(partial_data.index).mean(skipna=True)
-        # #  !!! Need to comment this mess and clean it up
-        # #  If both the data dataframe and sub_data dataframes are populated
-        # if (len(data) > 0) and (len(sub_data) > 0):
-        #     # And if the first timestamp in the sub_data dataframe is later than the last timestamp in data dataframe
-        #     if sub_data.index[0] <= data.index[-1]:
-        #         #  Then there is an overlap
-        #         #  Find where the (earlier) data dataframe has dates later or equal to the (later) sub_data dataframe
-        #         data_indx = np.where(data.index >= sub_data.index[0])[0]
-        #         #  And where the (later) sub_data datatframe has points earlier than the (earlier) data dataframe
-        #         sub_data_indx = np.where(sub_data.index <= data.index[-1])[0]     
-        #         overlap_from_data = data.iloc[data_indx]
-        #         overlap_from_sub_data = sub_data.iloc[sub_data_indx]      
-        #         data.drop(data.iloc[data_indx].index, axis=0, inplace=True)
-        #         sub_data = sub_data.drop(labels=sub_data.iloc[sub_data_indx].index, axis='index')         
-        #         print(overlap_from_data)
-        #         print(overlap_from_sub_data)
-        #         print(overlap_from_data.index == overlap_from_sub_data.index)
-        #         overlap_from_data = overlap_from_data.reindex(index=overlap_from_sub_data.index, method='nearest')
-        #         overlap_concat = pd.concat([overlap_from_data, overlap_from_sub_data])    
-        #         temp = overlap_concat.groupby(overlap_concat.index).mean()
-        #         sub_data = pd.concat([temp, sub_data])
-        # data = pd.concat([data, sub_data])
- 
     data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2)
     data['B_mag'] = np.sqrt(data['B_r'].replace(np.nan, 0)**2 + data['B_t']**2)
     data['p_dyn'] = data['p_dyn_proton']
@@ -173,20 +148,29 @@ def SWMFOH(target, starttime, finaltime, basedir=''):
                          'vogt_swmf-oh_mars_2021.txt',
                          'vogt_swmf-oh_mars_2022.txt']
         
-    column_headers = ['year', 'month', 'day', 'hour', 'X', 'Y', 'Z', 'n_proton', 'u_r', 'u_t', 'u_n', 'B_r', 'B_t', 'B_n', 'p_thermal', 'J_r', 'J_t', 'J_n']
+    column_headers = ['year', 'month', 'day', 'hour', 
+                      'X', 'Y', 'Z', 
+                      'n_proton', 
+                      'u_r', 'u_t', 'u_n', 
+                      'B_r', 'B_t', 'B_n', 
+                      'p_thermal', 
+                      'J_r', 'J_t', 'J_n']
     
     data = pd.DataFrame(columns = column_headers + ['datetime'])
     
     for filename in filenames:
         
-        temp_data = pd.read_table(full_path + filename, \
+        file_data = pd.read_table(full_path + filename, \
                              names=column_headers, \
                              header=0, delim_whitespace=True)
-        temp_data['datetime'] = pd.to_datetime(temp_data[['year', 'month', 'day', 'hour']])
+        file_data['datetime'] = pd.to_datetime(file_data[['year', 'month', 'day', 'hour']])
+        file_data = file_data.set_index('datetime')
         
-        sub_data = temp_data.loc[(temp_data['datetime'] >= starttime) & (temp_data['datetime'] < finaltime)]
+        #  Ditch unrequested data now so you don't need to hold it all in memory
+        span_data = file_data.loc[(file_data.index >= starttime) &
+                                    (file_data.index < finaltime)]
         
-        data = SWModel_Parameter_Concatenator(data, sub_data)
+        data = SWModel_Parameter_Concatenator(data, span_data)
     
     data = data.drop(columns=['year', 'month', 'day', 'hour'])
     
@@ -221,15 +205,18 @@ def MSWIM2D(target, starttime, finaltime, basedir=''):
     
     for filename in filenames:
         
-        temp_data = pd.read_table(full_path + filename, \
+        file_data = pd.read_table(full_path + filename, \
                              names=column_headers, \
                              skiprows=16, delim_whitespace=True)
-        temp_data['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%dT%H:%M:%S')
+        file_data['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%dT%H:%M:%S')
+        file_data = file_data.set_index('datetime')
         
-        sub_data = temp_data.loc[(temp_data['datetime'] >= starttime) & (temp_data['datetime'] < finaltime)]
+        #  Ditch unrequested data now so you don't need to hold it all in memory
+        span_data = file_data.loc[(file_data.index >= starttime) &
+                                    (file_data.index < finaltime)]
         
-        data = pd.concat([data, sub_data])
-    
+        data = SWModel_Parameter_Concatenator(data, span_data)
+
     data['rho_proton'] = data['rho_proton'] * kg_per_amu  # kg / cm^3
     data['n_proton'] = data['rho_proton'] / m_p  # / cm^3
     data['u_mag'] = np.sqrt(data['u_x']**2 + data['u_y']**2 + data['u_z']**2) # km/s
@@ -363,13 +350,18 @@ def ENLIL(target, starttime, finaltime, basedir=''):
             if 'Start Date' in line:
                 file_starttime = dt.datetime.strptime(line.split(': ')[1], '%Y/%m/%d %H:%M:%S')
         
-        temp_data = pd.read_table(full_path + filename, 
+        file_data = pd.read_table(full_path + filename, 
                              names=column_headers, 
                              comment='#', delim_whitespace=True)
         
-        temp_data['datetime'] = [file_starttime + dt.timedelta(days=time) for time in temp_data['time']]
-        temp_data.set_index('datetime', inplace=True)
-        sub_data = temp_data.iloc[(temp_data.index >= starttime) & (temp_data.index < finaltime)]
+        file_data['datetime'] = [file_starttime + dt.timedelta(days=time) for time in temp_data['time']]
+        file_data = file_data.set_index('datetime')
+        
+        #  Ditch unrequested data now so you don't need to hold it all in memory
+        span_data = file_data.loc[(file_data.index >= starttime) &
+                                    (file_data.index < finaltime)]
+        
+        data = SWModel_Parameter_Concatenator(data, span_data)
         
         #  !!! Need to comment this mess and clean it up
         if len(data) > 0:
