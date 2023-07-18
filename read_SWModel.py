@@ -84,7 +84,7 @@ def Tao(target, starttime, finaltime, basedir=''):
         else:
             column_headers = ['iyear', 'imonth', 'iday', 'stime',
                               'n_proton', 'T_proton', 'u_r', 'u_t',
-                              'B_t', 'p_dyn',
+                              'B_t', 'p_dyn_proton',
                               'angle_EST', 'data_quality']
             def column_to_datetime(df):
                 df['datetime'] = [dt.datetime(row['iyear'], 
@@ -109,6 +109,10 @@ def Tao(target, starttime, finaltime, basedir=''):
         
     data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2)
     data['B_mag'] = np.sqrt(data['B_r'].replace(np.nan, 0)**2 + data['B_t']**2)
+    
+    #  If the pressure isn't calculated in the file, do it yourself
+    if (data['p_dyn_proton'] == 0.0).all():
+        data['p_dyn_proton'] = data['n_proton'] * m_p * (1e6) * data['u_mag']**2 * (1e3)**2 * (1e9)
     data['p_dyn'] = data['p_dyn_proton']
     data['n_tot'] = data['n_proton']
     
