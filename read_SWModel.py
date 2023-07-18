@@ -12,6 +12,7 @@ import pandas as pd
 import numpy as np
 import datetime as dt
 import copy
+import logging
 
 from pathlib import Path
 
@@ -32,12 +33,12 @@ def Tao(target, starttime, finaltime, basedir=''):
     fullpath = Path(basedir) / 'models' / 'tao' / target
     
     match target:
-        case 'mars':
-            return(None)
-        case 'jupiter':
-            return(None)
-        case 'saturn':
-            return(None)
+        # case 'mars':
+        #     return(None)
+        # case 'jupiter':
+        #     return(None)
+        # case 'saturn':
+        #     return(None)
         case 'voyager1':
             filenames = ['swmhd_tao_voyager1_1978.txt',
                          'swmhd_tao_voyager1_1979.txt']    
@@ -45,8 +46,8 @@ def Tao(target, starttime, finaltime, basedir=''):
             filenames = ['swmhd_tao_voyager2_1978.txt',
                          'swmhd_tao_voyager2_1979.txt',
                          'swmhd_tao_voyager2_1980.txt']
-        case 'galileo':
-            return(None)
+        # case 'galileo':
+        #     return(None)
         case 'ulysses':
             filenames = ['swmhd_tao_ulysses_1991.txt',
                          'swmhd_tao_ulysses_1992.txt',
@@ -59,7 +60,11 @@ def Tao(target, starttime, finaltime, basedir=''):
         case 'juno':
             filenames = ['fromamda_tao_juno_2015.txt',
                          'fromamda_tao_juno_2016.txt']
-            
+        case _:
+            logging.warning('This version of the Tao SWMHD reader'
+                            'does not support ' + target + ' observations.')
+            return(default_df)
+        
     #  This should put files in chronological order, useful for checking overalaps in the data
     filenames.sort()
     
@@ -133,10 +138,10 @@ def SWMFOH(target, starttime, finaltime, basedir=''):
             filenames = ['vogt_swmf-oh_juno_2014.txt', 
                          'vogt_swmf-oh_juno_2015.txt', 
                          'vogt_swmf-oh_juno_2016.txt']
-        case 'galileo':
-            filenames = []
-        case 'cassini':
-            filenames = []
+        # case 'galileo':
+        #     filenames = []
+        # case 'cassini':
+        #     filenames = []
         case 'mars':
             filenames = ['vogt_swmf-oh_mars_2014.txt', 
                          'vogt_swmf-oh_mars_2015.txt', 
@@ -147,6 +152,10 @@ def SWMFOH(target, starttime, finaltime, basedir=''):
                          'vogt_swmf-oh_mars_2020.txt',
                          'vogt_swmf-oh_mars_2021.txt',
                          'vogt_swmf-oh_mars_2022.txt']
+        case _:
+            logging.warning(['This version of the SWMF-OH reader',
+                             ' does not support ' + target + ' observations.'])
+            return(default_df)
         
     column_headers = ['year', 'month', 'day', 'hour', 
                       'X', 'Y', 'Z', 
@@ -156,8 +165,7 @@ def SWMFOH(target, starttime, finaltime, basedir=''):
                       'p_thermal', 
                       'J_r', 'J_t', 'J_n']
     
-    data = pd.DataFrame(columns = column_headers + ['datetime'])
-    
+    data = default_df
     for filename in filenames:
         
         file_data = pd.read_table(full_path + filename, \
@@ -194,15 +202,18 @@ def MSWIM2D(target, starttime, finaltime, basedir=''):
         case 'juno':
             filenames = ['umich_mswim2d_juno_2015.txt',
                          'umich_mswim2d_juno_2016.txt']
-        case 'galileo':
-            filenames = []
-        case 'cassini':
-            filenames = []
+        # case 'galileo':
+        #     filenames = []
+        # case 'cassini':
+        #     filenames = []
+        case _:
+            logging.warning('This version of the MSWIM2D reader '
+                            'does not support ' + target + ' observations.')
+            return(default_df)
         
     column_headers = ['datetime', 'hour', 'r', 'phi', 'rho_proton', 'u_x', 'u_y', 'u_z', 'B_x', 'B_y', 'B_z', 'T_i']
     
-    data = pd.DataFrame(columns = column_headers)
-    
+    data = default_df
     for filename in filenames:
         
         file_data = pd.read_table(full_path + filename, \
@@ -236,30 +247,29 @@ def HUXt(target, starttime, finaltime, basedir=''):
     match target.lower():
         case 'jupiter':
             filenames = ['Jupiter_2016_Owens_HuxT.csv', 'Jupiter_2020_Owens_HuxT.csv']
-        case 'juno':
-            filenames = []
-        case 'galileo':
-            filenames = []
-        case 'cassini':
-            filenames = []
+        case _:
+            logging.warning('This version of the HUXt reader'
+                            ' does not support ' + target + ' observations.')
+            return(default_df)
     
     #  r [R_S], lon [radians], Umag [km/s], 
     column_headers = ['datetime', 'r', 'lon', 'u_mag', 'B_pol']
     
-    data = pd.DataFrame(columns = column_headers)
-    
+    data = default_df  
     for filename in filenames:
         
-        temp_data = pd.read_csv(full_path + filename, 
+        file_data = pd.read_csv(full_path + filename, 
                              names=column_headers, 
                              header=0)
-        temp_data['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
+        file_data['datetime'] = pd.to_datetime(file_data['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
+        file_data = file_data.set_index('datetime')
         
-        sub_data = temp_data.loc[(temp_data['datetime'] >= starttime) & (temp_data['datetime'] < finaltime)]
+        #  Ditch unrequested data now so you don't need to hold it all in memory
+        span_data = file_data.loc[(file_data.index >= starttime) &
+                                    (file_data.index < finaltime)]
         
-        data = pd.concat([data, sub_data])
+        data = SWModel_Parameter_Concatenator(data, span_data)
     
-    data = data.set_index('datetime')
     return(data)
 
 def Heliocast(target, starttime, finaltime, data_path=''):
@@ -324,10 +334,14 @@ def ENLIL(target, starttime, finaltime, basedir=''):
         case 'juno':
             filenames = ['ccmc_enlil_juno_20160509.txt',
                          'ccmc_enlil_juno_20160606.txt']
-        case 'galileo':
-            filenames = []
-        case 'cassini':
-            filenames = []
+        # case 'galileo':
+        #     filenames = []
+        # case 'cassini':
+        #     filenames = []
+        case _:
+            logging.warning('This version of the ENLIL reader'
+                            ' does not support ' + target + ' observations.')
+            return(default_df)
         
     #  NB switched labels from lon/lat to t/n-- should be the same?
     column_headers = ['time', 'R', 'Lat', 'Lon', 
