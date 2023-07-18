@@ -59,6 +59,9 @@ def Tao(target, starttime, finaltime, basedir=''):
         case 'juno':
             filenames = ['fromamda_tao_juno_2015.txt',
                          'fromamda_tao_juno_2016.txt']
+            
+    #  This should put files in chronological order, useful for checking overalaps in the data
+    filenames.sort()
     
     data = default_df
     
@@ -90,36 +93,39 @@ def Tao(target, starttime, finaltime, basedir=''):
         partial_data = pd.read_table(fullpath / filename, 
                              names=column_headers, 
                              comment='#', delim_whitespace=True)
-        partial_data = column_to_datetime(partial_data)
-        
+        partial_data = column_to_datetime(partial_data) 
         partial_data = partial_data.set_index('datetime')
+        
         #  Ditch unrequested data now so you don't need to hold it all in memory
         sub_data = partial_data.loc[(partial_data.index >= starttime) &
                                     (partial_data.index < finaltime)]
         
-        #  !!! Need to comment this mess and clean it up
-        if len(data) > 0:
-            if sub_data.index[0] <= data.index[-1]:
-                data_indx = np.where(data.index >= sub_data.index[0])[0]
-                sub_data_indx = np.where(sub_data.index <= data.index[-1])[0]
-                
-                overlap_from_data = data.iloc[data_indx]
-                overlap_from_sub_data = sub_data.iloc[sub_data_indx]
-                
-                data.drop(data.iloc[data_indx].index, axis=0, inplace=True)
-                sub_data = sub_data.drop(labels=sub_data.iloc[sub_data_indx].index, axis='index')
-                
-                print(overlap_from_data)
-                print(overlap_from_sub_data)
-                print(overlap_from_data.index == overlap_from_sub_data.index)
-                overlap_from_data = overlap_from_data.reindex(index=overlap_from_sub_data.index, method='nearest')
-                overlap_concat = pd.concat([overlap_from_data, overlap_from_sub_data])
-                
-                temp = overlap_concat.groupby(overlap_concat.index).mean()
-                
-                sub_data = pd.concat([temp, sub_data])
-
-        data = pd.concat([data, sub_data])
+        data = SWModel_Parameter_Concatenator(data, sub_data)
+        
+        # if partial_data.index.has_duplicates:
+        #     partial_data = partial_data.groupby(partial_data.index).mean(skipna=True)
+        # #  !!! Need to comment this mess and clean it up
+        # #  If both the data dataframe and sub_data dataframes are populated
+        # if (len(data) > 0) and (len(sub_data) > 0):
+        #     # And if the first timestamp in the sub_data dataframe is later than the last timestamp in data dataframe
+        #     if sub_data.index[0] <= data.index[-1]:
+        #         #  Then there is an overlap
+        #         #  Find where the (earlier) data dataframe has dates later or equal to the (later) sub_data dataframe
+        #         data_indx = np.where(data.index >= sub_data.index[0])[0]
+        #         #  And where the (later) sub_data datatframe has points earlier than the (earlier) data dataframe
+        #         sub_data_indx = np.where(sub_data.index <= data.index[-1])[0]     
+        #         overlap_from_data = data.iloc[data_indx]
+        #         overlap_from_sub_data = sub_data.iloc[sub_data_indx]      
+        #         data.drop(data.iloc[data_indx].index, axis=0, inplace=True)
+        #         sub_data = sub_data.drop(labels=sub_data.iloc[sub_data_indx].index, axis='index')         
+        #         print(overlap_from_data)
+        #         print(overlap_from_sub_data)
+        #         print(overlap_from_data.index == overlap_from_sub_data.index)
+        #         overlap_from_data = overlap_from_data.reindex(index=overlap_from_sub_data.index, method='nearest')
+        #         overlap_concat = pd.concat([overlap_from_data, overlap_from_sub_data])    
+        #         temp = overlap_concat.groupby(overlap_concat.index).mean()
+        #         sub_data = pd.concat([temp, sub_data])
+        # data = pd.concat([data, sub_data])
  
     data['u_mag'] = np.sqrt(data['u_r']**2 + data['u_t']**2)
     data['B_mag'] = np.sqrt(data['B_r'].replace(np.nan, 0)**2 + data['B_t']**2)
@@ -180,7 +186,7 @@ def SWMFOH(target, starttime, finaltime, basedir=''):
         
         sub_data = temp_data.loc[(temp_data['datetime'] >= starttime) & (temp_data['datetime'] < finaltime)]
         
-        data = pd.concat([data, sub_data])
+        data = SWModel_Parameter_Concatenator(data, sub_data)
     
     data = data.drop(columns=['year', 'month', 'day', 'hour'])
     
@@ -414,3 +420,47 @@ def choose(model, target, starttime, stoptime, basedir=''):
             result = None
             raise Exception("Model '" + model.lower() + "' is not currently supported.") 
     return(result)
+
+def SWModel_Parameter_Concatenator(running_dataframe, current_dataframe):
+    
+    #  All groupby().mean() calls ignore NaNs, but it would be nice to make
+    #  this explicit
+    
+    r_df = running_dataframe
+    c_df = current_dataframe
+    
+    if r_df.index.has_duplicates:
+        r_df = r_df.groupby(r_df.index).mean()
+    if c_df.index.has_duplicates:
+        c_df = c_df.groupby(c_df.index).mean()
+    
+    #  If both the running and current dataframes are populated
+    # And if the first timestamp in current is later than the last timestamp in running
+    if (len(r_df) > 0) and (len(c_df) > 0) and (c_df.index[0] <= r_df.index[-1]):
+        #  Then there is an overlap
+        
+        #  Find where the running dataframe has dates later or equal to the first in the current dataframe
+        #  And where the current dataframe has points earlier than the last in the running data dataframe
+        r_geq_c = r_df[r_df.index >= c_df.index[0]]
+        c_leq_r = c_df[c_df.index <= r_df.index[-1]]
+        
+        #  Drop the overlap region from the running and current dataframes
+        r_df = r_df.drop(r_geq_c.index, axis='index')
+        c_df = c_df.drop(c_leq_r.index, axis='index')
+        
+        #  Reindex the overlapping running dataframe to the overlapping current
+        #  This follows a general attempt to prefer more recent data
+        r_geq_c = r_geq_c.reindex(index=c_leq_r.index, method='nearest')
+        
+        #  Concatenate the overlapping dataframes, which now have identical indices,
+        #  and average them together by index
+        overlap_df = pd.concat([r_geq_c, c_leq_r])
+        overlap_df = overlap_df.groupby(overlap_df.index).mean()
+        
+        output_df = pd.concat([r_df, overlap_df, c_df])
+    
+    else:
+        output_df = pd.concat([r_df, c_df])        
+            
+
+    return(output_df)
