@@ -29,6 +29,9 @@ model_symbols = {'Tao'    : 'v',
                 'MSWIM2D': 'd',
                 'ENLIL'  : 'h'}
 
+r_range = np.array((4.9, 5.5))  #  [4.0, 6.4]
+lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
+
 # =============================================================================
 # Non-plotting analysis routines
 # =============================================================================
@@ -69,6 +72,9 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
     import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
     
+    reference_frame = 'SUN_INERTIAL'
+    observer = 'SUN'
+    
     #  Check which parameter was specified and set up some plotting keywords
     match parameter:
         case ('u_mag' | 'flow speed'):
@@ -100,21 +106,25 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
     #  Load spacecraft data
     spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
     spacecraft.read_processeddata(starttime, stoptime, resolution=99)
-    
+    spacecraft.find_state(reference_frame, observer)
+    spacecraft.find_subset(coord1_range=np.array(r_range)*spacecraft.au_to_km, 
+                           coord3_range=np.array(lat_range)*np.pi/180., 
+                           transform='reclat')
+
     #  Read models
     models = dict.fromkeys(model_names, None)
     for model in models.keys():
         models[model] = read_SWModel.choose(model, spacecraft_name, 
                                        starttime, stoptime)
     #!!! Only because HUXt doesn't have Juno yet
-    models['HUXt'] = read_SWModel.choose('HUXt', 'Jupiter', starttime, stoptime)
+    #models['HUXt'] = read_SWModel.choose('HUXt', 'Jupiter', starttime, stoptime)
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-        fig, axs = plt.subplots(figsize=(8,6), nrows=len(models), sharex=True)
+        fig, axs = plt.subplots(figsize=(8,6), nrows=len(models), sharex=True, squeeze=False)
         plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.0)
         
-        for indx, ax in enumerate(axs):
-                
+        for indx, ax in enumerate(axs.flatten()):
+            
             ax.plot(spacecraft.data.index, 
                     spacecraft.data[tag],
                     color='xkcd:blue grey', alpha=0.6, linewidth=1.5,
@@ -129,7 +139,7 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
                     ax.set(yticks=yticks[1:])
             #ax.grid(linestyle='-', linewidth=2, alpha=0.1, color='xkcd:black')
             
-        for ax, (model, model_info) in zip(axs, models.items()):
+        for ax, (model, model_info) in zip(axs.flatten(), models.items()):
             if tag in model_info.columns: 
                 ax.plot(model_info.index, model_info[tag], 
                         color=model_colors[model], label=model, linewidth=2)
@@ -147,10 +157,14 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
         fig.text(0.5, 0.025, 'Day of Year {:.0f}'.format(starttime.year), ha='center', va='center')
         fig.text(0.025, 0.5, ylabel, ha='center', va='center', rotation='vertical')
         
-        axs[0].set_xlim((starttime, stoptime))
-        axs[0].xaxis.set_major_locator(mdates.DayLocator(interval=5))
-        axs[0].xaxis.set_minor_locator(mdates.DayLocator(interval=1))
-        axs[0].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
+        tick_interval = int((stoptime - starttime).days/10.)
+        subtick_interval = int(tick_interval/5.)
+        
+        axs[0,0].set_xlim((starttime, stoptime))
+        axs[0,0].xaxis.set_major_locator(mdates.DayLocator(interval=tick_interval))
+        if subtick_interval > 0:
+            axs[0,0].xaxis.set_minor_locator(mdates.DayLocator(interval=subtick_interval))
+        axs[0,0].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
         
         # #  Trying to set up year labels, showing the year once at the start
         # #  and again every time it changes
@@ -772,13 +786,10 @@ def MI_ProofOfConcept():
     plt.show()
 
 def SWData_MI():
-    #import datetime as dt
-    #import pandas as pd
-    #import numpy as np
     import matplotlib.pyplot as plt
     import spiceypy as spice
     import matplotlib.dates as mdates
-    import scipy.signal as signal
+    import scipy
     import sys
     
     #import read_SWData
@@ -792,92 +803,101 @@ def SWData_MI():
     import generic_mutual_information_routines as mi_lib
     
     starttime = dt.datetime(2016, 5, 15)
-    stoptime = dt.datetime(2016, 6, 22)
+    stoptime = dt.datetime(2016, 6, 20)
     reference_frame = 'SUN_INERTIAL'
     observer = 'SUN'
     
     tag = 'u_mag'  #  solar wind property of interest
+    spacecraft_names = ['Juno']#, 'Ulysses']
+    model_name = 'Tao'
     
-    juno = spacecraftdata.SpacecraftData('Juno')
-    juno.read_processeddata(starttime, stoptime)
-    juno.find_state(reference_frame, observer)
+    spacecraft_dict = dict.fromkeys(spacecraft_names, None)
+    for sc_name in spacecraft_dict.keys():
+        sc_info = spacecraftdata.SpacecraftData(sc_name)
+        sc_info.read_processeddata(starttime, stoptime, resolution="60Min")
+        sc_info.find_state(reference_frame, observer)
+        sc_info.find_subset(coord1_range=r_range*sc_info.au_to_km,
+                            coord3_range=lat_range*np.pi/180.,
+                            transform='reclat')
+        spacecraft_dict[sc_name] = sc_info
+        sc_columns = sc_info.data.columns
     
-    tao_data = read_SWModel.Tao('Juno', starttime, stoptime)
-    tao_data = tao_data.reindex(juno.data.index, method='nearest')
+    model_dict = dict.fromkeys(spacecraft_names, None)
+    for sc_name in model_dict.keys():
+        model_info = read_SWModel.Tao(sc_name, starttime, stoptime)
+        model_dict[sc_name] = model_info
+        model_columns = model_info.columns
+      
+    spacecraft_data = pd.DataFrame(columns = sc_columns)
+    model_data = pd.DataFrame(columns = model_columns)   
+    for sc_name in spacecraft_dict.keys():
+        spacecraft_data = pd.concat([spacecraft_data, spacecraft_dict[sc_name].data])
+        model_data = pd.concat([model_data, model_dict[sc_name]])
+    
+    model_data = model_data.reindex(spacecraft_data.index, method='nearest')
+    
+    #return(spacecraft_data, model_data)
     
     #!!! Two options here: align then resample, or resample then align
     #  Resampling first allows the mean to occur first, and then they should
     #  be resampled to the same indices, and align shouldn't change much...
-    juno.data = juno.data.resample("5Min").mean()
-    tao_data = tao_data.resample("5Min").mean()
+    #juno.data = juno.data.resample("5Min").mean()
+    #tao_data = tao_data.resample("5Min").mean()
     
-      
-    #vogt = read_SWModel.VogtSW('Juno', starttime, stoptime)
-    #mich = read_SWModel.MSWIM2DSW('Juno', starttime, stoptime)
-    #huxt = read_SWModel.HUXt('Jupiter', starttime, stoptime)
-    
-    #minutely_index = pd.date_range(juno.data.index[0], juno.data.index[-1], freq='T')
-    
-    #juno_reindexed = juno.data.reindex(minutely_index, method='nearest')
-    #tao_reindexed = tao.reindex(minutely_index, method='nearest')
-    #vogt_reindexed = vogt.reindex(minutely_index, method='nearest')
-    #mich_reindexed = mich.reindex(minutely_index, method='nearest')
-    #huxt_reindexed = huxt.reindex(minutely_index, method='nearest')
-    
-    jr = find_RollingDerivativeZScore(juno.data, tag, 2) # !!! vvv
-    jr['smooth_ddt_'+tag+'_zscore'] = jr['smooth_ddt_'+tag+'_zscore'].where(jr['smooth_ddt_'+tag+'_zscore'] > 3, 0)
-    tr = find_RollingDerivativeZScore(tao_data, tag, 2) # !!! Rolling derivative of the 15 min resample?
+    spacecraft_data = find_RollingDerivativeZScore(spacecraft_data, tag, 2) # !!! vvv
+    spacecraft_data['smooth_ddt_'+tag+'_zscore'] = spacecraft_data['smooth_ddt_'+tag+'_zscore'].where(spacecraft_data['smooth_ddt_'+tag+'_zscore'] > 3, 0)
+    model_data = find_RollingDerivativeZScore(model_data, tag, 2) # !!! Rolling derivative of the 15 min resample?
     #tr['smooth_ddt_'+tag+'_zscore'] = tr['smooth_ddt_'+tag+'_zscore'].where(tr['smooth_ddt_'+tag+'_zscore'] > 3, 0)
     
     #timespan = dt.timedelta(days=13.5)
     #  Dataframes are indexed so that there's data every 15 minutes
     #  So timedelta can be replaced with the equivalent integer
     #  Which allows step size larger than 1
-    timespan_int = int(13.5*24*60 / 5.)
-    timestep_int = int(0.5*24*60 / 5.)
+    timespan_int = int(13.5*24*60 / 60.)
+    timestep_int = int(0.5*24*60 / 60.)
     
-    juno_windows = jr.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
-    tao_windows = tr.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
+    sc_windows = spacecraft_data.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
+    model_windows = model_data.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
     
     window_centers = list()
-    rel_mi_lists =  [[] for i in range(10)]
-    lag_lists = [[] for i in range(10)]
-    for counter, (juno_window, tao_window) in enumerate(zip(juno_windows, tao_windows)):
-        if len(juno_window) == timespan_int:
+    #rel_mi_lists =  list()
+    maxima_list = list()
+    for counter, (sc_window, model_window) in enumerate(zip(sc_windows, model_windows)):
+        if len(sc_window) == timespan_int:
         
             #with open('MI_lag_finder_output.txt', 'a') as sys.stdout:
-            juno_series = np.array(juno_window[tag]).astype(np.float64)
-            tao_series = np.array(tao_window[tag]).astype(np.float64)
+            sc_series = np.array(sc_window[tag]).astype(np.float64)
+            model_series = np.array(model_window[tag]).astype(np.float64)
             
-            mi_out = mi_lib.mi_lag_finder(juno_series, tao_series, 
-                                          temporal_resolution=5, 
+            mi_out = mi_lib.mi_lag_finder(sc_series, model_series, 
+                                          temporal_resolution=60, 
                                           max_lag=4320, min_lag=-4320, 
                                           remove_nan_rows=True, no_plot=True)
             
-            juno_series = np.array(juno_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
-            tao_series = np.array(tao_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
-            mi_out_zscore = mi_lib.mi_lag_finder(juno_series, tao_series, 
-                                                 temporal_resolution=5, 
+            sc_series = np.array(sc_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
+            model_series = np.array(model_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
+            mi_out_zscore = mi_lib.mi_lag_finder(sc_series, model_series, 
+                                                 temporal_resolution=60, 
                                                  max_lag=4320, min_lag=-4320, 
                                                  remove_nan_rows=True, no_plot=True)
             
             with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
                 plt.rcParams.update({'font.size': 10})
-                fig, axs = plt.subplots(nrows=2, ncols=2, sharex='col', width_ratios=(2,1), figsize=(8,6))
+                fig, axs = plt.subplots(nrows=2, ncols=3, sharex='col', width_ratios=(2,1,1), figsize=(8,6))
                 plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, hspace=0.0, wspace=0.25)
                 
                 #  Unmodified timeseries
-                axs[0,0].plot((juno_window.index-jr.index[0]).total_seconds()/60.,
-                              juno_window[tag], color='gray')
-                axs[0,0].plot((tao_window.index-jr.index[0]).total_seconds()/60.,
-                              tao_window[tag])
+                axs[0,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                              sc_window[tag], color='gray')
+                axs[0,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                              model_window[tag], color=model_colors[model_name])
                 axs[0,0].set(ylim=(350,550), ylabel=r'u$_{sw}$ [km/s]')
                 
                 #  Modified timeseries to highlight jumps
-                axs[1,0].plot((juno_window.index-jr.index[0]).total_seconds()/60.,
-                              juno_window['smooth_ddt_'+tag+'_zscore'], color='gray')
-                axs[1,0].plot((tao_window.index-jr.index[0]).total_seconds()/60.,
-                              tao_window['smooth_ddt_'+tag+'_zscore'])
+                axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                              sc_window['smooth_ddt_'+tag+'_zscore'], color='gray')
+                axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                              model_window['smooth_ddt_'+tag+'_zscore'], color=model_colors[model_name])
                 axs[1,0].set(xlabel='Elapsed time [min.]',
                              ylim=(-1,12), ylabel=r'$Z(\frac{d u_{sw}}{dt})$')
                 
@@ -893,15 +913,26 @@ def SWData_MI():
                 axs[1,1].plot(lags, RPS_mi, color='xkcd:light gray')
                 axs[1,1].set(xlabel='Lags [min.]',
                              ylabel='MI (nats)')
+                
+                #  Old-school cross-correlation
+                lags_cc = scipy.signal.correlation_lags(len(model_series[~np.isnan(model_series)]),
+                                                     len(sc_series[~np.isnan(sc_series)]))
+                cc = scipy.signal.correlate(model_series[~np.isnan(model_series)],
+                                            sc_series[~np.isnan(sc_series)])
+                cc /= np.max(cc)
+                axs[1,2].scatter(lags_cc, cc)
+                axs[1,2].set_xlim(-72, 72)
+                
             
-            window_centers.append(juno_window.index[int(len(juno_window)*0.5-1)])
-            norm_mi = mi - RPS_mi
+            window_centers.append(sc_window.index[int(len(sc_window)*0.5-1)])
+            norm_mi = mi / RPS_mi
+            norm_mi = np.nan_to_num(norm_mi, nan=0., posinf=0., neginf=0.)
             
-            sort_indx = np.argsort(norm_mi, axis=None)
+            #maxima = scipy.signal.find_peaks(norm_mi, height=10.)
+            maxima = scipy.signal.find_peaks(cc, height=0.6)
             
-            for indx, (rel_mi, lag) in enumerate(zip(rel_mi_lists, lag_lists)):
-                rel_mi.append(np.array(norm_mi)[sort_indx][-(indx+1)])
-                lag.append(np.array(lags)[sort_indx][-(indx+1)])
+            for m, h in zip(maxima[0], maxima[1]['peak_heights']):
+                maxima_list.append((sc_window.index[int(len(sc_window)*0.5-1)], lags_cc[m], h))
             
             #plt.tight_layout()
             #figurename = 'garbage'
@@ -919,7 +950,7 @@ def SWData_MI():
     #max_relative_mi = np.array(max_relative_mi)[indx]
     #max_lags = np.array(max_lags)[indx]
     
-    return(window_centers, rel_mi_lists, lag_lists)
+    #return(window_centers, rel_mi_lists, lag_lists)
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         
@@ -927,15 +958,18 @@ def SWData_MI():
         fig, ax = plt.subplots(figsize=(8,6))
         # for indx, (rel_mi, lag) in enumerate(zip(rel_mi_lists, lag_lists)):
         #     ax.plot(window_centers, [l/60. for l in lag], marker='o', markersize=6, linestyle='None')
+        x, y, c = zip(*maxima_list)
+        scatterplot = ax.scatter(x, y, s=36, marker='.', c=c, cmap='viridis', vmax=1)
+        ax.set_ylim(-72, 72)
         
-        window_centers_flattened = window_centers * 10
-        lag_flattened = [item/60. for sublist in lag_lists for item in sublist]
-        color_flattened = []
-        for i in range(10):
-            color_flattened.extend([i] * len(window_centers))
-        scatterplot = ax.scatter(window_centers_flattened, lag_flattened, s=36, marker='_', c=color_flattened, cmap='viridis')
-        ax.set(xlabel='Date', ylabel='Time Lags [hours]', ylim=[-72, 72])
-        plt.colorbar(scatterplot, label='Order of MI from Maximum (i.e., 0=Largest, 1=Second Largest, ...)')
+        # #window_centers_flattened = window_centers * 10
+        # #lag_flattened = [item/60. for sublist in lag_lists for item in sublist]
+        # #color_flattened = []
+        # #for i in range(10):
+        # #    color_flattened.extend([i] * len(window_centers))
+        # scatterplot = ax.scatter(window_centers_flattened, lag_flattened, s=36, marker='_', c=color_flattened, cmap='viridis')
+        # ax.set(xlabel='Date', ylabel='Time Lags [hours]', ylim=[-72, 72])
+        plt.colorbar(scatterplot, label='MI relative to RPS')
         plt.setp(ax.get_xticklabels(), rotation=30, horizontalalignment='right')
         fig.tight_layout()
         plt.show()
@@ -943,6 +977,254 @@ def SWData_MI():
     # plt.savefig('figures/Juno_MI_runningoffset_max_only.png', dpi=300)    
     
     return()
+
+def SWData_MI_Correlation():
+    import matplotlib.pyplot as plt
+    import spiceypy as spice
+    import matplotlib.dates as mdates
+    import scipy
+    import sys
+    
+    #import read_SWData
+    import read_SWModel
+    import spacecraftdata
+    import plot_TaylorDiagram as TD
+    
+    import sys
+    sys.path.append('/Users/mrutala/code/python/libraries/aaft/')
+    sys.path.append('/Users/mrutala/code/python/libraries/generic_MI_lag_finder/')
+    import generic_mutual_information_routines as mi_lib
+    
+    starttime = dt.datetime(2016, 5, 15)
+    stoptime = dt.datetime(2016, 6, 20)
+    reference_frame = 'SUN_INERTIAL'
+    observer = 'SUN'
+    window_in_days = 13.5
+    stepsize_in_days = 0.5
+    resolution_in_min = 60.
+    max_lag_in_days = 3.0
+    min_lag_in_days = -3.0
+    
+    
+    tag = 'u_mag'  #  solar wind property of interest
+    spacecraft_names = ['Juno']#, 'Ulysses']
+    model_name = 'Tao'
+    
+    resolution_str = '{}Min'.format(int(resolution_in_min))
+    spacecraft_dict = dict.fromkeys(spacecraft_names, None)
+    for sc_name in spacecraft_dict.keys():
+        sc_info = spacecraftdata.SpacecraftData(sc_name)
+        sc_info.read_processeddata(starttime, stoptime, resolution=resolution_str)
+        sc_info.find_state(reference_frame, observer)
+        sc_info.find_subset(coord1_range=r_range*sc_info.au_to_km,
+                            coord3_range=lat_range*np.pi/180.,
+                            transform='reclat')
+        spacecraft_dict[sc_name] = sc_info
+        sc_columns = sc_info.data.columns
+    
+    model_dict = dict.fromkeys(spacecraft_names, None)
+    for sc_name in model_dict.keys():
+        model_info = read_SWModel.Tao(sc_name, starttime, stoptime)
+        model_dict[sc_name] = model_info
+        model_columns = model_info.columns
+      
+    spacecraft_data = pd.DataFrame(columns = sc_columns)
+    model_data = pd.DataFrame(columns = model_columns)   
+    for sc_name in spacecraft_dict.keys():
+        spacecraft_data = pd.concat([spacecraft_data, spacecraft_dict[sc_name].data])
+        model_data = pd.concat([model_data, model_dict[sc_name]])
+    
+    model_data = model_data.reindex(spacecraft_data.index, method='nearest')
+    
+    spacecraft_data = find_RollingDerivativeZScore(spacecraft_data, tag, 2) # !!! vvv
+    spacecraft_data['smooth_ddt_'+tag+'_zscore'] = spacecraft_data['smooth_ddt_'+tag+'_zscore'].where(spacecraft_data['smooth_ddt_'+tag+'_zscore'] > 3, 0)
+    model_data = find_RollingDerivativeZScore(model_data, tag, 2) # !!! Rolling derivative of the 15 min resample?
+    model_data['smooth_ddt_'+tag+'_zscore'] = model_data['smooth_ddt_'+tag+'_zscore'].where(model_data['smooth_ddt_'+tag+'_zscore'] > 3, 0)
+    
+    #timespan = dt.timedelta(days=13.5)
+    #  Dataframes are indexed so that there's data every 15 minutes
+    #  So timedelta can be replaced with the equivalent integer
+    #  Which allows step size larger than 1
+    timespan_int = int(window_in_days*24*60 / resolution_in_min)
+    timestep_int = int(stepsize_in_days*24*60 / resolution_in_min)
+    max_lag_in_min = max_lag_in_days*24*60.
+    min_lag_in_min = min_lag_in_days*24*60.
+    
+    sc_windows = spacecraft_data.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
+    model_windows = model_data.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
+    
+    window_centers = list()
+    maxima_list = list()
+    for counter, (sc_window, model_window) in enumerate(zip(sc_windows, model_windows)):
+        if len(sc_window) == timespan_int:
+            
+            sc_series = np.array(sc_window[tag]).astype(np.float64)
+            model_series = np.array(model_window[tag]).astype(np.float64)
+            
+            mi_out = mi_lib.mi_lag_finder(sc_series, model_series, 
+                                          temporal_resolution=resolution_in_min, 
+                                          max_lag=max_lag_in_min, 
+                                          min_lag=min_lag_in_min, 
+                                          remove_nan_rows=True, no_plot=True)
+            
+            sc_z_series = np.array(sc_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
+            model_z_series = np.array(model_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
+            mi_out_z = mi_lib.mi_lag_finder(sc_z_series, model_z_series, 
+                                            temporal_resolution=resolution_in_min, 
+                                            max_lag=max_lag_in_min,
+                                            min_lag=min_lag_in_min, 
+                                            remove_nan_rows=True, no_plot=True)
+            
+            #  Old-school cross-correlation
+            def crosscorrelate_withnan(a, b, temporal_resolution=1, min_lag=1, max_lag=1):
+                #  Assume temporal_resolution, min_lag, max_lag are in min.
+                a, b = np.array(a), np.array(b)
+                a_indx = ~np.isnan(a)
+                a = a[a_indx]
+                b = b[a_indx]
+                b_indx = ~np.isnan(b)
+                a = a[b_indx]
+                b = b[b_indx]
+                
+                na, nb = len(a), len(b)
+                
+                corr = scipy.signal.correlate(a, b)
+                corr /= np.max(corr)
+                lags = scipy.signal.correlation_lags(na, nb)*temporal_resolution
+                
+                indx = np.where(np.logical_and(lags > min_lag, lags < max_lag))
+                corr = corr[indx]
+                lags = lags[indx]
+                
+                return(lags, corr)
+                
+            cc_out = crosscorrelate_withnan(sc_series, model_series,
+                                            temporal_resolution = resolution_in_min,
+                                            max_lag=max_lag_in_min,
+                                            min_lag=min_lag_in_min)
+            cc_out_z = crosscorrelate_withnan(sc_z_series, model_z_series,
+                                              temporal_resolution = resolution_in_min,
+                                              max_lag=max_lag_in_min,
+                                              min_lag=min_lag_in_min)
+            
+            with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+                plt.rcParams.update({'font.size': 10})
+                fig, axs = plt.subplots(nrows=2, ncols=3, sharex='col', width_ratios=(3,1,1), figsize=(8,6))
+                plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, hspace=0.0, wspace=0.325)
+                
+                #  Unmodified timeseries
+                axs[0,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                              sc_window[tag], color='gray')
+                axs[0,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                              model_window[tag], color=model_colors[model_name])
+                axs[0,0].set(ylim=(350,550), ylabel=r'u$_{sw}$ [km/s]')
+                
+                #  Modified timeseries to highlight jumps
+                axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                              sc_window['smooth_ddt_'+tag+'_zscore'], color='gray')
+                axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                              model_window['smooth_ddt_'+tag+'_zscore'], color=model_colors[model_name])
+                axs[1,0].set(xlabel='Elapsed time [min.]',
+                             ylim=(-1,12), ylabel=r'$Z(\frac{d u_{sw}}{dt})$')
+                
+                #  Unmodified timeseries MI
+                lags, mi, RPS_mi, x_sq, x_pw = mi_out
+                axs[0,1].plot(lags, mi, marker='x', linestyle='None', color='black')
+                axs[0,1].plot(lags, RPS_mi, color='xkcd:light gray')
+                axs[0,1].set(ylabel='MI (nats)')
+                
+                #  Modified timeseries MI
+                lags, mi, RPS_mi, x_sq, x_pw = mi_out_z
+                axs[1,1].plot(lags, mi, marker='x', linestyle='None', color='black')
+                axs[1,1].plot(lags, RPS_mi, color='xkcd:light gray')
+                axs[1,1].set(xlabel='Lags [min.]',
+                             ylabel='MI [nats]')
+                
+                
+                axs[0,2].scatter(cc_out[0], cc_out[1], s=24)
+                axs[0,2].set(xlabel='Lags [min].', 
+                             ylabel='Cross Correlation')
+                
+                axs[1,2].scatter(cc_out_z[0], cc_out_z[1], s=24)
+                axs[1,2].set(xlabel='Lags [min].', 
+                             ylabel='Cross Correlation')
+            
+            window_centers.append(sc_window.index[int(len(sc_window)*0.5-1)])
+            norm_mi = mi / RPS_mi
+            norm_mi = np.nan_to_num(norm_mi, nan=0., posinf=0., neginf=0.)
+            
+            #maxima = scipy.signal.find_peaks(norm_mi, height=10.)
+            maxima = scipy.signal.find_peaks(cc_out_z[1], height=0.5)
+            
+            for m, h in zip(maxima[0], maxima[1]['peak_heights']):
+                maxima_list.append((sc_window.index[int(len(sc_window)*0.5-1)], cc_out_z[0][m], h))
+            
+            #plt.tight_layout()
+            #figurename = 'garbage'
+            #for suffix in ['.png', '.pdf']:
+            #    plt.savefig('figures/' + figurename + suffix)
+            # plt.savefig('figures/Juno_MI_frames/frame_' + f'{counter:03}' + '.png')
+            plt.show()
+            print(counter)
+    
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        
+        #window_centers_min = [(wc - jr.index[0]).total_seconds()/60. for wc in window_centers]
+        fig, axs = plt.subplots(nrows=2, figsize=(8,6), sharex=True)
+        
+        x, y, c = zip(*maxima_list)
+        for ax in axs:
+            scatterplot = ax.scatter(x, y, s=36, marker='.', c=c, cmap='viridis', vmax=1)
+            ax.set_ylim(-72*60., 72*60.)
+            ax.yaxis.set_major_formatter(lambda x, pos: str(x/60.))
+            ax.set_yticks(np.arange(-72, 72+24, 24) * 60.)
+            #ax.set_ylabel('Best-fit Temporal Shift (from cross correlation) [hr]')
+            ax.set_xlabel('Date of Juno Cruise')
+            ax.set_xlim(starttime, stoptime)
+        
+        # =============================================================================
+        # F10.4 Radio flux from the sun
+        # =============================================================================
+        column_headers = ('date', 'observed_flux', 'adjusted_flux',)
+        solar_radio_flux = pd.read_csv('/Users/mrutala/Data/Sun/DRAO/penticton_radio_flux.csv',
+                                       header = 0, names = column_headers)
+        solar_radio_flux['date'] = [dt.datetime.strptime(d, '%Y-%m-%dT%H:%M:%S')
+                                    for d in solar_radio_flux['date']]
+        axs_0_y = axs[0].twinx()
+        axs_0_y.plot(solar_radio_flux['date'], solar_radio_flux['adjusted_flux'], alpha=0.5)
+        axs_0_y.set_ylim(50, 300)
+        axs_0_y.set_ylabel('F10.7 Radio Flux [SFU]')
+        
+        # =============================================================================
+        # Spacecraft-Sun-Earth Angle
+        # =============================================================================
+        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/lsk/latest_leapseconds.tls')
+        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-1.bsp')
+        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-2.bsp')
+        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/pck/pck00011.tpc')
+        spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
+        spice.furnsh(spacecraft_dict['Juno'].SPICE_METAKERNEL)
+        
+        ets = spice.datetime2et(np.arange(starttime, stoptime, dt.timedelta(days=1)).astype(datetime))
+        ang = [np.abs(spice.trgsep(et, 'Juno', 'POINT', None, 'Earth', 'POINT', None, 'SUN', 'None')*180/np.pi) for et in ets]
+        spice.kclear()
+        
+        axs_1_y = axs[1].twinx()
+        axs_1_y.plot(x, ang, alpha=0.5)
+        axs_1_y.set_ylim(0, 180)
+        axs_1_y.set_ylabel('Solar Lon. Between Earth and Target')
+        
+        plt.text(0.02, 0.5, 'Best-fit Temporal Shift (from cross correlation) [hr]', 
+                 fontsize=14, transform=plt.gcf().transFigure, rotation=90)
+        plt.colorbar(scatterplot, label='Normalized Cross Correlation', ax=axs.ravel().tolist())
+        plt.setp(ax.get_xticklabels(), rotation=30, horizontalalignment='right')
+        
+        #fig.tight_layout()
+        plt.show()
+
+    # plt.savefig('figures/Juno_MI_runningoffset_max_only.png', dpi=300)    
+    
+    return(cc_out_z)
 
 def QQplot_datacomparison():
     import matplotlib.pyplot as plt
