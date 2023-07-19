@@ -279,59 +279,62 @@ def Ulysses(starttime, stoptime, basedir='', resolution=None):
         filelist = [filepath_ions + filename for filename in filenames_in_range if os.path.exists(filepath_ions + filename)]
         filelist.sort()
         
+        
         #  Read all the data into one dataframe
         input_columns = ['iyr', 'idoy', 'ihr', 'imin', 'isec',
                          'rau', 'hlat', 'hlong', 
                          'n_proton', 'n_alpha', 
                          'T_large', 'T_small', 
                          'u_r', 'u_t', 'u_n']
-        
-        #  Make a generator to read csv data and concatenate into a single dataframe
-        data_generator = (pd.read_csv(f, delim_whitespace=True, header=0, names=input_columns) 
-                                     for f in filelist)
-        spacecraft_data = pd.concat(data_generator, ignore_index=True)
-        
-        
-        datetime_generator = ('{:02n}-{:03n}T{:02n}:{:02n}:{:02n}'
-                              .format(*row[['iyr', 'idoy', 'ihr', 'imin', 'isec']])
-                              for indx, row in spacecraft_data.iterrows())
+        if len(filelist) > 0:
+            #  Make a generator to read csv data and concatenate into a single dataframe
+            data_generator = (pd.read_csv(f, delim_whitespace=True, header=0, names=input_columns) 
+                                         for f in filelist)
+            spacecraft_data = pd.concat(data_generator, ignore_index=True)
             
-        spacecraft_data.index = [dt.datetime.strptime(
-                                 gen, '%y-%jT%H:%M:%S') 
-                                 for gen in datetime_generator]
-        
-        spacecraft_data = spacecraft_data.drop(['iyr', 'idoy', 'ihr', 'imin', 'isec'], axis=1)
-        
-        spacecraft_data['u_mag'] = np.sqrt(np.sum(spacecraft_data[['u_r', 'u_t', 'u_n']]**2., axis=1))
-        #spacecraft_data['rss'] = np.sqrt(spacecraft_data.u_r**2 + spacecraft_data.u_t**2 + spacecraft_data.u_n**2)
-        
-        
-        defaultunits_to_nPa = ((1.0 * u.M_p / u.cm**3) * (u.km**2 / u.s**2)).to(u.nPa).value
-        
-        spacecraft_data['p_dyn_proton'] = spacecraft_data['n_proton'] * spacecraft_data['u_mag']**2. * defaultunits_to_nPa
-        
-        spacecraft_data['p_dyn_alpha'] = 4. * spacecraft_data['n_alpha'] * spacecraft_data['u_mag']**2. * defaultunits_to_nPa
-        
-        spacecraft_data['p_dyn'] = spacecraft_data['p_dyn_proton'] #  !!!
-        spacecraft_data['n_tot'] = spacecraft_data['n_proton']
-        #  Within selected time range
-        time_index = np.where((spacecraft_data.index >= starttime) 
-                      & (spacecraft_data.index < stoptime))
-        spacecraft_data = spacecraft_data.iloc[time_index]
-        
-        #  Check for duplicates in the datetime index
-        spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
-        
-        #  Find the time between the nth observation and the n+1th
-        spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
-                                      spacecraft_data.index.to_series()).dt.total_seconds()
-        
-        #output_columns = ['rau', 'hlat', 'hlong', 'n_proton', 'n_alpha', 'T_large', 'T_small', 'u_r', 'u_t', 'u_n', 'p_dyn_proton', 'p_dyn_alpha']
-        #output_columns_units = ['AU', 'deg', 'deg', 'cm^{-3}', 'cm^{-3}', 'K', 'K', 'km/s', 'km/s', 'km/s', 'nPa', 'nPa']
-        #spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
-        
-        #output_columns_eqns = ['', '', '', '', '', '', '', '', '', '', '0.5*n_proton*u_mag**2', '0.5*n_alpha*u_mag**2']
-        #spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
+            
+            datetime_generator = ('{:02n}-{:03n}T{:02n}:{:02n}:{:02n}'
+                                  .format(*row[['iyr', 'idoy', 'ihr', 'imin', 'isec']])
+                                  for indx, row in spacecraft_data.iterrows())
+                
+            spacecraft_data.index = [dt.datetime.strptime(
+                                     gen, '%y-%jT%H:%M:%S') 
+                                     for gen in datetime_generator]
+            
+            spacecraft_data = spacecraft_data.drop(['iyr', 'idoy', 'ihr', 'imin', 'isec'], axis=1)
+            
+            spacecraft_data['u_mag'] = np.sqrt(np.sum(spacecraft_data[['u_r', 'u_t', 'u_n']]**2., axis=1))
+            #spacecraft_data['rss'] = np.sqrt(spacecraft_data.u_r**2 + spacecraft_data.u_t**2 + spacecraft_data.u_n**2)
+            
+            
+            defaultunits_to_nPa = ((1.0 * u.M_p / u.cm**3) * (u.km**2 / u.s**2)).to(u.nPa).value
+            
+            spacecraft_data['p_dyn_proton'] = spacecraft_data['n_proton'] * spacecraft_data['u_mag']**2. * defaultunits_to_nPa
+            
+            spacecraft_data['p_dyn_alpha'] = 4. * spacecraft_data['n_alpha'] * spacecraft_data['u_mag']**2. * defaultunits_to_nPa
+            
+            spacecraft_data['p_dyn'] = spacecraft_data['p_dyn_proton'] #  !!!
+            spacecraft_data['n_tot'] = spacecraft_data['n_proton']
+            #  Within selected time range
+            time_index = np.where((spacecraft_data.index >= starttime) 
+                          & (spacecraft_data.index < stoptime))
+            spacecraft_data = spacecraft_data.iloc[time_index]
+            
+            #  Check for duplicates in the datetime index
+            spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
+            
+            #  Find the time between the nth observation and the n+1th
+            spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
+                                          spacecraft_data.index.to_series()).dt.total_seconds()
+            
+            #output_columns = ['rau', 'hlat', 'hlong', 'n_proton', 'n_alpha', 'T_large', 'T_small', 'u_r', 'u_t', 'u_n', 'p_dyn_proton', 'p_dyn_alpha']
+            #output_columns_units = ['AU', 'deg', 'deg', 'cm^{-3}', 'cm^{-3}', 'K', 'K', 'km/s', 'km/s', 'km/s', 'nPa', 'nPa']
+            #spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+            
+            #output_columns_eqns = ['', '', '', '', '', '', '', '', '', '', '0.5*n_proton*u_mag**2', '0.5*n_alpha*u_mag**2']
+            #spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
+        else:
+            spacecraft_data = pd.DataFrame(columns = input_columns)
         
         return(spacecraft_data)
     
@@ -348,42 +351,44 @@ def Ulysses(starttime, stoptime, basedir='', resolution=None):
         input_columns = ['iyr', 'iddoy', 'idhr',  #  decimal doy, decimal hour
                          'B_r', 'B_t', 'B_n', 'B_mag',  
                          'nBVectors']
-        
-        #  Make a generator to read csv data and concatenate into a single dataframe
-        data_generator = (pd.read_csv(f, delim_whitespace=True, header=0, names=input_columns) 
-                                     for f in filelist)
-        spacecraft_data = pd.concat(data_generator, ignore_index=True)
-        
-        spacecraft_data['idoy'] = [int(iddoy) for iddoy in spacecraft_data['iddoy']]
-        spacecraft_data['ihr'] = [int(idhr) for idhr in spacecraft_data['idhr']]
-        spacecraft_data['imin'] = [int((idhr % 1) * 60.) for idhr in spacecraft_data['idhr']]
-        spacecraft_data['isec'] = [int((((idhr % 1) * 60.) % 1) * 60.) for idhr in spacecraft_data['idhr']]
-        datetime_generator = ('{:02n}-{:03n}T{:02n}:{:02n}:{:02n}'
-                              .format(*row[['iyr', 'idoy', 'ihr', 'imin', 'isec']])
-                              for indx, row in spacecraft_data.iterrows())
-        spacecraft_data.index = [dt.datetime.strptime(
-                                 gen, '%y-%jT%H:%M:%S') 
-                                 for gen in datetime_generator]
-        spacecraft_data = spacecraft_data.drop(['iyr', 'idoy', 'iddoy', 'ihr', 'idhr', 'imin', 'isec'], axis=1)
-        
-        #  Within selected time range
-        time_index = np.where((spacecraft_data.index >= starttime) 
-                      & (spacecraft_data.index < stoptime))
-        spacecraft_data = spacecraft_data.iloc[time_index]
-        
-        #  Check for duplicates in the datetime index
-        spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
-        
-        #  Find the time between the nth observation and the n+1th
-        spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
-                                      spacecraft_data.index.to_series()).dt.total_seconds()
-        
-        #output_columns = ['B_r', 'B_t', 'B_n', 'B_mag', 'nBVectors']
-        #output_columns_units = ['nT', 'nT', 'nT', 'nT', '#']
-        #spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
-        
-        #output_columns_eqns = ['', '', '', '', '']
-        #spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
+        if len(filelist) > 0:
+            #  Make a generator to read csv data and concatenate into a single dataframe
+            data_generator = (pd.read_csv(f, delim_whitespace=True, header=0, names=input_columns) 
+                                         for f in filelist)
+            spacecraft_data = pd.concat(data_generator, ignore_index=True)
+            
+            spacecraft_data['idoy'] = [int(iddoy) for iddoy in spacecraft_data['iddoy']]
+            spacecraft_data['ihr'] = [int(idhr) for idhr in spacecraft_data['idhr']]
+            spacecraft_data['imin'] = [int((idhr % 1) * 60.) for idhr in spacecraft_data['idhr']]
+            spacecraft_data['isec'] = [int((((idhr % 1) * 60.) % 1) * 60.) for idhr in spacecraft_data['idhr']]
+            datetime_generator = ('{:02n}-{:03n}T{:02n}:{:02n}:{:02n}'
+                                  .format(*row[['iyr', 'idoy', 'ihr', 'imin', 'isec']])
+                                  for indx, row in spacecraft_data.iterrows())
+            spacecraft_data.index = [dt.datetime.strptime(
+                                     gen, '%y-%jT%H:%M:%S') 
+                                     for gen in datetime_generator]
+            spacecraft_data = spacecraft_data.drop(['iyr', 'idoy', 'iddoy', 'ihr', 'idhr', 'imin', 'isec'], axis=1)
+            
+            #  Within selected time range
+            time_index = np.where((spacecraft_data.index >= starttime) 
+                          & (spacecraft_data.index < stoptime))
+            spacecraft_data = spacecraft_data.iloc[time_index]
+            
+            #  Check for duplicates in the datetime index
+            spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
+            
+            #  Find the time between the nth observation and the n+1th
+            spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
+                                          spacecraft_data.index.to_series()).dt.total_seconds()
+            
+            #output_columns = ['B_r', 'B_t', 'B_n', 'B_mag', 'nBVectors']
+            #output_columns_units = ['nT', 'nT', 'nT', 'nT', '#']
+            #spacecraft_data.attrs['units'] = dict(zip(output_columns, output_columns_units))
+            
+            #output_columns_eqns = ['', '', '', '', '']
+            #spacecraft_data.attrs['equations'] = dict(zip(output_columns, output_columns_eqns))
+        else:
+            spacecraft_data = pd.DataFrame(columns = input_columns)
         
         return(spacecraft_data)
     
@@ -393,14 +398,16 @@ def Ulysses(starttime, stoptime, basedir='', resolution=None):
     plasma_data = read_Ulysses_plasma(starttime, stoptime)
     mag_data = read_Ulysses_MAG(starttime, stoptime)
     
+    # !!!!! MAKE THIS A STANDALONE FUNCTION, WITH BETTER ERROR HANDLING
+    #  What if plasma_data doesn't have data? What if mag_data doesn't? Both?
     match resolution:
         case None:
             #  Do not resample
             pass
         case str():
             #  As long as the input is a string, use resample
-            plasma_data = plasma_data.resample(resolution).mean()
-            mag_data = mag_data.resample(resolution).mean()
+            if len(plasma_data) > 0: plasma_data = plasma_data.resample(resolution).mean()
+            if len(mag_data) > 0: mag_data = mag_data.resample(resolution).mean()
         case _:
             #  Resample to the largest common t_delta in either plasma or mag
             plasma_res = np.nanpercentile(plasma_data['t_delta'], resolution)
@@ -412,8 +419,8 @@ def Ulysses(starttime, stoptime, basedir='', resolution=None):
             plasma_data = plasma_data.resample('{:.0f}s'.format(resolution)).mean()
             mag_data = mag_data.resample('{:.0f}s'.format(resolution)).mean()
         
-    plasma_data.drop(['t_delta'], axis=1, inplace=True)
-    mag_data.drop(['t_delta'], axis=1, inplace=True)
+    if 't_delta' in plasma_data.columns: plasma_data.drop(['t_delta'], axis=1, inplace=True)
+    if 't_delta' in mag_data.columns: mag_data.drop(['t_delta'], axis=1, inplace=True)
     data = pd.concat([plasma_data, mag_data], axis=1)
     
     #  manually concatenate the attributes
