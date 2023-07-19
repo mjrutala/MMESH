@@ -1205,12 +1205,13 @@ def SWData_MI_Correlation():
         spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
         spice.furnsh(spacecraft_dict['Juno'].SPICE_METAKERNEL)
         
-        ets = spice.datetime2et(np.arange(starttime, stoptime, dt.timedelta(days=1)).astype(datetime))
+        ang_datetimes = np.arange(starttime, stoptime, dt.timedelta(days=1)).astype(dt.datetime)
+        ets = spice.datetime2et(ang_datetimes)
         ang = [np.abs(spice.trgsep(et, 'Juno', 'POINT', None, 'Earth', 'POINT', None, 'SUN', 'None')*180/np.pi) for et in ets]
         spice.kclear()
         
         axs_1_y = axs[1].twinx()
-        axs_1_y.plot(x, ang, alpha=0.5)
+        axs_1_y.plot(ang_datetimes, ang, alpha=0.5)
         axs_1_y.set_ylim(0, 180)
         axs_1_y.set_ylabel('Solar Lon. Between Earth and Target')
         
