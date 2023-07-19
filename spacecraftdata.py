@@ -149,18 +149,19 @@ class SpacecraftData:
         spice.furnsh(self.SPICE_METAKERNEL)
         
         datetimes_str = [time.strftime('%Y-%m-%dT%H:%M:%S.%f') for time in self.data.index]
-        ets = spice.str2et(datetimes_str)
-        sc_state, sc_lt = spice.spkezr(str(self.SPICE_ID), ets, reference_frame, 'NONE', observer)
-        sc_state_arr = np.array(sc_state)
-        sc_state_dataframe = pd.DataFrame(data=sc_state_arr, 
-                                          index=self.data.index,
-                                          columns=['x_pos', 'y_pos', 'z_pos', 'x_vel', 'y_vel', 'z_vel'])
-        sc_state_dataframe['l_time'] = sc_lt
-        if not keep_kernels: spice.kclear()
-        
-        self.data.update(sc_state_dataframe)
-        #self.data = pd.concat([self.data, sc_state_dataframe.reindex(columns=self.data.columns)], 
-        #                      axis=0)
+        if len(datetimes_str) > 0:
+            ets = spice.str2et(datetimes_str)
+            sc_state, sc_lt = spice.spkezr(str(self.SPICE_ID), ets, reference_frame, 'NONE', observer)
+            sc_state_arr = np.array(sc_state)
+            sc_state_dataframe = pd.DataFrame(data=sc_state_arr, 
+                                              index=self.data.index,
+                                              columns=['x_pos', 'y_pos', 'z_pos', 'x_vel', 'y_vel', 'z_vel'])
+            sc_state_dataframe['l_time'] = sc_lt
+            if not keep_kernels: spice.kclear()
+            
+            self.data.update(sc_state_dataframe)
+            #self.data = pd.concat([self.data, sc_state_dataframe.reindex(columns=self.data.columns)], 
+            #                      axis=0)
         
     def read_processeddata(self, starttime=None, stoptime=None, 
                            everything=False, strict=True, resolution=None):
@@ -178,32 +179,30 @@ class SpacecraftData:
                                           self.starttime, self.stoptime, 
                                            basedir=self.basedir + 'Data/',
                                            resolution=resolution)
-        
-        #  Get the temporal resolution...
-        
-        #  If self.data exists, add to it, else, make it
-        if strict:
-            try:
-                processed_data = processed_data.reindex(columns=self.data.columns)
-            except ValueError:
-                print('VALUE ERROR!')
-                print(processed_data.columns)
-                print(processed_data.index.has_duplicates)
+        if len(processed_data) > 0:
+            #  If self.data exists, add to it, else, make it
+            if strict:
+                try:
+                    processed_data = processed_data.reindex(columns=self.data.columns)
+                except ValueError:
+                    print('VALUE ERROR!')
+                    print(processed_data.columns)
+                    print(processed_data.index.has_duplicates)
+                
+            #self.data = pd.concat([self.data, processed_data], 
+            #                      axis=0)
+            #self.data = processed_data.combine_first(self.data)
+            desired_column_order = list(self.data.columns)
+            unmatched_columns = list(set(processed_data.columns) - set(self.data.columns))
+            unmatched_columns.sort()
             
-        #self.data = pd.concat([self.data, processed_data], 
-        #                      axis=0)
-        #self.data = processed_data.combine_first(self.data)
-        desired_column_order = list(self.data.columns)
-        unmatched_columns = list(set(processed_data.columns) - set(self.data.columns))
-        unmatched_columns.sort()
-        
-        self.data = self.data.combine_first(processed_data)
-        
-        #  Put the dataframe back in order
-        self.data = self.data[(desired_column_order + unmatched_columns)]
-        
-        self.data_type = 'processed'
-        #self.datetimes = processed_data.index.to_pydatetime()
+            self.data = self.data.combine_first(processed_data)
+            
+            #  Put the dataframe back in order
+            self.data = self.data[(desired_column_order + unmatched_columns)]
+            
+            self.data_type = 'processed'
+            #self.datetimes = processed_data.index.to_pydatetime()
     
     def find_subset(self, coord1_range=None, coord2_range=None, coord3_range=None, transform=None):
         import numpy as np
