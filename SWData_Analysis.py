@@ -978,39 +978,52 @@ def SWData_MI():
     
     return()
 
-def SWData_MI_Correlation():
+def find_BestTemporalShifts():
+    """
+    Use both mutual information (MI) and cross correlation (CC) to find the 
+    optimal temporal shifts of a model relative to data.
+
+    Returns
+    -------
+    The centers of the temporal window used to find optimal shifts
+    The time lags of those optimal shifts
+    A relative estimate of the significance of each suggested shift (there may
+    be multiple optimal shifts per window)
+
+    """
     import matplotlib.pyplot as plt
     import spiceypy as spice
     import matplotlib.dates as mdates
     import scipy
-    import sys
     
-    #import read_SWData
     import read_SWModel
     import spacecraftdata
-    import plot_TaylorDiagram as TD
     
     import sys
     sys.path.append('/Users/mrutala/code/python/libraries/aaft/')
     sys.path.append('/Users/mrutala/code/python/libraries/generic_MI_lag_finder/')
     import generic_mutual_information_routines as mi_lib
     
+    #  Would-be inputs go here
+    tag = 'u_mag'  #  solar wind property of interest
+    spacecraft_names = ['Juno', 'Ulysses']
+    model_name = 'Tao'
     starttime = dt.datetime(2016, 5, 15)
     stoptime = dt.datetime(2016, 6, 20)
     reference_frame = 'SUN_INERTIAL'
     observer = 'SUN'
+    
+    #  Would-be keywords go here
     window_in_days = 13.5
     stepsize_in_days = 0.5
     resolution_in_min = 60.
     max_lag_in_days = 3.0
     min_lag_in_days = -3.0
     
-    
-    tag = 'u_mag'  #  solar wind property of interest
-    spacecraft_names = ['Juno']#, 'Ulysses']
-    model_name = 'Tao'
-    
+    #  Parse inputs and keywords
     resolution_str = '{}Min'.format(int(resolution_in_min))
+    
+    #  Read in data; for this, we expect n spacecraft and 1 model
     spacecraft_dict = dict.fromkeys(spacecraft_names, None)
     for sc_name in spacecraft_dict.keys():
         sc_info = spacecraftdata.SpacecraftData(sc_name)
@@ -1035,6 +1048,7 @@ def SWData_MI_Correlation():
         model_data = pd.concat([model_data, model_dict[sc_name]])
     
     model_data = model_data.reindex(spacecraft_data.index, method='nearest')
+    return(spacecraft_data,  model_data)
     
     spacecraft_data = find_RollingDerivativeZScore(spacecraft_data, tag, 2) # !!! vvv
     spacecraft_data['smooth_ddt_'+tag+'_zscore'] = spacecraft_data['smooth_ddt_'+tag+'_zscore'].where(spacecraft_data['smooth_ddt_'+tag+'_zscore'] > 3, 0)
@@ -1089,12 +1103,11 @@ def SWData_MI_Correlation():
                 na, nb = len(a), len(b)
                 
                 corr = scipy.signal.correlate(a, b)
-                corr /= np.max(corr)
                 lags = scipy.signal.correlation_lags(na, nb)*temporal_resolution
                 
                 indx = np.where(np.logical_and(lags > min_lag, lags < max_lag))
-                corr = corr[indx]
-                lags = lags[indx]
+                corr, lags = corr[indx], lags[indx]
+                corr /= np.max(corr)
                 
                 return(lags, corr)
                 
@@ -1173,14 +1186,27 @@ def SWData_MI_Correlation():
         fig, axs = plt.subplots(nrows=2, figsize=(8,6), sharex=True)
         
         x, y, c = zip(*maxima_list)
+        xs = [(t - x[0]).total_seconds() for t in x]
+        def line(t, a, b):
+            f_t = t*a + b
+            return(f_t)
+        def poly(t, a, b, c):
+            f_t = a*t**2 + b*t + c
+            return(f_t)
+        fit_opt, fit_cov = scipy.optimize.curve_fit(poly, xs, y, sigma=(1./np.array(c))**2)
+        print(fit_opt)
         for ax in axs:
             scatterplot = ax.scatter(x, y, s=36, marker='.', c=c, cmap='viridis', vmax=1)
             ax.set_ylim(-72*60., 72*60.)
             ax.yaxis.set_major_formatter(lambda x, pos: str(x/60.))
             ax.set_yticks(np.arange(-72, 72+24, 24) * 60.)
             #ax.set_ylabel('Best-fit Temporal Shift (from cross correlation) [hr]')
-            ax.set_xlabel('Date of Juno Cruise')
             ax.set_xlim(starttime, stoptime)
+            
+            #ax.plot(x, [line(t, fit_opt[0], fit_opt[1]) for t in xs])
+            ax.plot(x, [poly(t, *fit_opt) for t in xs], color='xkcd:sky blue')
+            
+        axs[1].set_xlabel('Date of Juno Cruise')
         
         # =============================================================================
         # F10.4 Radio flux from the sun
@@ -1213,11 +1239,12 @@ def SWData_MI_Correlation():
         axs_1_y = axs[1].twinx()
         axs_1_y.plot(ang_datetimes, ang, alpha=0.5)
         axs_1_y.set_ylim(0, 180)
-        axs_1_y.set_ylabel('Solar Lon. Between Earth and Target')
+        axs_1_y.set_yticks([0, 30, 60, 90, 120, 150, 180])
+        axs_1_y.set_ylabel('TSE Angle [deg.]')
         
         plt.text(0.02, 0.5, 'Best-fit Temporal Shift (from cross correlation) [hr]', 
-                 fontsize=14, transform=plt.gcf().transFigure, rotation=90)
-        plt.colorbar(scatterplot, label='Normalized Cross Correlation', ax=axs.ravel().tolist())
+                 fontsize=14, transform=plt.gcf().transFigure, rotation=90, va='center')
+        plt.colorbar(scatterplot, label='Normalized Cross Correlation', ax=axs.ravel().tolist(), pad=0.125)
         plt.setp(ax.get_xticklabels(), rotation=30, horizontalalignment='right')
         
         #fig.tight_layout()
@@ -1225,7 +1252,7 @@ def SWData_MI_Correlation():
 
     # plt.savefig('figures/Juno_MI_runningoffset_max_only.png', dpi=300)    
     
-    return(cc_out_z)
+    return(maxima_list)
 
 def QQplot_datacomparison():
     import matplotlib.pyplot as plt
