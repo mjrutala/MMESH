@@ -8,6 +8,9 @@ Created on Mon Jun 12 16:35:56 2023
 import datetime as dt
 import pandas as pd
 import numpy as np
+import logging
+
+scd_log = logging.getLogger('SpacecraftData')
 
 class SpacecraftData:
     
@@ -177,43 +180,56 @@ class SpacecraftData:
         
         processed_data = read_SWData.read(self.name, 
                                           self.starttime, self.stoptime, 
-                                           basedir=self.basedir + 'Data/',
-                                           resolution=resolution)
-        if len(processed_data) > 0:
-            #  If self.data exists, add to it, else, make it
-            if strict:
-                try:
-                    processed_data = processed_data.reindex(columns=self.data.columns)
-                except ValueError:
-                    print('VALUE ERROR!')
-                    print(processed_data.columns)
-                    print(processed_data.index.has_duplicates)
-                
-            #self.data = pd.concat([self.data, processed_data], 
-            #                      axis=0)
-            #self.data = processed_data.combine_first(self.data)
-            desired_column_order = list(self.data.columns)
-            unmatched_columns = list(set(processed_data.columns) - set(self.data.columns))
-            unmatched_columns.sort()
+                                          basedir=self.basedir + 'Data/',
+                                          resolution=resolution)
+        
+        if len(self.data.dropna(axis='index')) == 0:
+            fmt = '%Y-%m-%d %H:%M:%S.%f'
+            scd_log.warning('No data found between {} and {}. '.format(starttime.strftime(fmt), stoptime.strftime(fmt)) +
+                            'If you expect data in this range, please check again') #+
+                            #'the data files in {}'.format(self.basesdir))
+            return
+        
+        #  If self.data exists, add to it, else, make it
+        if strict:
+            try:
+                processed_data = processed_data.reindex(columns=self.data.columns)
+            except ValueError:
+                print('VALUE ERROR!')
+                print(processed_data.columns)
+                print(processed_data.index.has_duplicates)
             
-            self.data = self.data.combine_first(processed_data)
-            
-            #  Put the dataframe back in order
-            self.data = self.data[(desired_column_order + unmatched_columns)]
-            
-            self.data_type = 'processed'
-            #self.datetimes = processed_data.index.to_pydatetime()
+        #self.data = pd.concat([self.data, processed_data], 
+        #                      axis=0)
+        #self.data = processed_data.combine_first(self.data)
+        desired_column_order = list(self.data.columns)
+        unmatched_columns = list(set(processed_data.columns) - set(self.data.columns))
+        unmatched_columns.sort()
+        
+        self.data = self.data.combine_first(processed_data)
+        
+        #  Put the dataframe back in order
+        self.data = self.data[(desired_column_order + unmatched_columns)]
+        
+        self.data_type = 'processed'
+        #self.datetimes = processed_data.index.to_pydatetime()
     
     def find_subset(self, coord1_range=None, coord2_range=None, coord3_range=None, transform=None):
         import numpy as np
         import spiceypy as spice
         import spacecraftdata as SpacecraftData
         
+        #  Need coordinates to do this
+        if len(self.data.dropna(axis='index', subset=['x_pos', 'y_pos', 'z_pos'])) == 0:
+            scd_log.warning('No trajectory information available; ' 
+                            'trajectory subsetting is not possible.')
+            return
+        
         match transform.lower():
             case None: spice_transform = lambda x, y, z : (x, y, z)
             case 'reclat': spice_transform = spice.reclat
             case 'recsph': spice_transform = spice.recsph
-        
+            
         #  Convert
         spacecraft_coords = [spice_transform(row[['x_pos', 'y_pos', 'z_pos']].to_numpy(dtype='float64')) for index, row in self.data.iterrows()]
         spacecraft_coords = np.array(spacecraft_coords)
@@ -235,7 +251,7 @@ class SpacecraftData:
                             
                             
         self.data = self.data.iloc[criteria]
-        return()
+        return
     
 
         #self.date_range = None
