@@ -13,6 +13,10 @@ import datetime as dt
 import numpy as np
 import os
 import astropy.units as u
+import logging
+
+rswd_log = logging.getLogger('read_SWData')
+rswd_log.setLevel(logging.INFO) # Eventually, a /verbose kw
  
 from pathlib import Path
 
@@ -108,7 +112,42 @@ def get_fromCDAWeb(spacecraft, basedir='',
         
     return()
 
+# =============================================================================
+#  
+# =============================================================================
+def make_DerezzedData(df_tuple, resolution=None):
+    
+    
+    match resolution:
+        case None:
+            #  Do not resample
+            pass
+        
+        case str():
+            #  As long as the input is a string, use resample
+            for df in df_tuple:
+                df.resample(resolution).mean()
+            
+        case (float() | int()):
+            #  Find the t_delta at percentile given by resolution
+            #  The find the largest such t_delta among all DataFrames
+            #  And scale to that
+            percentiles = []
+            for df in df_tuple:
+                if len(df) > 0:
+                    df['t_delta'] = (df.index.to_series().shift(-1) - 
+                                    df.index.to_series()).dt.total_seconds()
+                    percentiles.append(np.nanpercentile(df['t_delta'], resolution))
+                
+            resolution = np.max(percentiles)
+            
+            for df in df_tuple:
+                if len(df) > 0:
+                    df = df.resample('{:.0f}s'.format(resolution)).mean()
+                    df = df.drop(['t_delta'], axis='columns')
 
+    return(df_tuple)      
+            
 # =============================================================================
 # 
 # =============================================================================
@@ -182,8 +221,8 @@ def Juno_published(starttime, stoptime, basedir='', resolution=None):
         output_spacecraft_data = output_spacecraft_data[~output_spacecraft_data.index.duplicated(keep='last')]
         
         #  Find the time between the nth observation and the n+1th
-        output_spacecraft_data['t_delta'] = (output_spacecraft_data.index.to_series().shift(-1) - 
-                                                         output_spacecraft_data.index.to_series()).dt.total_seconds()
+        #output_spacecraft_data['t_delta'] = (output_spacecraft_data.index.to_series().shift(-1) - 
+        #                                                 output_spacecraft_data.index.to_series()).dt.total_seconds()
         
         return(output_spacecraft_data)
     
@@ -197,12 +236,15 @@ def Juno_published(starttime, stoptime, basedir='', resolution=None):
         in_range = np.arange(starttime.year, stoptime.year+1, 1)                                       # !!! Repeated
         filename_datetimes_in_range = [dt.datetime(iyr, 1, 1) for iyr in in_range]                      # !!! Repeated
         filenames_in_range = [t.strftime(filename_template) for t in filename_datetimes_in_range]   # !!! Repeated
-    
-        filelist = [filepath_mag + filename for filename in filenames_in_range if os.path.exists(filepath_mag + filename)]
-        filelist.sort()
         
         input_columns = ['datestr',
                          'B_r', 'B_t', 'B_n', 'B_mag']
+        
+        filelist = [filepath_mag + filename for filename in filenames_in_range if os.path.exists(filepath_mag + filename)]
+        filelist.sort()
+        if len(filelist) == 0:
+            rswd_log.info('No files found in')
+            return(pd.DataFrame(columns=input_columns))
         
         #  Make a generator to read csv data and concatenate into a single dataframe
         data_generator = (pd.read_csv(f, delim_whitespace=True, skiprows=73, names=input_columns) 
@@ -222,37 +264,24 @@ def Juno_published(starttime, stoptime, basedir='', resolution=None):
         #  Check for duplicates in the datetime index
         spacecraft_data = spacecraft_data[~spacecraft_data.index.duplicated(keep='last')]
         #  Find the time between the nth observation and the n+1th
-        spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
-                                      spacecraft_data.index.to_series()).dt.total_seconds()
+        #spacecraft_data['t_delta'] = (spacecraft_data.index.to_series().shift(-1) - 
+        #                              spacecraft_data.index.to_series()).dt.total_seconds()
         return(spacecraft_data)
     # =========================================================================
     #         
     # =========================================================================
     plasma_data = read_Juno_Wilson2018(starttime, stoptime)
     mag_data = read_Juno_AMDAMAG(starttime, stoptime)
+    all_data = (plasma_data, mag_data,)
     
-    match resolution:
-        case None:
-            #  Do not resample
-            pass
-        case str():
-            #  As long as the input is a string, use resample
-            plasma_data = plasma_data.resample(resolution).mean()
-            mag_data = mag_data.resample(resolution).mean()
-        case _:
-            #  Resample to the largest common t_delta in either plasma or mag
-            plasma_res = np.nanpercentile(plasma_data['t_delta'], resolution)
-            mag_res = np.nanpercentile(mag_data['t_delta'], resolution)
-            if plasma_res > mag_res:
-                resolution = plasma_res
-            else:
-                resolution = mag_res
-            plasma_data = plasma_data.resample('{:.0f}s'.format(resolution)).mean()
-            mag_data = mag_data.resample('{:.0f}s'.format(resolution)).mean()
-        
-    plasma_data.drop(['t_delta'], axis=1, inplace=True)
-    mag_data.drop(['t_delta'], axis=1, inplace=True)
-    data = pd.concat([plasma_data, mag_data], axis=1)
+    #if len(filelist) == 0:
+    #    rswd_log.info('No files found in')
+    #    return(pd.DataFrame(columns=input_columns))
+    
+    
+    all_data = make_DerezzedData(all_data, resolution=resolution)
+
+    data = pd.concat(all_data, axis=1)
     
     return(data)
     
