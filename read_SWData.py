@@ -153,7 +153,7 @@ def make_DerezzedData(df_tuple, resolution=None):
 # =============================================================================
 # 
 # =============================================================================
-def Juno_published(starttime, stoptime, basedir='', resolution=None, combined=True):
+def Juno_published(starttime, stoptime, basedir='', resolution=None, combined=False):
     
     spacecraft_dir = 'Juno/'
     filepath_ions = basedir + spacecraft_dir + 'plasma/published/Wilson2018/'
@@ -280,7 +280,7 @@ def Juno_published(starttime, stoptime, basedir='', resolution=None, combined=Tr
     
     data = pd.concat(all_data, axis=1)
     
-    if combined == True: data = data.dropna(labels=['u_mag', 'p_dyn', 'n_tot', 'B_mag'])
+    if combined == True: data = data.dropna(subset=['u_mag', 'p_dyn', 'n_tot', 'B_mag'])
     
     return(data)
     
@@ -811,7 +811,7 @@ def Pioneer(starttime, stoptime, spacecraft_number=10, basedir='', resolution=No
 # A simple function which allows you to specify the spacecraft name as an argument
 # Which then calls the relrevant functions
 # =============================================================================
-def read(spacecraft, starttime, stoptime, basedir=None, resolution=None):
+def read(spacecraft, starttime, stoptime, basedir=None, resolution=None, combined=False):
     
     match spacecraft.lower():
         case 'ulysses':
@@ -819,7 +819,7 @@ def read(spacecraft, starttime, stoptime, basedir=None, resolution=None):
                              basedir=basedir, resolution=resolution)
         case 'juno':
             result = Juno_published(starttime, stoptime, 
-                                    basedir=basedir, resolution=resolution)
+                                    basedir=basedir, resolution=resolution, combined=combined)
         case 'voyager 1':
             result = Voyager(starttime, stoptime, spacecraft_number='1', 
                              basedir=basedir, resolution=resolution)
