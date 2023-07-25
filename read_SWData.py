@@ -117,16 +117,17 @@ def get_fromCDAWeb(spacecraft, basedir='',
 # =============================================================================
 def make_DerezzedData(df_tuple, resolution=None):
     
-    
+    result_list = []
     match resolution:
         case None:
             #  Do not resample
-            pass
+            result_list.append(*df_tuple)
         
         case str():
             #  As long as the input is a string, use resample
             for df in df_tuple:
-                df.resample(resolution).mean()
+                resample = df.resample(resolution).mean()
+                result_list.append(resample)
             
         case (float() | int()):
             #  Find the t_delta at percentile given by resolution
@@ -145,8 +146,9 @@ def make_DerezzedData(df_tuple, resolution=None):
                 if len(df) > 0:
                     df = df.resample('{:.0f}s'.format(resolution)).mean()
                     df = df.drop(['t_delta'], axis='columns')
+                    result_list.append(df)
 
-    return(df_tuple)      
+    return(tuple(result_list))      
             
 # =============================================================================
 # 
