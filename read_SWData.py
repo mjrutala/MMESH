@@ -153,7 +153,7 @@ def make_DerezzedData(df_tuple, resolution=None):
 # =============================================================================
 # 
 # =============================================================================
-def Juno_published(starttime, stoptime, basedir='', resolution=None):
+def Juno_published(starttime, stoptime, basedir='', resolution=None, combined=True):
     
     spacecraft_dir = 'Juno/'
     filepath_ions = basedir + spacecraft_dir + 'plasma/published/Wilson2018/'
@@ -277,8 +277,10 @@ def Juno_published(starttime, stoptime, basedir='', resolution=None):
     all_data = (plasma_data, mag_data,)
     
     all_data = make_DerezzedData(all_data, resolution=resolution)
-
+    
     data = pd.concat(all_data, axis=1)
+    
+    if combined == True: data = data.dropna(labels=['u_mag', 'p_dyn', 'n_tot', 'B_mag'])
     
     return(data)
     
