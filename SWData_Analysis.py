@@ -1004,26 +1004,32 @@ def find_BestTemporalShifts():
     sys.path.append('/Users/mrutala/code/python/libraries/generic_MI_lag_finder/')
     import generic_mutual_information_routines as mi_lib
     
-    #  Would-be inputs go here
+    # =============================================================================
+    #    Would-be inputs go here 
+    # =============================================================================
     tag = 'u_mag'  #  solar wind property of interest
-    spacecraft_names = ['Juno', 'Ulysses']
+    spacecraft_names = ['Ulysses', 'Juno'] # 'Juno'
     model_name = 'Tao'
-    starttime = dt.datetime(2016, 5, 15)
-    stoptime = dt.datetime(2016, 6, 20)
+    starttime = dt.datetime(1990, 1, 1)
+    stoptime = dt.datetime(2016, 7, 1)
     reference_frame = 'SUN_INERTIAL'
     observer = 'SUN'
     
+    # =============================================================================
     #  Would-be keywords go here
+    # =============================================================================
     window_in_days = 13.5
     stepsize_in_days = 0.5
     resolution_in_min = 60.
-    max_lag_in_days = 3.0
-    min_lag_in_days = -3.0
+    max_lag_in_days = 6.0
+    min_lag_in_days = -6.0
     
     #  Parse inputs and keywords
     resolution_str = '{}Min'.format(int(resolution_in_min))
     
+    # =============================================================================
     #  Read in data; for this, we expect n spacecraft and 1 model
+    # =============================================================================
     spacecraft_dict = dict.fromkeys(spacecraft_names, None)
     for sc_name in spacecraft_dict.keys():
         sc_info = spacecraftdata.SpacecraftData(sc_name)
@@ -1042,20 +1048,32 @@ def find_BestTemporalShifts():
         model_columns = model_info.columns
       
     spacecraft_data = pd.DataFrame(columns = sc_columns)
-    model_data = pd.DataFrame(columns = model_columns)   
+    model_output = pd.DataFrame(columns = model_columns)   
     for sc_name in spacecraft_dict.keys():
         spacecraft_data = pd.concat([spacecraft_data, spacecraft_dict[sc_name].data])
-        model_data = pd.concat([model_data, model_dict[sc_name]])
+        model_output = pd.concat([model_output, model_dict[sc_name]])
     
-    model_data = model_data.reindex(spacecraft_data.index, method='nearest')
-    return(spacecraft_data,  model_data)
+    #  Make model index match spacecraft index, getting rid of excess
+    model_output = model_output.reindex(spacecraft_data.index, method='nearest')
     
+    sigma_cutoff = 4
     spacecraft_data = find_RollingDerivativeZScore(spacecraft_data, tag, 2) # !!! vvv
-    spacecraft_data['smooth_ddt_'+tag+'_zscore'] = spacecraft_data['smooth_ddt_'+tag+'_zscore'].where(spacecraft_data['smooth_ddt_'+tag+'_zscore'] > 3, 0)
-    model_data = find_RollingDerivativeZScore(model_data, tag, 2) # !!! Rolling derivative of the 15 min resample?
-    model_data['smooth_ddt_'+tag+'_zscore'] = model_data['smooth_ddt_'+tag+'_zscore'].where(model_data['smooth_ddt_'+tag+'_zscore'] > 3, 0)
+    spacecraft_data['smooth_ddt_'+tag+'_zscore'] = spacecraft_data['smooth_ddt_'+tag+'_zscore'].where(spacecraft_data['smooth_ddt_'+tag+'_zscore'] > sigma_cutoff, 0)
+    model_output = find_RollingDerivativeZScore(model_output, tag, 2) # !!! Rolling derivative of the 15 min resample?
+    model_output['smooth_ddt_'+tag+'_zscore'] = model_output['smooth_ddt_'+tag+'_zscore'].where(model_output['smooth_ddt_'+tag+'_zscore'] > sigma_cutoff, 0)
     
-    #timespan = dt.timedelta(days=13.5)
+    #  Split the combined spacecraft data set into (mostly) continuous chunks
+    spacecraft_deltas = spacecraft_data.index.to_series().diff()
+    gaps_indx = np.where(spacecraft_deltas > dt.timedelta(days=30))[0]
+    start_indx = np.insert(gaps_indx, 0, 0)
+    stop_indx = np.append(gaps_indx, len(spacecraft_data.index))-1
+    
+    spacecraft_data_list = []
+    model_output_list = []
+    for i0, i1 in zip(start_indx, stop_indx):
+        spacecraft_data_list.append(spacecraft_data[i0:i1])
+        model_output_list.append(model_output[i0:i1])
+    
     #  Dataframes are indexed so that there's data every 15 minutes
     #  So timedelta can be replaced with the equivalent integer
     #  Which allows step size larger than 1
@@ -1064,149 +1082,198 @@ def find_BestTemporalShifts():
     max_lag_in_min = max_lag_in_days*24*60.
     min_lag_in_min = min_lag_in_days*24*60.
     
-    sc_windows = spacecraft_data.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
-    model_windows = model_data.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
-    
     window_centers = list()
     maxima_list = list()
-    for counter, (sc_window, model_window) in enumerate(zip(sc_windows, model_windows)):
-        if len(sc_window) == timespan_int:
+    for sc_data, m_output in zip(spacecraft_data_list, model_output_list):
             
-            sc_series = np.array(sc_window[tag]).astype(np.float64)
-            model_series = np.array(model_window[tag]).astype(np.float64)
-            
-            mi_out = mi_lib.mi_lag_finder(sc_series, model_series, 
-                                          temporal_resolution=resolution_in_min, 
-                                          max_lag=max_lag_in_min, 
-                                          min_lag=min_lag_in_min, 
-                                          remove_nan_rows=True, no_plot=True)
-            
-            sc_z_series = np.array(sc_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
-            model_z_series = np.array(model_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
-            mi_out_z = mi_lib.mi_lag_finder(sc_z_series, model_z_series, 
-                                            temporal_resolution=resolution_in_min, 
-                                            max_lag=max_lag_in_min,
-                                            min_lag=min_lag_in_min, 
-                                            remove_nan_rows=True, no_plot=True)
-            
-            #  Old-school cross-correlation
-            def crosscorrelate_withnan(a, b, temporal_resolution=1, min_lag=1, max_lag=1):
-                #  Assume temporal_resolution, min_lag, max_lag are in min.
-                a, b = np.array(a), np.array(b)
-                a_indx = ~np.isnan(a)
-                a = a[a_indx]
-                b = b[a_indx]
-                b_indx = ~np.isnan(b)
-                a = a[b_indx]
-                b = b[b_indx]
+        sc_windows = sc_data.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
+        m_windows = m_output.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
+        
+        for counter, (sc_window, m_window) in enumerate(zip(sc_windows, m_windows)):
+            if len(sc_window) == timespan_int:
                 
-                na, nb = len(a), len(b)
+                sc_series = np.array(sc_window[tag]).astype(np.float64)
+                m_series = np.array(m_window[tag]).astype(np.float64)
                 
-                corr = scipy.signal.correlate(a, b)
-                lags = scipy.signal.correlation_lags(na, nb)*temporal_resolution
+                # mi_out = mi_lib.mi_lag_finder(sc_series, m_series, 
+                #                               temporal_resolution=resolution_in_min, 
+                #                               max_lag=max_lag_in_min, 
+                #                               min_lag=min_lag_in_min, 
+                #                               remove_nan_rows=True, no_plot=True)        
+                sc_z_series = np.array(sc_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
+                m_z_series = np.array(m_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
+                # mi_out_z = mi_lib.mi_lag_finder(sc_z_series, m_z_series, 
+                #                                 temporal_resolution=resolution_in_min, 
+                #                                 max_lag=max_lag_in_min,
+                #                                 min_lag=min_lag_in_min, 
+                #                                 remove_nan_rows=True, no_plot=True)
                 
-                indx = np.where(np.logical_and(lags > min_lag, lags < max_lag))
-                corr, lags = corr[indx], lags[indx]
-                corr /= np.max(corr)
+                #  Define old-school cross-correlation
+                def crosscorrelate_withnan(a, b, temporal_resolution=1, min_lag=1, max_lag=1):
+                    #  Assume temporal_resolution, min_lag, max_lag are in min.
+                    a, b = np.array(a), np.array(b)
+                    a_indx = ~np.isnan(a)
+                    a = a[a_indx]
+                    b = b[a_indx]
+                    b_indx = ~np.isnan(b)
+                    a = a[b_indx]
+                    b = b[b_indx]
+                    
+                    na, nb = len(a), len(b)
+                    
+                    corr = scipy.signal.correlate(a, b)
+                    lags = scipy.signal.correlation_lags(na, nb)*temporal_resolution
+                    
+                    indx = np.where(np.logical_and(lags > min_lag, lags < max_lag))
+                    corr, lags = corr[indx], lags[indx]
+                    corr /= np.max(corr)
+                    
+                    return(lags, corr)
+                try: 
+                    cc_out = crosscorrelate_withnan(sc_series, m_series,
+                                                    temporal_resolution = resolution_in_min,
+                                                    max_lag=max_lag_in_min,
+                                                    min_lag=min_lag_in_min)
+                    cc_out_z = crosscorrelate_withnan(sc_z_series, m_z_series,
+                                                      temporal_resolution = resolution_in_min,
+                                                      max_lag=max_lag_in_min,
+                                                      min_lag=min_lag_in_min)
+                except:
+                    print('sc_series')
+                    print(sc_series)
+                    print('m_series')
+                    print(m_series)
+                    fig, ax = plt.subplots()
+                    ax.plot(sc_window.index, sc_series)
+                    ax.plot(m_window.index, m_series)
+                    plt.show()
                 
-                return(lags, corr)
+                # with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+                #     plt.rcParams.update({'font.size': 10})
+                #     fig, axs = plt.subplots(nrows=2, ncols=3, sharex='col', width_ratios=(3,1,1), figsize=(8,6))
+                #     plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, hspace=0.0, wspace=0.325)
+                    
+                #     #  Unmodified timeseries
+                #     axs[0,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                #                   sc_window[tag], color='gray')
+                #     axs[0,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                #                   model_window[tag], color=model_colors[model_name])
+                #     axs[0,0].set(ylim=(350,550), ylabel=r'u$_{sw}$ [km/s]')
+                    
+                #     #  Modified timeseries to highlight jumps
+                #     axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                #                   sc_window['smooth_ddt_'+tag+'_zscore'], color='gray')
+                #     axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                #                   model_window['smooth_ddt_'+tag+'_zscore'], color=model_colors[model_name])
+                #     axs[1,0].set(xlabel='Elapsed time [min.]',
+                #                  ylim=(-1,12), ylabel=r'$Z(\frac{d u_{sw}}{dt})$')
+                    
+                #     #  Unmodified timeseries MI
+                #     lags, mi, RPS_mi, x_sq, x_pw = mi_out
+                #     axs[0,1].plot(lags, mi, marker='x', linestyle='None', color='black')
+                #     axs[0,1].plot(lags, RPS_mi, color='xkcd:light gray')
+                #     axs[0,1].set(ylabel='MI (nats)')
+                    
+                #     #  Modified timeseries MI
+                #     lags, mi, RPS_mi, x_sq, x_pw = mi_out_z
+                #     axs[1,1].plot(lags, mi, marker='x', linestyle='None', color='black')
+                #     axs[1,1].plot(lags, RPS_mi, color='xkcd:light gray')
+                #     axs[1,1].set(xlabel='Lags [min.]',
+                #                  ylabel='MI [nats]')
+                    
+                    
+                #     axs[0,2].scatter(cc_out[0], cc_out[1], s=24)
+                #     axs[0,2].set(xlabel='Lags [min].', 
+                #                  ylabel='Cross Correlation')
+                    
+                #     axs[1,2].scatter(cc_out_z[0], cc_out_z[1], s=24)
+                #     axs[1,2].set(xlabel='Lags [min].', 
+                #                  ylabel='Cross Correlation')
                 
-            cc_out = crosscorrelate_withnan(sc_series, model_series,
-                                            temporal_resolution = resolution_in_min,
-                                            max_lag=max_lag_in_min,
-                                            min_lag=min_lag_in_min)
-            cc_out_z = crosscorrelate_withnan(sc_z_series, model_z_series,
-                                              temporal_resolution = resolution_in_min,
-                                              max_lag=max_lag_in_min,
-                                              min_lag=min_lag_in_min)
-            
-            with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-                plt.rcParams.update({'font.size': 10})
-                fig, axs = plt.subplots(nrows=2, ncols=3, sharex='col', width_ratios=(3,1,1), figsize=(8,6))
-                plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, hspace=0.0, wspace=0.325)
+                window_centers.append(sc_window.index[int(len(sc_window)*0.5-1)])
+                #norm_mi = mi / RPS_mi
+                #norm_mi = np.nan_to_num(norm_mi, nan=0., posinf=0., neginf=0.)
                 
-                #  Unmodified timeseries
-                axs[0,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
-                              sc_window[tag], color='gray')
-                axs[0,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
-                              model_window[tag], color=model_colors[model_name])
-                axs[0,0].set(ylim=(350,550), ylabel=r'u$_{sw}$ [km/s]')
+                #maxima = scipy.signal.find_peaks(norm_mi, height=10.)
+                maxima = scipy.signal.find_peaks(cc_out_z[1], height=0.5)
                 
-                #  Modified timeseries to highlight jumps
-                axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
-                              sc_window['smooth_ddt_'+tag+'_zscore'], color='gray')
-                axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
-                              model_window['smooth_ddt_'+tag+'_zscore'], color=model_colors[model_name])
-                axs[1,0].set(xlabel='Elapsed time [min.]',
-                             ylim=(-1,12), ylabel=r'$Z(\frac{d u_{sw}}{dt})$')
+                for m, h in zip(maxima[0], maxima[1]['peak_heights']):
+                    maxima_list.append((sc_window.index[int(len(sc_window)*0.5-1)], cc_out_z[0][m], h))
                 
-                #  Unmodified timeseries MI
-                lags, mi, RPS_mi, x_sq, x_pw = mi_out
-                axs[0,1].plot(lags, mi, marker='x', linestyle='None', color='black')
-                axs[0,1].plot(lags, RPS_mi, color='xkcd:light gray')
-                axs[0,1].set(ylabel='MI (nats)')
-                
-                #  Modified timeseries MI
-                lags, mi, RPS_mi, x_sq, x_pw = mi_out_z
-                axs[1,1].plot(lags, mi, marker='x', linestyle='None', color='black')
-                axs[1,1].plot(lags, RPS_mi, color='xkcd:light gray')
-                axs[1,1].set(xlabel='Lags [min.]',
-                             ylabel='MI [nats]')
+                #plt.tight_layout()
+                #figurename = 'garbage'
+                #for suffix in ['.png', '.pdf']:
+                #    plt.savefig('figures/' + figurename + suffix)
+                # plt.savefig('figures/Juno_MI_frames/frame_' + f'{counter:03}' + '.png')
+                plt.show()
+                print(counter)
                 
                 
-                axs[0,2].scatter(cc_out[0], cc_out[1], s=24)
-                axs[0,2].set(xlabel='Lags [min].', 
-                             ylabel='Cross Correlation')
-                
-                axs[1,2].scatter(cc_out_z[0], cc_out_z[1], s=24)
-                axs[1,2].set(xlabel='Lags [min].', 
-                             ylabel='Cross Correlation')
-            
-            window_centers.append(sc_window.index[int(len(sc_window)*0.5-1)])
-            norm_mi = mi / RPS_mi
-            norm_mi = np.nan_to_num(norm_mi, nan=0., posinf=0., neginf=0.)
-            
-            #maxima = scipy.signal.find_peaks(norm_mi, height=10.)
-            maxima = scipy.signal.find_peaks(cc_out_z[1], height=0.5)
-            
-            for m, h in zip(maxima[0], maxima[1]['peak_heights']):
-                maxima_list.append((sc_window.index[int(len(sc_window)*0.5-1)], cc_out_z[0][m], h))
-            
-            #plt.tight_layout()
-            #figurename = 'garbage'
-            #for suffix in ['.png', '.pdf']:
-            #    plt.savefig('figures/' + figurename + suffix)
-            # plt.savefig('figures/Juno_MI_frames/frame_' + f'{counter:03}' + '.png')
-            plt.show()
-            print(counter)
+    return(maxima_list)
+    
+def plot_BestTemporalShifts(maxima_list):
+    import matplotlib.pyplot as plt
+    import scipy
+    import spiceypy as spice
+    import datetime as dt
+    
+    import matplotlib.dates as mdates
+    
+    x, y, c = zip(*maxima_list)
+    starttime = x[0] # dt.datetime(2003,10,1)
+    stoptime  = x[-1] # dt.datetime(2004,7,1)
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         
         #window_centers_min = [(wc - jr.index[0]).total_seconds()/60. for wc in window_centers]
-        fig, axs = plt.subplots(nrows=2, figsize=(8,6), sharex=True)
+        fig, axs = plt.subplots(nrows=2, ncols=2, width_ratios=(6,1), figsize=(8,6), sharex='col', sharey=True)
+        plt.subplots_adjust(right=1.0, hspace=0.05, wspace=0.3)
         
-        x, y, c = zip(*maxima_list)
         xs = [(t - x[0]).total_seconds() for t in x]
+        
         def line(t, a, b):
             f_t = t*a + b
             return(f_t)
+        
         def poly(t, a, b, c):
             f_t = a*t**2 + b*t + c
             return(f_t)
+        
         fit_opt, fit_cov = scipy.optimize.curve_fit(poly, xs, y, sigma=(1./np.array(c))**2)
         print(fit_opt)
-        for ax in axs:
+        
+        y_at_c1 = np.array(y)[np.where(np.array(c) == 1.0)[0]]
+        
+        for ax in axs[:,0]:
             scatterplot = ax.scatter(x, y, s=36, marker='.', c=c, cmap='viridis', vmax=1)
-            ax.set_ylim(-72*60., 72*60.)
+            ax.set_ylim(-6*24*60., 6*24*60.)
             ax.yaxis.set_major_formatter(lambda x, pos: str(x/60.))
-            ax.set_yticks(np.arange(-72, 72+24, 24) * 60.)
-            #ax.set_ylabel('Best-fit Temporal Shift (from cross correlation) [hr]')
+            ax.set_yticks(np.arange(-6*24, 6*24+24, 24) * 60.)
             ax.set_xlim(starttime, stoptime)
             
-            #ax.plot(x, [line(t, fit_opt[0], fit_opt[1]) for t in xs])
-            ax.plot(x, [poly(t, *fit_opt) for t in xs], color='xkcd:sky blue')
+            ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=(1, 3, 5, 7, 8, 11)))
+            ax.xaxis.set_minor_locator(mdates.MonthLocator())
+            ax.xaxis.set_major_formatter(
+                mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
             
-        axs[1].set_xlabel('Date of Juno Cruise')
+            #ax.plot(x, [line(t, fit_opt[0], fit_opt[1]) for t in xs])
+            #ax.plot(x, [poly(t, *fit_opt) for t in xs], color='xkcd:sky blue')
+            
+            ax.axhline(np.mean(y), color='xkcd:lime', linestyle='--')
+            ax.axhline(np.mean(y_at_c1), color='gold', linestyle='--')
+        
+        counts_lo, bins_lo = np.histogram(y, bins=np.arange(-6*24*60., 6*24*60.+24*60, 24*60))
+        counts_hi, bins_hi = np.histogram(y_at_c1, bins=np.arange(-6*24*60., 6*24*60.+24*60, 24*60))
+        for ax in axs[:,1]:
+            ax.stairs(counts_lo, bins_lo, orientation='horizontal', color='xkcd:lime')
+            ax.stairs(counts_hi, bins_hi, orientation='horizontal', color='gold')
+            ax.yaxis.tick_right()
+            ax.yaxis.set_ticks_position('both')
+            
+            ax.axhline(np.mean(y), color='xkcd:lime', linestyle='--')
+            ax.axhline(np.mean(y_at_c1), color='gold', linestyle='--')
+            
+        axs[1,0].set_xlabel('Date')
         
         # =============================================================================
         # F10.4 Radio flux from the sun
@@ -1216,7 +1283,7 @@ def find_BestTemporalShifts():
                                        header = 0, names = column_headers)
         solar_radio_flux['date'] = [dt.datetime.strptime(d, '%Y-%m-%dT%H:%M:%S')
                                     for d in solar_radio_flux['date']]
-        axs_0_y = axs[0].twinx()
+        axs_0_y = axs[0,0].twinx()
         axs_0_y.plot(solar_radio_flux['date'], solar_radio_flux['adjusted_flux'], alpha=0.5)
         axs_0_y.set_ylim(50, 300)
         axs_0_y.set_ylabel('F10.7 Radio Flux [SFU]')
@@ -1224,23 +1291,23 @@ def find_BestTemporalShifts():
         # =============================================================================
         # Spacecraft-Sun-Earth Angle
         # =============================================================================
-        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/lsk/latest_leapseconds.tls')
-        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-1.bsp')
-        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-2.bsp')
-        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/pck/pck00011.tpc')
-        spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
-        spice.furnsh(spacecraft_dict['Juno'].SPICE_METAKERNEL)
+        #spice.furnsh('/Users/mrutala/SPICE/generic/kernels/lsk/latest_leapseconds.tls')
+        #spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-1.bsp')
+        #spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-2.bsp')
+        #spice.furnsh('/Users/mrutala/SPICE/generic/kernels/pck/pck00011.tpc')
+        #spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
+        #spice.furnsh(spacecraft_dict['Juno'].SPICE_METAKERNEL)
         
-        ang_datetimes = np.arange(starttime, stoptime, dt.timedelta(days=1)).astype(dt.datetime)
-        ets = spice.datetime2et(ang_datetimes)
-        ang = [np.abs(spice.trgsep(et, 'Juno', 'POINT', None, 'Earth', 'POINT', None, 'SUN', 'None')*180/np.pi) for et in ets]
-        spice.kclear()
+        #ang_datetimes = np.arange(starttime, stoptime, dt.timedelta(days=1)).astype(dt.datetime)
+        #ets = spice.datetime2et(ang_datetimes)
+        #ang = [np.abs(spice.trgsep(et, 'Juno', 'POINT', None, 'Earth', 'POINT', None, 'SUN', 'None')*180/np.pi) for et in ets]
+        #spice.kclear()
         
-        axs_1_y = axs[1].twinx()
-        axs_1_y.plot(ang_datetimes, ang, alpha=0.5)
-        axs_1_y.set_ylim(0, 180)
-        axs_1_y.set_yticks([0, 30, 60, 90, 120, 150, 180])
-        axs_1_y.set_ylabel('TSE Angle [deg.]')
+        #axs_1_y = axs[1].twinx()
+        #axs_1_y.plot(ang_datetimes, ang, alpha=0.5)
+        #axs_1_y.set_ylim(0, 180)
+        #axs_1_y.set_yticks([0, 30, 60, 90, 120, 150, 180])
+        #axs_1_y.set_ylabel('TSE Angle [deg.]')
         
         plt.text(0.02, 0.5, 'Best-fit Temporal Shift (from cross correlation) [hr]', 
                  fontsize=14, transform=plt.gcf().transFigure, rotation=90, va='center')
@@ -1252,7 +1319,7 @@ def find_BestTemporalShifts():
 
     # plt.savefig('figures/Juno_MI_runningoffset_max_only.png', dpi=300)    
     
-    return(maxima_list)
+    #return(maxima_list)
 
 def QQplot_datacomparison():
     import matplotlib.pyplot as plt
