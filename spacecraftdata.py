@@ -167,7 +167,7 @@ class SpacecraftData:
             #                      axis=0)
         
     def read_processeddata(self, starttime=None, stoptime=None, 
-                           everything=False, strict=True, resolution=None):
+                           everything=False, strict=True, resolution=None, combined=False):
         import read_SWData
         import spiceypy as spice
         
@@ -181,7 +181,7 @@ class SpacecraftData:
         processed_data = read_SWData.read(self.name, 
                                           self.starttime, self.stoptime, 
                                           basedir=self.basedir + 'Data/',
-                                          resolution=resolution)
+                                          resolution=resolution, combined=combined)
         
         if len(processed_data.dropna(axis='index')) == 0:
             fmt = '%Y-%m-%d %H:%M:%S.%f'
