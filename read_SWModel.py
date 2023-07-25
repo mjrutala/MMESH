@@ -46,11 +46,19 @@ def Tao(target, starttime, finaltime, basedir=''):
             filenames = ['swmhd_tao_voyager2_1978.txt',
                          'swmhd_tao_voyager2_1979.txt',
                          'swmhd_tao_voyager2_1980.txt']
-        # case 'galileo':
-        #     return(None)
+        case 'pioneer10':
+            filenames = ['swmhd_tao_pioneer10_1973.txt',
+                         'swmhd_tao_pioneer10_1974.txt']
+        case 'pioneer11':
+            filenames = ['swmhd_tao_pioneer11_1974.txt',
+                         'swmhd_tao_pioneer10_1975.txt',
+                         'swmhd_tao_pioneer10_1976.txt',
+                         'swmhd_tao_pioneer10_1977.txt',
+                         'swmhd_tao_pioneer10_1978.txt']
         case 'ulysses':
             filenames = ['swmhd_tao_ulysses_1991.txt',
                          'swmhd_tao_ulysses_1992.txt',
+                         'swmhd_tao_ulysses_1997.txt',
                          'swmhd_tao_ulysses_1998.txt',
                          'swmhd_tao_ulysses_1999.txt',
                          'swmhd_tao_ulysses_2003.txt',
