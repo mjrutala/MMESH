@@ -183,7 +183,7 @@ class SpacecraftData:
                                           basedir=self.basedir + 'Data/',
                                           resolution=resolution)
         
-        if len(self.data.dropna(axis='index')) == 0:
+        if len(processed_data.dropna(axis='index')) == 0:
             fmt = '%Y-%m-%d %H:%M:%S.%f'
             scd_log.warning('No data found between {} and {}. '.format(starttime.strftime(fmt), stoptime.strftime(fmt)) +
                             'If you expect data in this range, please check again') #+
@@ -192,12 +192,14 @@ class SpacecraftData:
         
         #  If self.data exists, add to it, else, make it
         if strict:
-            try:
-                processed_data = processed_data.reindex(columns=self.data.columns)
-            except ValueError:
-                print('VALUE ERROR!')
-                print(processed_data.columns)
-                print(processed_data.index.has_duplicates)
+            processed_data = processed_data.reindex(columns=self.data.columns)
+            # try:
+            #     processed_data = processed_data.reindex(columns=self.data.columns)
+            # except ValueError:
+            #     print('VALUE ERROR!')
+            #     print(processed_data.columns)
+            #     print(self.data.columns)
+            #     print(processed_data.index.has_duplicates)
             
         #self.data = pd.concat([self.data, processed_data], 
         #                      axis=0)
