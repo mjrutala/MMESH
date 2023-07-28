@@ -1974,7 +1974,7 @@ def find_BestTemporalShifts():
     #    Would-be inputs go here 
     # =============================================================================
     tag = 'u_mag'  #  solar wind property of interest
-    spacecraft_names = ['Ulysses', 'Juno'] # 'Juno'
+    spacecraft_names = ['Juno'] # ['Ulysses', 'Juno'] # 'Juno'
     model_name = 'Tao'
     starttime = dt.datetime(1990, 1, 1)
     stoptime = dt.datetime(2016, 7, 1)
@@ -2066,6 +2066,8 @@ def find_BestTemporalShifts():
     
     window_centers = list()
     maxima_list = list()
+    
+    output_df = pd.DataFrame(columns=['window_center', 'lag', 'correlation', 'false_positives', 'false_negatives'])
     for sc_data, m_output in zip(spacecraft_data_list, model_output_list):
             
         sc_windows = sc_data.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
@@ -2171,27 +2173,131 @@ def find_BestTemporalShifts():
                     axs[1,1].scatter(cc_out_z[0], cc_out_z[1], s=24)
                     axs[1,1].set(xlabel='Lags [min].', 
                                   ylabel='Cross Correlation')
+                    
+                plt.show()
                 
-                window_centers.append(sc_window.index[int(len(sc_window)*0.5-1)])
+                maxima = scipy.signal.find_peaks(cc_out_z[1], height=0.5)
+                
+                # =============================================================================
+                #  Lag the time series by the peak cross-correlation to characterize errors         
+                # =============================================================================
+                #maximal_cc_indx = maxima[0][np.where(maxima[1]['peak_heights'] == 1.0)]
+                optimal_shifts = cc_out_z[0][maxima[0]]
+                
+                n_false_positives = list()
+                n_false_negatives = list()
+                for shift in optimal_shifts:
+                    
+                    shift_start = m_window.index[0] - dt.timedelta(minutes=shift)
+                    shift_stop = m_window.index[-1] - dt.timedelta(minutes=shift)
+                    shift_indx = np.where((m_output.index >= shift_start) 
+                                          & (m_output.index < shift_stop))[0]
+                    new_m_window = m_output.iloc[shift_indx]
+                    new_m_window.index += dt.timedelta(minutes=shift)
+                    
+                    #!!!! Need to read extra model output in so there's room to shift it around
+                    #  Temp. fix: trim the spacecraft array when the model is cutoff
+                    #  MJR 20230728-- actually, maybe this makes sense
+                    #  If aligning the model and data properly means that a feature the model 
+                    #  predicts lies beyond the data range, we shouldn't penalize the model by 
+                    #  calling that a false positive-- maybe there was a feature there, if 
+                    #  we had the data....
+                    shifted_sc_series = sc_window['smooth_ddt_'+tag+'_zscore']
+                    shifted_m_series = new_m_window['smooth_ddt_'+tag+'_zscore']
+                    if len(shifted_m_series) < len(shifted_sc_series):
+                        shifted_sc_series = shifted_sc_series.reindex(shifted_m_series.index)
+                    shifted_datetime = shifted_sc_series.index
+                    shifted_sc_series, shifted_m_series = shifted_sc_series.to_numpy(), shifted_m_series.to_numpy()
+                    
+                    try:    
+                        residuals = shifted_sc_series - shifted_m_series
+                    except:
+                        print('RESIDUALS COULD NOT BE CALCULATED')
+                        return(sc_window, new_m_window)
+                    
+                    # fig, axs = plt.subplots(nrows = 2, height_ratios=[2,1], sharex='col')
+                    # # axs[0].plot((shifted_datetime-spacecraft_data.index[0]).total_seconds()/60.,
+                    # #             shifted_sc_series, color='gray')
+                    # # axs[0].plot((shifted_datetime-spacecraft_data.index[0]).total_seconds()/60.,
+                    # #             shifted_m_series, color=model_colors[model_name])
+                    
+                    # # axs[1].plot((shifted_datetime-spacecraft_data.index[0]).total_seconds()/60.,
+                    # #             residuals)
+                    
+                    # axs[0].plot(np.arange(0, len(shifted_datetime)),
+                    #             shifted_sc_series, color='gray')
+                    # axs[0].plot(np.arange(0, len(shifted_datetime)),
+                    #             shifted_m_series, color=model_colors[model_name])
+                    
+                    # axs[1].plot(np.arange(0, len(shifted_datetime)),
+                    #             residuals)
+                    # plt.show()
+                    
+                    false_positives = list()
+                    #  Check all model peaks against the residuals for false positives
+                    m_peak_indx = np.where(shifted_m_series > 0)[0]
+                    m_peak_span_indxs = np.split(m_peak_indx, np.where(np.diff(m_peak_indx) > 1)[0] + 1)
+                    for span in m_peak_span_indxs:
+                        m_sum = np.sum(shifted_m_series[span])
+                        r_sum = np.sum(residuals[span])
+                        if m_sum == -r_sum:
+                            false_positives.append(span)
+                    
+                    false_negatives = list()
+                    #  Check all data peaks against the residuals for false negatives
+                    sc_peak_indx = np.where(shifted_sc_series > 0)[0]
+                    sc_peak_span_indxs = np.split(sc_peak_indx, np.where(np.diff(sc_peak_indx) > 1)[0] + 1)
+                    for span in sc_peak_span_indxs:
+                        sc_sum = np.sum(shifted_sc_series[span])
+                        r_sum = np.sum(residuals[span])
+                        if sc_sum == r_sum:
+                            false_negatives.append(span)
+                            
+                    # false_neg_indx = np.where((residuals == shifted_sc_series) & 
+                    #                      (shifted_sc_series != 0))[0]
+                    # false_negatives = np.split(false_neg_indx, np.where(np.diff(false_neg_indx) > 1)[0] + 1)
+                    #
+                    # false_pos_indx = np.where((residuals == -shifted_m_series) &
+                    #                           (shifted_m_series != 0))[0]
+                    # false_positives = np.split(false_pos_indx, np.where(np.diff(false_pos_indx) >1)[0] + 1)
+                    
+                    n_false_positives.append(len(false_positives))
+                    n_false_negatives.append(len(false_negatives))
+                    #print("False Negatives: " + str(len(false_negatives)))
+                    #print("False Positives: " + str(len(false_positives)))
+                
+                
+                # =============================================================================
+                #  Record important things to return      
+                # =============================================================================
+                window_center = sc_window.index[int(len(sc_window)*0.5-1)]
+                #window_centers.append(window_center)
                 #norm_mi = mi / RPS_mi
                 #norm_mi = np.nan_to_num(norm_mi, nan=0., posinf=0., neginf=0.)
                 
                 #maxima = scipy.signal.find_peaks(norm_mi, height=10.)
-                maxima = scipy.signal.find_peaks(cc_out_z[1], height=0.5)
                 
-                for m, h in zip(maxima[0], maxima[1]['peak_heights']):
-                    maxima_list.append((sc_window.index[int(len(sc_window)*0.5-1)], cc_out_z[0][m], h))
+                
+                #for m, h in zip(maxima[0], maxima[1]['peak_heights']):
+                #    maxima_list.append((sc_window.index[int(len(sc_window)*0.5-1)], cc_out_z[0][m], h))
                 
                 #plt.tight_layout()
                 #figurename = 'garbage'
                 #for suffix in ['.png', '.pdf']:
                 #    plt.savefig('figures/' + figurename + suffix)
                 # plt.savefig('figures/Juno_MI_frames/frame_' + f'{counter:03}' + '.png')
-                plt.show()
+                
+                d = {'window_center'     : [window_center for i in range(len(maxima[0]))],
+                     'lag'               : cc_out_z[0][maxima[0]],
+                     'correlation'       : maxima[1]['peak_heights'],
+                     'false_positives'   : n_false_positives,
+                     'false_negatives'   : n_false_negatives}  
+                output_df = pd.concat([output_df, pd.DataFrame.from_dict(d)], 
+                                      ignore_index=True)
+                
                 print(counter)
                 
-                
-    return(maxima_list, spacecraft_data, model_output)
+    return(output_df, spacecraft_data, model_output)
     
 def plot_BestTemporalShifts(maxima_list, spacecraft_data, model_output):
     import matplotlib.pyplot as plt
@@ -2312,3 +2418,36 @@ def plot_BestTemporalShifts(maxima_list, spacecraft_data, model_output):
     # plt.savefig('figures/Juno_MI_runningoffset_max_only.png', dpi=300)    
     
     #return(maxima_list)
+
+
+# def find_FalseFeatures(maxima_list, spacecraft_data, model_output):
+    
+#     #  Split the combined spacecraft data set into (mostly) continuous chunks
+#     spacecraft_deltas = spacecraft_data.index.to_series().diff()
+#     gaps_indx = np.where(spacecraft_deltas > dt.timedelta(days=30))[0]
+#     start_indx = np.insert(gaps_indx, 0, 0)
+#     stop_indx = np.append(gaps_indx, len(spacecraft_data.index))-1
+    
+#     spacecraft_data_list = []
+#     model_output_list = []
+#     for i0, i1 in zip(start_indx, stop_indx):
+#         spacecraft_data_list.append(spacecraft_data[i0:i1])
+#         model_output_list.append(model_output[i0:i1])
+    
+#     #  Dataframes are indexed so that there's data every 15 minutes
+#     #  So timedelta can be replaced with the equivalent integer
+#     #  Which allows step size larger than 1
+#     timespan_int = int(window_in_days*24*60 / resolution_in_min)
+#     timestep_int = int(stepsize_in_days*24*60 / resolution_in_min)
+#     max_lag_in_min = max_lag_in_days*24*60.
+#     min_lag_in_min = min_lag_in_days*24*60.
+    
+#     window_centers = list()
+#     maxima_list = list()
+#     for sc_data, m_output in zip(spacecraft_data_list, model_output_list):
+            
+#         sc_windows = sc_data.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
+#         m_windows = m_output.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
+        
+#         for counter, (sc_window, m_window) in enumerate(zip(sc_windows, m_windows)):
+#             if len(sc_window) == timespan_int:
