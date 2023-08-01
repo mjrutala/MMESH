@@ -2181,7 +2181,6 @@ def find_BestTemporalShifts():
                 # =============================================================================
                 #  Lag the time series by the peak cross-correlation to characterize errors         
                 # =============================================================================
-                #maximal_cc_indx = maxima[0][np.where(maxima[1]['peak_heights'] == 1.0)]
                 optimal_shifts = cc_out_z[0][maxima[0]]
                 
                 n_false_positives = list()
@@ -2209,24 +2208,6 @@ def find_BestTemporalShifts():
                         print('RESIDUALS COULD NOT BE CALCULATED')
                         return(sc_window, new_m_window)
                     
-                    # fig, axs = plt.subplots(nrows = 2, height_ratios=[2,1], sharex='col')
-                    # # axs[0].plot((shifted_datetime-spacecraft_data.index[0]).total_seconds()/60.,
-                    # #             shifted_sc_series, color='gray')
-                    # # axs[0].plot((shifted_datetime-spacecraft_data.index[0]).total_seconds()/60.,
-                    # #             shifted_m_series, color=model_colors[model_name])
-                    
-                    # # axs[1].plot((shifted_datetime-spacecraft_data.index[0]).total_seconds()/60.,
-                    # #             residuals)
-                    
-                    # axs[0].plot(np.arange(0, len(shifted_datetime)),
-                    #             shifted_sc_series, color='gray')
-                    # axs[0].plot(np.arange(0, len(shifted_datetime)),
-                    #             shifted_m_series, color=model_colors[model_name])
-                    
-                    # axs[1].plot(np.arange(0, len(shifted_datetime)),
-                    #             residuals)
-                    # plt.show()
-                    
                     false_positives = list()
                     #  Check all model peaks against the residuals for false positives
                     m_peak_indx = np.where(shifted_m_series > 0)[0]
@@ -2247,20 +2228,11 @@ def find_BestTemporalShifts():
                         if sc_sum == r_sum:
                             false_negatives.append(span)
                             
-                    # false_neg_indx = np.where((residuals == shifted_sc_series) & 
-                    #                      (shifted_sc_series != 0))[0]
-                    # false_negatives = np.split(false_neg_indx, np.where(np.diff(false_neg_indx) > 1)[0] + 1)
-                    #
-                    # false_pos_indx = np.where((residuals == -shifted_m_series) &
-                    #                           (shifted_m_series != 0))[0]
-                    # false_positives = np.split(false_pos_indx, np.where(np.diff(false_pos_indx) >1)[0] + 1)
+                    
                     
                     n_false_positives.append(len(false_positives))
                     n_false_negatives.append(len(false_negatives))
-                    #print("False Negatives: " + str(len(false_negatives)))
-                    #print("False Positives: " + str(len(false_positives)))
-                
-                
+
                 # =============================================================================
                 #  Record important things to return      
                 # =============================================================================
