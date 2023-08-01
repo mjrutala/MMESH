@@ -1974,7 +1974,7 @@ def find_BestTemporalShifts():
     #    Would-be inputs go here 
     # =============================================================================
     tag = 'u_mag'  #  solar wind property of interest
-    spacecraft_names = ['Juno'] # ['Ulysses', 'Juno'] # 'Juno'
+    spacecraft_name = 'Juno' # ['Ulysses', 'Juno'] # 'Juno'
     model_name = 'Tao'
     starttime = dt.datetime(1990, 1, 1)
     stoptime = dt.datetime(2016, 7, 1)
@@ -2002,47 +2002,47 @@ def find_BestTemporalShifts():
     spice.furnsh('/Users/mrutala/SPICE/generic/kernels/pck/pck00011.tpc')
     spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
     
-    spacecraft_dict = dict.fromkeys(spacecraft_names, None)
-    for sc_name in spacecraft_dict.keys():
-        sc_info = spacecraftdata.SpacecraftData(sc_name)
-        sc_info.read_processeddata(starttime, stoptime, resolution=resolution_str, combined=True)
-        sc_info.find_state(reference_frame, observer, keep_kernels=True)
-        sc_info.find_subset(coord1_range=r_range*sc_info.au_to_km,
-                            coord3_range=lat_range*np.pi/180.,
-                            transform='reclat')
+    sc_info = spacecraftdata.SpacecraftData(spacecraft_name)
+    sc_info.read_processeddata(starttime, stoptime, resolution=resolution_str, combined=True)
+    sc_info.find_state(reference_frame, observer, keep_kernels=True)
+    sc_info.find_subset(coord1_range=r_range*sc_info.au_to_km,
+                        coord3_range=lat_range*np.pi/180.,
+                        transform='reclat')
         
-        spice.furnsh(sc_info.SPICE_METAKERNEL)
-        ang_datetimes = sc_info.data.index  
-        #np.arange(starttime, stoptime, dt.timedelta(days=1)).astype(dt.datetime)
-        ets = spice.datetime2et(ang_datetimes)
-        ang = [np.abs(spice.trgsep(et, sc_info.name, 'POINT', None, 'Earth', 'POINT', None, 'Sun', 'None')*180/np.pi) for et in ets]
-        sc_info.data['a_tse'] = ang
-        
-        spacecraft_dict[sc_name] = sc_info
-        sc_columns = sc_info.data.columns
+    spice.furnsh(sc_info.SPICE_METAKERNEL)
+    ang_datetimes = sc_info.data.index  
+    #np.arange(starttime, stoptime, dt.timedelta(days=1)).astype(dt.datetime)
+    ets = spice.datetime2et(ang_datetimes)
+    ang = [np.abs(spice.trgsep(et, sc_info.name, 'POINT', None, 'Earth', 'POINT', None, 'Sun', 'None')*180/np.pi) for et in ets]
+    sc_info.data['a_tse'] = ang
+    
+    sc_columns = sc_info.data.columns
     
     spice.kclear()
     
-    model_dict = dict.fromkeys(spacecraft_names, None)
-    for sc_name in model_dict.keys():
-        model_info = read_SWModel.Tao(sc_name, starttime, stoptime)
-        model_dict[sc_name] = model_info
-        model_columns = model_info.columns
+    model_info = read_SWModel.Tao(spacecraft_name, starttime, stoptime)
+    model_columns = model_info.columns
       
-    spacecraft_data = pd.DataFrame(columns = sc_columns)
-    model_output = pd.DataFrame(columns = model_columns)   
-    for sc_name in spacecraft_dict.keys():
-        spacecraft_data = pd.concat([spacecraft_data, spacecraft_dict[sc_name].data])
-        model_output = pd.concat([model_output, model_dict[sc_name]])
+    spacecraft_data = sc_info.data
+    model_output = model_info 
     
     #  Make model index match spacecraft index, getting rid of excess
     model_output = model_output.reindex(spacecraft_data.index, method='nearest')
     
+    # =============================================================================
+    #     
+    # =============================================================================
     sigma_cutoff = 4
     spacecraft_data = find_RollingDerivativeZScore(spacecraft_data, tag, 1) # !!! vvv
     spacecraft_data['smooth_ddt_'+tag+'_zscore'] = spacecraft_data['smooth_ddt_'+tag+'_zscore'].where(spacecraft_data['smooth_ddt_'+tag+'_zscore'] > sigma_cutoff, 0)
-    model_output = find_RollingDerivativeZScore(model_output, tag, 2) # !!! Rolling derivative of the 15 min resample?
-    model_output['smooth_ddt_'+tag+'_zscore'] = model_output['smooth_ddt_'+tag+'_zscore'].where(model_output['smooth_ddt_'+tag+'_zscore'] > sigma_cutoff, 0)
+    spacecraft_data['smooth_ddt_'+tag+'_zscore'] = spacecraft_data['smooth_ddt_'+tag+'_zscore'].where(spacecraft_data['smooth_ddt_'+tag+'_zscore'] < sigma_cutoff, sigma_cutoff)
+    
+    def model_features(model_output):
+        model_output = find_RollingDerivativeZScore(model_output, tag, 2) # !!! Rolling derivative of the 15 min resample?
+        model_output['smooth_ddt_'+tag+'_zscore'] = model_output['smooth_ddt_'+tag+'_zscore'].where(model_output['smooth_ddt_'+tag+'_zscore'] > sigma_cutoff, 0)
+        model_output['smooth_ddt_'+tag+'_zscore'] = model_output['smooth_ddt_'+tag+'_zscore'].where(model_output['smooth_ddt_'+tag+'_zscore'] < sigma_cutoff, sigma_cutoff)
+        return(model_output)
+    model_output = model_features(model_output)
     
     #  Split the combined spacecraft data set into (mostly) continuous chunks
     spacecraft_deltas = spacecraft_data.index.to_series().diff()
@@ -2192,16 +2192,10 @@ def find_BestTemporalShifts():
                     shift_stop = m_window.index[-1] - dt.timedelta(minutes=shift)
                     shift_indx = np.where((m_output.index >= shift_start) 
                                           & (m_output.index < shift_stop))[0]
-                    new_m_window = m_output.iloc[shift_indx]
+                    new_m_window = read_SWModel.Tao(spacecraft_name, shift_start, shift_stop) #m_output.iloc[shift_indx] 
+                    new_m_window = model_features(new_m_window)
                     new_m_window.index += dt.timedelta(minutes=shift)
                     
-                    #!!!! Need to read extra model output in so there's room to shift it around
-                    #  Temp. fix: trim the spacecraft array when the model is cutoff
-                    #  MJR 20230728-- actually, maybe this makes sense
-                    #  If aligning the model and data properly means that a feature the model 
-                    #  predicts lies beyond the data range, we shouldn't penalize the model by 
-                    #  calling that a false positive-- maybe there was a feature there, if 
-                    #  we had the data....
                     shifted_sc_series = sc_window['smooth_ddt_'+tag+'_zscore']
                     shifted_m_series = new_m_window['smooth_ddt_'+tag+'_zscore']
                     if len(shifted_m_series) < len(shifted_sc_series):
@@ -2299,7 +2293,7 @@ def find_BestTemporalShifts():
                 
     return(output_df, spacecraft_data, model_output)
     
-def plot_BestTemporalShifts(maxima_list, spacecraft_data, model_output):
+def plot_BestTemporalShifts(maxima, spacecraft_data, model_output):
     import matplotlib.pyplot as plt
     import scipy
     import spiceypy as spice
@@ -2308,26 +2302,29 @@ def plot_BestTemporalShifts(maxima_list, spacecraft_data, model_output):
     import matplotlib.dates as mdates
 
     #starttime, stoptime = dt.datetime(2016, 5, 15), dt.datetime(2016, 7, 1) 
-    starttime, stoptime = dt.datetime(2003,10,1), dt.datetime(2004,7,1)
-    #starttime, stoptime = x[0], x[-1]
+    #starttime, stoptime = dt.datetime(2003,10,1), dt.datetime(2004,7,1)
+    starttime, stoptime = spacecraft_data.index[0], spacecraft_data.index[-1]
     
-    maxima_list = [i for i in maxima_list if (i[0] >= starttime) and (i[0] < stoptime)]
-    x, y, c = zip(*maxima_list)
-    y_at_c1 = np.array(y)[np.where(np.array(c) == 1.0)[0]]
+    maxima = maxima.iloc[np.where((maxima.window_center >= starttime) &
+                                  (maxima.window_center < stoptime))]
+    maximal_correlation = maxima.iloc[np.where(maxima.correlation == 1.0)]
     
-    corr = scipy.stats.pearsonr(np.abs(y_at_c1), spacecraft_data['a_tse'][np.where(np.array(c) == 1.0)[0]])
-    print(corr)
-    fig, ax = plt.subplots()
-    ax.scatter(np.abs(y_at_c1), spacecraft_data['a_tse'][np.where(np.array(c) == 1.0)[0]])
-    plt.show()
+    #corr = scipy.stats.pearsonr(np.abs(y_at_c1), spacecraft_data['a_tse'][np.where(np.array(c) == 1.0)[0]])
+    #print(corr)
     
+    #fig, ax = plt.subplots()
+    #ax.scatter(np.abs(y_at_c1), spacecraft_data['a_tse'][np.where(np.array(c) == 1.0)[0]])
+    #plt.show()
+    
+    coloring = maxima.correlation
+    coloring = (maxima.false_positives + maxima.false_negatives)
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         
         #window_centers_min = [(wc - jr.index[0]).total_seconds()/60. for wc in window_centers]
         fig, axs = plt.subplots(nrows=2, ncols=2, width_ratios=(6,1), figsize=(8,6), sharex='col', sharey=True)
         plt.subplots_adjust(left=0.15, bottom=0.1, right=1.0, hspace=0.1, wspace=0.3)
         
-        xs = [(t - x[0]).total_seconds() for t in x]
+        seconds = [(t - spacecraft_data.index[0]).total_seconds() for t in maxima.window_center]
         
         def line(t, a, b):
             f_t = t*a + b
@@ -2337,13 +2334,17 @@ def plot_BestTemporalShifts(maxima_list, spacecraft_data, model_output):
             f_t = a*t**2 + b*t + c
             return(f_t)
         
-        fit_opt, fit_cov = scipy.optimize.curve_fit(poly, xs, y, sigma=(1./np.array(c))**2)
+        print(len(seconds))
+        print(len(maxima.lag))
+        print(len(maxima.correlation))
+        fit_opt, fit_cov = scipy.optimize.curve_fit(poly, seconds, maxima.lag, sigma=(1./np.array(maxima.correlation))**2)
         print(fit_opt)
         
         for ax in axs[:,0]:
-            scatterplot = ax.scatter(x, y, s=36, marker='.', c=c, cmap='viridis', vmax=1)
+            scatterplot = ax.scatter(maxima.window_center, maxima.lag, c=coloring,
+                                     s=36, marker='.', cmap='viridis')
             ax.set_ylim(-6*24*60., 6*24*60.)
-            ax.yaxis.set_major_formatter(lambda x, pos: str(x/60.))
+            ax.yaxis.set_major_formatter(lambda maxima_index, pos: str(maxima_index/60.))
             ax.set_yticks(np.arange(-6*24, 6*24+48, 48) * 60.)
             ax.set_xlim(starttime, stoptime)
             
@@ -2355,11 +2356,11 @@ def plot_BestTemporalShifts(maxima_list, spacecraft_data, model_output):
             #ax.plot(x, [line(t, fit_opt[0], fit_opt[1]) for t in xs])
             #ax.plot(x, [poly(t, *fit_opt) for t in xs], color='xkcd:sky blue')
             
-            ax.axhline(np.mean(y), color='xkcd:lilac', linestyle='--')
-            ax.axhline(np.mean(y_at_c1), color='gold', linestyle='--')
+            ax.axhline(np.mean(maxima.lag), color='xkcd:lilac', linestyle='--')
+            ax.axhline(np.mean(maximal_correlation.lag), color='gold', linestyle='--')
         
-        counts_lo, bins_lo = np.histogram(y, bins=np.arange(-6*24*60., 6*24*60.+12*60, 12*60))
-        counts_hi, bins_hi = np.histogram(y_at_c1, bins=np.arange(-6*24*60., 6*24*60.+12*60, 12*60))
+        counts_lo, bins_lo = np.histogram(maxima.lag, bins=np.arange(-6*24*60., 6*24*60.+12*60, 12*60))
+        counts_hi, bins_hi = np.histogram(maximal_correlation.lag, bins=np.arange(-6*24*60., 6*24*60.+12*60, 12*60))
         for ax in axs[:,1]:
             ax.stairs(counts_lo, bins_lo, orientation='horizontal', color='xkcd:lilac')
             ax.stairs(counts_hi, bins_hi, orientation='horizontal', color='gold')
@@ -2368,8 +2369,8 @@ def plot_BestTemporalShifts(maxima_list, spacecraft_data, model_output):
             ax.set_ylabel('Occurence of Best-fit Shifts')
             ax.yaxis.set_label_position("right")
             
-            ax.axhline(np.mean(y), color='xkcd:lilac', linestyle='--')
-            ax.axhline(np.mean(y_at_c1), color='gold', linestyle='--')
+            ax.axhline(np.mean(maxima.lag), color='xkcd:lilac', linestyle='--')
+            ax.axhline(np.mean(maximal_correlation.lag), color='gold', linestyle='--')
             
         axs[1,0].set_xlabel('Date')
         
