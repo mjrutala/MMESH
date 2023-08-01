@@ -1961,6 +1961,7 @@ def find_BestTemporalShifts():
     import spiceypy as spice
     import matplotlib.dates as mdates
     import scipy
+    import matplotlib as mpl
     
     import read_SWModel
     import spacecraftdata
@@ -1969,6 +1970,11 @@ def find_BestTemporalShifts():
     sys.path.append('/Users/mrutala/code/python/libraries/aaft/')
     sys.path.append('/Users/mrutala/code/python/libraries/generic_MI_lag_finder/')
     import generic_mutual_information_routines as mi_lib
+    
+    try:
+        plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
+    except:
+        pass
     
     # =============================================================================
     #    Would-be inputs go here 
@@ -2035,7 +2041,7 @@ def find_BestTemporalShifts():
     sigma_cutoff = 4
     spacecraft_data = find_RollingDerivativeZScore(spacecraft_data, tag, 1) # !!! vvv
     spacecraft_data['smooth_ddt_'+tag+'_zscore'] = spacecraft_data['smooth_ddt_'+tag+'_zscore'].where(spacecraft_data['smooth_ddt_'+tag+'_zscore'] > sigma_cutoff, 0)
-    spacecraft_data['smooth_ddt_'+tag+'_zscore'] = spacecraft_data['smooth_ddt_'+tag+'_zscore'].where(spacecraft_data['smooth_ddt_'+tag+'_zscore'] < sigma_cutoff, sigma_cutoff)
+    spacecraft_data['smooth_ddt_'+tag+'_zscore'] = spacecraft_data['smooth_ddt_'+tag+'_zscore'].where(spacecraft_data['smooth_ddt_'+tag+'_zscore'] < sigma_cutoff, sigma_cutoff+1)
     
     def model_features(model_output):
         model_output = find_RollingDerivativeZScore(model_output, tag, 2) # !!! Rolling derivative of the 15 min resample?
@@ -2132,47 +2138,47 @@ def find_BestTemporalShifts():
                     ax.plot(m_window.index, m_series)
                     plt.show()
                 
-                with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-                    plt.rcParams.update({'font.size': 10})
-                    fig, axs = plt.subplots(nrows=2, ncols=2, sharex='col', width_ratios=(3,1), figsize=(8,6))
-                    plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.05, wspace=0.325)
-                    
-                    #  Unmodified timeseries
-                    axs[0,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
-                                  sc_window[tag], color='gray')
-                    axs[0,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
-                                  m_window[tag], color=model_colors[model_name])
-                    axs[0,0].set(ylim=(250,600), ylabel=r'u$_{sw}$ [km/s]')
-                    
-                    #  Modified timeseries to highlight jumps
-                    axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
-                                  sc_window['smooth_ddt_'+tag+'_zscore'], color='gray')
-                    axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
-                                  m_window['smooth_ddt_'+tag+'_zscore'], color=model_colors[model_name])
-                    axs[1,0].set(xlabel='Elapsed time [min.]',
-                                  ylim=(-1,12), ylabel=r'$Z(\frac{d u_{sw}}{dt})$')
-                    
-                    # #  Unmodified timeseries MI
-                    # lags, mi, RPS_mi, x_sq, x_pw = mi_out
-                    # axs[0,1].plot(lags, mi, marker='x', linestyle='None', color='black')
-                    # axs[0,1].plot(lags, RPS_mi, color='xkcd:light gray')
-                    # axs[0,1].set(ylabel='MI (nats)')
-                    
-                    # #  Modified timeseries MI
-                    # lags, mi, RPS_mi, x_sq, x_pw = mi_out_z
-                    # axs[1,1].plot(lags, mi, marker='x', linestyle='None', color='black')
-                    # axs[1,1].plot(lags, RPS_mi, color='xkcd:light gray')
-                    # axs[1,1].set(xlabel='Lags [min.]',
-                    #               ylabel='MI [nats]')
-                    
-                    
-                    axs[0,1].scatter(cc_out[0], cc_out[1], s=24)
-                    axs[0,1].set(xlabel='Lags [min].', 
-                                  ylabel='Cross Correlation')
-                    
-                    axs[1,1].scatter(cc_out_z[0], cc_out_z[1], s=24)
-                    axs[1,1].set(xlabel='Lags [min].', 
-                                  ylabel='Cross Correlation')
+                
+                plt.rcParams.update({'font.size': 10})
+                fig, axs = plt.subplots(nrows=2, ncols=2, sharex='col', width_ratios=(3,1), figsize=(8,6))
+                plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.05, wspace=0.325)
+                
+                #  Unmodified timeseries
+                axs[0,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                              sc_window[tag], color='gray')
+                axs[0,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                              m_window[tag], color=model_colors[model_name])
+                axs[0,0].set(ylim=(250,600), ylabel=r'u$_{sw}$ [km/s]')
+                
+                #  Modified timeseries to highlight jumps
+                axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                              sc_window['smooth_ddt_'+tag+'_zscore'], color='gray')
+                axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
+                              m_window['smooth_ddt_'+tag+'_zscore'], color=model_colors[model_name])
+                axs[1,0].set(xlabel='Elapsed time [min.]',
+                              ylim=(-1,12), ylabel=r'$Z(\frac{d u_{sw}}{dt})$')
+                
+                # #  Unmodified timeseries MI
+                # lags, mi, RPS_mi, x_sq, x_pw = mi_out
+                # axs[0,1].plot(lags, mi, marker='x', linestyle='None', color='black')
+                # axs[0,1].plot(lags, RPS_mi, color='xkcd:light gray')
+                # axs[0,1].set(ylabel='MI (nats)')
+                
+                # #  Modified timeseries MI
+                # lags, mi, RPS_mi, x_sq, x_pw = mi_out_z
+                # axs[1,1].plot(lags, mi, marker='x', linestyle='None', color='black')
+                # axs[1,1].plot(lags, RPS_mi, color='xkcd:light gray')
+                # axs[1,1].set(xlabel='Lags [min.]',
+                #               ylabel='MI [nats]')
+                
+                
+                axs[0,1].scatter(cc_out[0], cc_out[1], s=24)
+                axs[0,1].set(xlabel='Lags [min].', 
+                              ylabel='Cross Correlation')
+                
+                axs[1,1].scatter(cc_out_z[0], cc_out_z[1], s=24)
+                axs[1,1].set(xlabel='Lags [min].', 
+                              ylabel='Cross Correlation')
                     
                 plt.show()
                 
@@ -2185,7 +2191,12 @@ def find_BestTemporalShifts():
                 
                 n_false_positives = list()
                 n_false_negatives = list()
-                for shift in optimal_shifts:
+                
+                fig, axs = plt.subplots(nrows=5, ncols=2, sharex=True, figsize=(6,8))
+                plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.2, wspace=0.1)
+                axs = axs.flatten()
+                
+                for plot_indx, shift in enumerate(optimal_shifts):
                     
                     shift_start = m_window.index[0] - dt.timedelta(minutes=shift)
                     shift_stop = m_window.index[-1] - dt.timedelta(minutes=shift)
@@ -2195,11 +2206,12 @@ def find_BestTemporalShifts():
                     new_m_window = model_features(new_m_window)
                     new_m_window.index += dt.timedelta(minutes=shift)
                     
-                    shifted_sc_series = sc_window['smooth_ddt_'+tag+'_zscore']
+                    new_sc_window = sc_window
+                    if len(new_m_window) < len(new_sc_window):
+                        new_sc_window = new_sc_window.reindex(new_m_window.index)
+                    
+                    shifted_sc_series = new_sc_window['smooth_ddt_'+tag+'_zscore']
                     shifted_m_series = new_m_window['smooth_ddt_'+tag+'_zscore']
-                    if len(shifted_m_series) < len(shifted_sc_series):
-                        shifted_sc_series = shifted_sc_series.reindex(shifted_m_series.index)
-                    shifted_datetime = shifted_sc_series.index
                     shifted_sc_series, shifted_m_series = shifted_sc_series.to_numpy(), shifted_m_series.to_numpy()
                     
                     try:    
@@ -2216,7 +2228,7 @@ def find_BestTemporalShifts():
                         m_sum = np.sum(shifted_m_series[span])
                         r_sum = np.sum(residuals[span])
                         if m_sum == -r_sum:
-                            false_positives.append(span)
+                            false_positives.append(span[0])
                     
                     false_negatives = list()
                     #  Check all data peaks against the residuals for false negatives
@@ -2226,13 +2238,26 @@ def find_BestTemporalShifts():
                         sc_sum = np.sum(shifted_sc_series[span])
                         r_sum = np.sum(residuals[span])
                         if sc_sum == r_sum:
-                            false_negatives.append(span)
+                            false_negatives.append(span[0])
                             
-                    
+
+                    axs[plot_indx].plot(new_sc_window.index, shifted_sc_series, color='gray')
+                    axs[plot_indx].plot(new_m_window.index, shifted_m_series)
+                    axs[plot_indx].set_ylim(0, 1.5*sigma_cutoff)
+                    axs[plot_indx].text(0.05, 0.99, 'Shift: ' + str(shift),
+                                        transform=axs[plot_indx].transAxes,
+                                        horizontalalignment='left', verticalalignment='top')
+                    axs[plot_indx].text(0.05, 1.0, 'False Positives: ' + str(len(false_positives)),
+                                         transform=axs[plot_indx].transAxes,
+                                         horizontalalignment='left', verticalalignment='bottom')
+                    axs[plot_indx].text(0.95, 1.0, 'False Negatives: ' + str(len(false_negatives)),
+                                         transform=axs[plot_indx].transAxes,
+                                         horizontalalignment='right', verticalalignment='bottom')
                     
                     n_false_positives.append(len(false_positives))
                     n_false_negatives.append(len(false_negatives))
 
+                plt.show()
                 # =============================================================================
                 #  Record important things to return      
                 # =============================================================================
@@ -2262,7 +2287,8 @@ def find_BestTemporalShifts():
                                       ignore_index=True)
                 
                 print(counter)
-                
+    
+    mpl.rcParams.update(mpl.rcParamsDefault)
     return(output_df, spacecraft_data, model_output)
     
 def plot_BestTemporalShifts(maxima, spacecraft_data, model_output):
