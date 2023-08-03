@@ -61,6 +61,57 @@ def find_RollingDerivativeZScore(dataframe, tag, window):
     
     return(dataframe)
 
+def find_Jumps(dataframe, tag, sigma_cutoff, smoothing_width, resolution_width=0.0):
+    """
+
+    Parameters
+    ----------
+    dataframe : TYPE
+        Pandas DataFrame
+    tag : TYPE
+        Column name in dataframe in which you're trying to find the jump
+    smoothing_window : TYPE
+        Numerical length of time, in hours, to smooth the input dataframe
+    resolution_window : TYPE
+        Numerical length of time, in hours, to assign as a width for the jump
+
+    Returns
+    -------
+    A copy of dataframe, with the new column "jumps" appended.
+
+    """
+    
+    halftimedelta = dt.timedelta(hours=0.5*smoothing_width)
+    half_rw = dt.timedelta(hours=0.5*resolution_width)
+    
+    output_tag = 'jumps'
+    
+    rolling_dataframe = dataframe.rolling(2*halftimedelta, min_periods=1, 
+                                          center=True, closed='left')  
+    smooth = rolling_dataframe[tag].mean()
+    smooth_derivative = np.gradient(smooth, dataframe.index.values.astype(np.int64))
+    
+    #  Take the z-score of the derivative of the smoothed input,
+    #  then normalize it based on a cutoff sigma
+    rough_jumps = smooth_derivative / np.std(smooth_derivative)
+    rough_jumps = np.where(rough_jumps > sigma_cutoff, 1, 0)
+    
+    #  Separate out each jump into a list of indices
+    rough_jumps_indx = np.where(rough_jumps == 1)[0]
+    rough_jump_spans = np.split(rough_jumps_indx, np.where(np.diff(rough_jumps_indx) > 1)[0] + 1)
+    
+    #  Set the resolution (width) of the jump
+    jumps = np.zeros(len(rough_jumps))
+    for span in rough_jump_spans:
+        center_indx = np.mean(span)
+        center = dataframe.index[int(center_indx)]
+        span_width_indx = np.where((dataframe.index >= center - half_rw) &
+                                   (dataframe.index <= center + half_rw))
+        jumps[span_width_indx] = 1
+    
+    dataframe[output_tag] = jumps
+    return(dataframe)
+
 # =============================================================================
 # Time Series plotting stuff
 # =============================================================================
@@ -1986,6 +2037,7 @@ def find_BestTemporalShifts():
     stoptime = dt.datetime(2016, 7, 1)
     reference_frame = 'SUN_INERTIAL'
     observer = 'SUN'
+    intrinsic_error = 3.0 #  This is the error in one direction, i.e. the total width of the arrival time is 2*intrinsic_error
     
     # =============================================================================
     #  Would-be keywords go here
@@ -2039,16 +2091,9 @@ def find_BestTemporalShifts():
     #     
     # =============================================================================
     sigma_cutoff = 4
-    spacecraft_data = find_RollingDerivativeZScore(spacecraft_data, tag, 1) # !!! vvv
-    spacecraft_data['smooth_ddt_'+tag+'_zscore'] = spacecraft_data['smooth_ddt_'+tag+'_zscore'].where(spacecraft_data['smooth_ddt_'+tag+'_zscore'] > sigma_cutoff, 0)
-    spacecraft_data['smooth_ddt_'+tag+'_zscore'] = spacecraft_data['smooth_ddt_'+tag+'_zscore'].where(spacecraft_data['smooth_ddt_'+tag+'_zscore'] < sigma_cutoff, sigma_cutoff+1)
+    spacecraft_data = find_Jumps(spacecraft_data, tag, sigma_cutoff, 2.0, resolution_width=0.0)
     
-    def model_features(model_output):
-        model_output = find_RollingDerivativeZScore(model_output, tag, 2) # !!! Rolling derivative of the 15 min resample?
-        model_output['smooth_ddt_'+tag+'_zscore'] = model_output['smooth_ddt_'+tag+'_zscore'].where(model_output['smooth_ddt_'+tag+'_zscore'] > sigma_cutoff, 0)
-        model_output['smooth_ddt_'+tag+'_zscore'] = model_output['smooth_ddt_'+tag+'_zscore'].where(model_output['smooth_ddt_'+tag+'_zscore'] < sigma_cutoff, sigma_cutoff)
-        return(model_output)
-    model_output = model_features(model_output)
+    model_output = find_Jumps(model_output, tag, sigma_cutoff, 2.0, resolution_width=2*intrinsic_error)
     
     #  Split the combined spacecraft data set into (mostly) continuous chunks
     spacecraft_deltas = spacecraft_data.index.to_series().diff()
@@ -2090,8 +2135,8 @@ def find_BestTemporalShifts():
                 #                               max_lag=max_lag_in_min, 
                 #                               min_lag=min_lag_in_min, 
                 #                               remove_nan_rows=True, no_plot=True)        
-                sc_z_series = np.array(sc_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
-                m_z_series = np.array(m_window['smooth_ddt_'+tag+'_zscore']).astype(np.float64)
+                sc_z_series = np.array(sc_window['jumps']).astype(np.float64)
+                m_z_series = np.array(m_window['jumps']).astype(np.float64)
                 # mi_out_z = mi_lib.mi_lag_finder(sc_z_series, m_z_series, 
                 #                                 temporal_resolution=resolution_in_min, 
                 #                                 max_lag=max_lag_in_min,
@@ -2152,11 +2197,11 @@ def find_BestTemporalShifts():
                 
                 #  Modified timeseries to highlight jumps
                 axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
-                              sc_window['smooth_ddt_'+tag+'_zscore'], color='gray')
+                              sc_window['jumps']*1.5, color='gray')
                 axs[1,0].plot((sc_window.index-spacecraft_data.index[0]).total_seconds()/60.,
-                              m_window['smooth_ddt_'+tag+'_zscore'], color=model_colors[model_name])
+                              m_window['jumps'], color=model_colors[model_name])
                 axs[1,0].set(xlabel='Elapsed time [min.]',
-                              ylim=(-1,12), ylabel=r'$Z(\frac{d u_{sw}}{dt})$')
+                              ylim=(-1,3), ylabel=r'$Z(\frac{d u_{sw}}{dt})$')
                 
                 # #  Unmodified timeseries MI
                 # lags, mi, RPS_mi, x_sq, x_pw = mi_out
@@ -2191,9 +2236,11 @@ def find_BestTemporalShifts():
                 
                 n_false_positives = list()
                 n_false_negatives = list()
+                n_spacecraft_jumps = list()
+                n_model_jumps = list()
                 
-                fig, axs = plt.subplots(nrows=5, ncols=2, sharex=True, figsize=(6,8))
-                plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.2, wspace=0.1)
+                fig, axs = plt.subplots(nrows=5, ncols=2, sharex=True, sharey=True, figsize=(6,8))
+                plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.0, wspace=0.0)
                 axs = axs.flatten()
                 
                 for plot_indx, shift in enumerate(optimal_shifts):
@@ -2203,15 +2250,15 @@ def find_BestTemporalShifts():
                     shift_indx = np.where((m_output.index >= shift_start) 
                                           & (m_output.index < shift_stop))[0]
                     new_m_window = read_SWModel.Tao(spacecraft_name, shift_start, shift_stop) #m_output.iloc[shift_indx] 
-                    new_m_window = model_features(new_m_window)
+                    new_m_window = find_Jumps(new_m_window, tag, sigma_cutoff, 2.0, resolution_width=2*intrinsic_error)
                     new_m_window.index += dt.timedelta(minutes=shift)
                     
                     new_sc_window = sc_window
                     if len(new_m_window) < len(new_sc_window):
                         new_sc_window = new_sc_window.reindex(new_m_window.index)
                     
-                    shifted_sc_series = new_sc_window['smooth_ddt_'+tag+'_zscore']
-                    shifted_m_series = new_m_window['smooth_ddt_'+tag+'_zscore']
+                    shifted_sc_series = new_sc_window['jumps']
+                    shifted_m_series = new_m_window['jumps']
                     shifted_sc_series, shifted_m_series = shifted_sc_series.to_numpy(), shifted_m_series.to_numpy()
                     
                     try:    
@@ -2241,21 +2288,23 @@ def find_BestTemporalShifts():
                             false_negatives.append(span[0])
                             
 
-                    axs[plot_indx].plot(new_sc_window.index, shifted_sc_series, color='gray')
+                    axs[plot_indx].plot(new_sc_window.index, shifted_sc_series*1.5, color='gray')
                     axs[plot_indx].plot(new_m_window.index, shifted_m_series)
-                    axs[plot_indx].set_ylim(0, 1.5*sigma_cutoff)
+                    axs[plot_indx].set_ylim(0, 4)
                     axs[plot_indx].text(0.05, 0.99, 'Shift: ' + str(shift),
                                         transform=axs[plot_indx].transAxes,
                                         horizontalalignment='left', verticalalignment='top')
-                    axs[plot_indx].text(0.05, 1.0, 'False Positives: ' + str(len(false_positives)),
+                    axs[plot_indx].text(0.05, 0.89, 'False Positives: ' + str(len(false_positives)),
                                          transform=axs[plot_indx].transAxes,
-                                         horizontalalignment='left', verticalalignment='bottom')
-                    axs[plot_indx].text(0.95, 1.0, 'False Negatives: ' + str(len(false_negatives)),
+                                         horizontalalignment='left', verticalalignment='top')
+                    axs[plot_indx].text(0.05, 0.79, 'False Negatives: ' + str(len(false_negatives)),
                                          transform=axs[plot_indx].transAxes,
-                                         horizontalalignment='right', verticalalignment='bottom')
+                                         horizontalalignment='left', verticalalignment='top')
                     
                     n_false_positives.append(len(false_positives))
                     n_false_negatives.append(len(false_negatives))
+                    n_spacecraft_jumps.append(len(sc_peak_span_indxs))
+                    n_model_jumps.append(len(m_peak_span_indxs))
 
                 plt.show()
                 # =============================================================================
@@ -2278,11 +2327,13 @@ def find_BestTemporalShifts():
                 #    plt.savefig('figures/' + figurename + suffix)
                 # plt.savefig('figures/Juno_MI_frames/frame_' + f'{counter:03}' + '.png')
                 
-                d = {'window_center'     : [window_center for i in range(len(maxima[0]))],
-                     'lag'               : cc_out_z[0][maxima[0]],
-                     'correlation'       : maxima[1]['peak_heights'],
-                     'false_positives'   : n_false_positives,
-                     'false_negatives'   : n_false_negatives}  
+                d = {'window_center'            : [window_center for i in range(len(maxima[0]))],
+                     'lag'                      : cc_out_z[0][maxima[0]],
+                     'correlation'              : maxima[1]['peak_heights'],
+                     'false_positives'          : n_false_positives,
+                     'false_negatives'          : n_false_negatives,
+                     'total_spacecraft_jumps'   : n_spacecraft_jumps,
+                     'total_model_jumps'        : n_model_jumps}
                 output_df = pd.concat([output_df, pd.DataFrame.from_dict(d)], 
                                       ignore_index=True)
                 
@@ -2314,8 +2365,17 @@ def plot_BestTemporalShifts(maxima, spacecraft_data, model_output):
     #ax.scatter(np.abs(y_at_c1), spacecraft_data['a_tse'][np.where(np.array(c) == 1.0)[0]])
     #plt.show()
     
-    coloring = maxima.correlation
-    coloring = (maxima.false_positives + maxima.false_negatives)
+    weighting_method = 'accuracy' # 'correlation'    
+    match weighting_method:
+        case 'correlation':
+            weighting = maxima.correlation
+            weighting_label = 'Normalized cross correlation'
+        case 'accuracy':
+            # weighting = (maxima.false_positives/maxima.total_model_jumps +
+            #              maxima.false_negatives/maxima.total_spacecraft_jumps)
+            weighting = (maxima.false_positives + maxima.false_negatives)/(maxima.total_model_jumps + maxima.total_spacecraft_jumps)
+            weighting_label = '(FP + FN) / (Total Spacecraft + Model Positives)'
+            
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         
         #window_centers_min = [(wc - jr.index[0]).total_seconds()/60. for wc in window_centers]
@@ -2339,8 +2399,8 @@ def plot_BestTemporalShifts(maxima, spacecraft_data, model_output):
         print(fit_opt)
         
         for ax in axs[:,0]:
-            scatterplot = ax.scatter(maxima.window_center, maxima.lag, c=coloring,
-                                     s=36, marker='.', cmap='viridis')
+            scatterplot = ax.scatter(maxima.window_center, maxima.lag, c=weighting,
+                                     s=36, marker='.', cmap='magma')
             ax.set_ylim(-6*24*60., 6*24*60.)
             ax.yaxis.set_major_formatter(lambda maxima_index, pos: str(maxima_index/60.))
             ax.set_yticks(np.arange(-6*24, 6*24+48, 48) * 60.)
@@ -2408,7 +2468,7 @@ def plot_BestTemporalShifts(maxima, spacecraft_data, model_output):
         
         plt.text(0.02, 0.5, 'Best-fit Temporal Shift (from cross correlation) [hr]', 
                  fontsize=14, transform=plt.gcf().transFigure, rotation=90, va='center')
-        plt.colorbar(scatterplot, label='Normalized Cross Correlation', ax=axs.ravel().tolist(), pad=0.05)
+        plt.colorbar(scatterplot, label=weighting_label, ax=axs.ravel().tolist(), pad=0.05)
         plt.setp(ax.get_xticklabels(), rotation=30, horizontalalignment='right')
         
         #fig.tight_layout()
