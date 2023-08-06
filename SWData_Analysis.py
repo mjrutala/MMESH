@@ -2291,7 +2291,7 @@ def find_BestTemporalShifts():
                     axs[plot_indx].plot(new_sc_window.index, shifted_sc_series*1.5, color='gray')
                     axs[plot_indx].plot(new_m_window.index, shifted_m_series)
                     axs[plot_indx].set_ylim(0, 4)
-                    axs[plot_indx].text(0.05, 0.99, 'Shift: ' + str(shift),
+                    axs[plot_indx].text(0.05, 0.99, 'Shift: ' + str(shift/60.) + ' hours',
                                         transform=axs[plot_indx].transAxes,
                                         horizontalalignment='left', verticalalignment='top')
                     axs[plot_indx].text(0.05, 0.89, 'False Positives: ' + str(len(false_positives)),
@@ -2477,36 +2477,149 @@ def plot_BestTemporalShifts(maxima, spacecraft_data, model_output):
     # plt.savefig('figures/Juno_MI_runningoffset_max_only.png', dpi=300)    
     
     #return(maxima_list)
+    
+def test_DynamicTimeWarping():
+    """
+    Use both mutual information (MI) and cross correlation (CC) to find the 
+    optimal temporal shifts of a model relative to data.
 
+    Returns
+    -------
+    The centers of the temporal window used to find optimal shifts
+    The time lags of those optimal shifts
+    A relative estimate of the significance of each suggested shift (there may
+    be multiple optimal shifts per window)
 
-# def find_FalseFeatures(maxima_list, spacecraft_data, model_output):
+    """
+    import matplotlib.pyplot as plt
+    import spiceypy as spice
+    import matplotlib.dates as mdates
+    import scipy
+    import matplotlib as mpl
     
-#     #  Split the combined spacecraft data set into (mostly) continuous chunks
-#     spacecraft_deltas = spacecraft_data.index.to_series().diff()
-#     gaps_indx = np.where(spacecraft_deltas > dt.timedelta(days=30))[0]
-#     start_indx = np.insert(gaps_indx, 0, 0)
-#     stop_indx = np.append(gaps_indx, len(spacecraft_data.index))-1
+    import read_SWModel
+    import spacecraftdata
     
-#     spacecraft_data_list = []
-#     model_output_list = []
-#     for i0, i1 in zip(start_indx, stop_indx):
-#         spacecraft_data_list.append(spacecraft_data[i0:i1])
-#         model_output_list.append(model_output[i0:i1])
+    import dtw
     
-#     #  Dataframes are indexed so that there's data every 15 minutes
-#     #  So timedelta can be replaced with the equivalent integer
-#     #  Which allows step size larger than 1
-#     timespan_int = int(window_in_days*24*60 / resolution_in_min)
-#     timestep_int = int(stepsize_in_days*24*60 / resolution_in_min)
-#     max_lag_in_min = max_lag_in_days*24*60.
-#     min_lag_in_min = min_lag_in_days*24*60.
+    try:
+        plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
+    except:
+        pass
     
-#     window_centers = list()
-#     maxima_list = list()
-#     for sc_data, m_output in zip(spacecraft_data_list, model_output_list):
-            
-#         sc_windows = sc_data.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
-#         m_windows = m_output.rolling(timespan_int, min_periods=timespan_int, center=True, step=timestep_int)
+    # =============================================================================
+    #    Would-be inputs go here 
+    # =============================================================================
+    tag = 'u_mag'  #  solar wind property of interest
+    spacecraft_name = 'Juno' # ['Ulysses', 'Juno'] # 'Juno'
+    model_name = 'Tao'
+    starttime = dt.datetime(1990, 1, 1)
+    stoptime = dt.datetime(2016, 7, 1)
+    reference_frame = 'SUN_INERTIAL'
+    observer = 'SUN'
+    intrinsic_error = 1.0 #  This is the error in one direction, i.e. the total width of the arrival time is 2*intrinsic_error
+    
+    # =============================================================================
+    #  Would-be keywords go here
+    # =============================================================================
+    window_in_days = 13.5
+    stepsize_in_days = 0.5
+    #resolution_in_min = 60.
+    max_lag_in_days = 6.0
+    min_lag_in_days = -6.0
+    
+    resolution_in_hours = 1.
+    
+    #  Parse inputs and keywords
+    resolution_str = '{}Min'.format(int(resolution_in_hours*60.))
+    
+    # =============================================================================
+    #  Read in data; for this, we expect 1 spacecraft and 1 model
+    # =============================================================================
+    spice.furnsh('/Users/mrutala/SPICE/generic/kernels/lsk/latest_leapseconds.tls')
+    spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-1.bsp')
+    spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-2.bsp')
+    spice.furnsh('/Users/mrutala/SPICE/generic/kernels/pck/pck00011.tpc')
+    spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
+    
+    sc_info = spacecraftdata.SpacecraftData(spacecraft_name)
+    sc_info.read_processeddata(starttime, stoptime, resolution=resolution_str, combined=True)
+    sc_info.find_state(reference_frame, observer, keep_kernels=True)
+    sc_info.find_subset(coord1_range=r_range*sc_info.au_to_km,
+                        coord3_range=lat_range*np.pi/180.,
+                        transform='reclat')
         
-#         for counter, (sc_window, m_window) in enumerate(zip(sc_windows, m_windows)):
-#             if len(sc_window) == timespan_int:
+    spice.furnsh(sc_info.SPICE_METAKERNEL)
+    ang_datetimes = sc_info.data.index  
+    #np.arange(starttime, stoptime, dt.timedelta(days=1)).astype(dt.datetime)
+    ets = spice.datetime2et(ang_datetimes)
+    ang = [np.abs(spice.trgsep(et, sc_info.name, 'POINT', None, 'Earth', 'POINT', None, 'Sun', 'None')*180/np.pi) for et in ets]
+    sc_info.data['a_tse'] = ang
+    
+    sc_columns = sc_info.data.columns
+    
+    spice.kclear()
+    
+    model_info = read_SWModel.Tao(spacecraft_name, starttime, stoptime)
+    model_columns = model_info.columns
+      
+    spacecraft_data = sc_info.data   #  Template
+    model_output = model_info        #  Query
+    
+    #  Make model index match spacecraft index with ~6 days of padding
+    padding_days = 3
+    model_dt = np.arange(spacecraft_data.index[0]-dt.timedelta(days=padding_days), 
+                         spacecraft_data.index[-1]+dt.timedelta(days=padding_days), 
+                         dt.timedelta(hours=resolution_in_hours)).astype(dt.datetime)
+    model_output = model_output.reindex(pd.DataFrame(index=model_dt).index, method='nearest')
+    
+    sigma_cutoff = 4
+    spacecraft_data = find_Jumps(spacecraft_data, tag, sigma_cutoff, 2.0, resolution_width=0.0)
+    model_output = find_Jumps(model_output, tag, sigma_cutoff, 2.0, resolution_width=2*intrinsic_error)
+    
+    
+    # =============================================================================
+    #     
+    # =============================================================================
+    reference = spacecraft_data['jumps'].to_numpy('float64')*1.5
+    query = model_output['jumps'].to_numpy('float64')
+    
+    # def window(iw, jw):
+    #     window = dtw.sakoeChibaWindow(iw, jw, len(query), len(reference), 144)
+    #     return(window)
+    print(len(query))
+    
+    window_args = {'window_size': 144}
+    alignment = dtw.dtw(query, reference, keep_internals=True, open_begin=True, open_end=True, 
+                        step_pattern='asymmetricP05', window_type='slantedband', window_args=window_args)
+    
+    ## Display the warping curve, i.e. the alignment curve
+    ax = alignment.plot(type="threeway")
+    ax.plot([0, len(query)], [0, len(reference)])
+    plt.show()
+    
+    fig, ax = plt.subplots()
+    ax.plot(reference, color='black')
+    ax.plot(query + 2)
+    for q_i in np.where(query != 0)[0]:
+        warped_index = int(np.mean(np.where(alignment.index1 == q_i)[0]))
+        xcoord = [alignment.index1[warped_index], alignment.index2[warped_index]]
+        ycoord = [query[xcoord[0]]+2, reference[xcoord[1]]]
+        ax.plot(xcoord, ycoord, color='xkcd:gray', linestyle=':')
+    plt.show()
+    
+    
+    wt = dtw.warp(alignment,index_reference=True)
+    
+    fig, ax = plt.subplots()
+    ax.plot(spacecraft_data.index, query)                       
+    ax.plot(model_output.index[wt], reference[wt], color='black', linestyle=':')
+    #ax.plot(spacecraft_data.index, query)                       
+    #ax.plot(model_output.index[wt], reference[wt], color='black', linestyle=':')
+    #ax.plot(model_output.index, model_output['p_dyn'], color='grey', linestyle='--', alpha=0.5)
+    plt.show()
+
+
+    return(alignment)
+
+   
