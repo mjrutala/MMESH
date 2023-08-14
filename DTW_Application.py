@@ -263,7 +263,7 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
     
     shifts = np.arange(start_shift, stop_shift+1, 1)
     print(start_shift, stop_shift)
-    out_df = pd.DataFrame(columns=['shift', 'distance', 'normalizeddistance', 'r', 'stddev'])
+    out_df = pd.DataFrame(columns=['shift', 'distance', 'normalizeddistance', 'r', 'stddev', 'false_negatives', 'false_postives'])
     for shift in shifts:
         
         # =============================================================================
@@ -271,14 +271,16 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
         #   then reset the index to match the query
         # ============================================================================= 
         # shift_dt = np.arange(query_df.index[0]+dt.timedelta(hours=shift), 
-        #                      query_df.index[-1]+dt.timedelta(hours=shift), 
-        #                      dt.timedelta(hours=1)).astype(dt.datetime)
+        #                       query_df.index[-1]+dt.timedelta(hours=shift), 
+        #                       dt.timedelta(hours=1)).astype(dt.datetime)
         # shift_reference_df = reference_df.reindex(pd.DataFrame(index=shift_dt).index, method='nearest')
         # shift_reference_df.index = query_df.index
         
+        # !!!! ADD support for open_end here
         shift_reference_df = reference_df.copy()
         shift_reference_df.index = shift_reference_df.index - dt.timedelta(hours=shift)
         shift_reference_df = shift_reference_df.reindex(query_df.index, method='nearest')
+        
         print(len(shift_reference_df))
         
     
@@ -289,8 +291,17 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
         # alignment = dtw.dtw(query, reference, keep_internals=True, open_begin=False, open_end=False, 
         #                     step_pattern='symmetricP05', window_type='slantedband', window_args=window_args)
         alignment = dtw.dtw(query, reference, keep_internals=True, 
-                            step_pattern='symmetric2', open_end=True,
+                            step_pattern='symmetric2', open_end=False,
                             window_type='slantedband', window_args=window_args)
+        
+        def find_TiePointsInJumps(alignment):
+            tie_points = []
+            for unity in np.where(alignment.query == 1.0)[0]:
+                i = np.where(alignment.index1 == unity)[0][0]
+                tie_points.append((alignment.index1[i], alignment.index2[i]))
+            return tie_points
+        
+        tie_points = find_TiePointsInJumps(alignment)
         
         def plot_DTWViews():
             # =============================================================================
@@ -356,16 +367,13 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
                 axs['D'].plot(shift_reference_df.index, shift_reference_df[comparison_tag]+vertical_shift, color=model_colors['Tao'])
                 axs['D'].yaxis.tick_right()
                 axs['D'].set(yticks=[1, 2.5], yticklabels=['Query', 'Reference'])
-                x_tie_points = []
-                connecting_lines = []
-                for unity in np.where(query == 1.0)[0]:
-                    i = np.where(alignment.index1 == unity)[0][0]
-                    x_tie_points.append((query_df.index[alignment.index1[i]], 
-                                        shift_reference_df.index[alignment.index2[i]]))
-                    
-                    connecting_lines.append([(mdates.date2num(x_tie_points[-1][0]), 1),
-                                             (mdates.date2num(x_tie_points[-1][1]), 2.5)])
                 
+                tie_points = find_TiePointsInJumps(alignment)
+                connecting_lines = []
+                for point in tie_points:
+                    query_date = mdates.date2num(query_df.index[point[0]])
+                    reference_date = mdates.date2num(shift_reference_df.index[point[1]])
+                    connecting_lines.append([(query_date, 1), (reference_date, 2.5)])
 
                 lc = mc.LineCollection(connecting_lines, 
                                        linewidths=1, linestyles=":", color='gray', linewidth=2)
@@ -397,29 +405,7 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
             plt.show()
             return
             
-        # ## Display the warping curve, i.e. the alignment curve
-        # ax = alignment.plot(type="threeway")
-        # ax.plot([0, len(query)], [0, len(reference)])
-        # ax.text(0.1, 0.9, 'Dist. = ' + '{:8.5}'.format(alignment.distance), transform=ax.transAxes)
-        # plt.show()
-        
-        
-        result = plot_DTWViews()
-        
-        # ax = alignment.plot(type='density')
-        # plt.show()
-        
-
-    
-        # fig, ax = plt.subplots()
-        # #ax.plot(query[wt])                       
-        # #ax.plot(reference, color='black', linestyle=':')
-        # # ax.plot(spacecraft_data.index, query[wt])                       
-        # # ax.plot(spacecraft_data.index, reference, color='black', linestyle=':')
-        # ax.scatter(shift_reference_df.index[wt], shift_reference_df['p_dyn'][wt], marker='o')                       
-        # ax.plot(query_df.index, query_df['p_dyn'], color='black')
-        # ax.set_yscale('log')
-        # plt.show()
+        plot_DTWViews()
         
         # t1 = np.log10(shift_reference_df['p_dyn'].to_numpy('float64')[wt])
         # t2 = np.log10(query_df['p_dyn'].to_numpy('float64'))
@@ -432,14 +418,14 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
         #     print(shift)
         
         # d = {'shift': [shift],
-        #      'distance': [alignment.distance],
-        #      'normalizeddistance': [alignment.normalizedDistance],
-        #      'r': [r],
-        #      'stddev': [sig]}
+        #       'distance': [alignment.distance],
+        #       'normalizeddistance': [alignment.normalizedDistance],
+        #       'r': [r],
+        #       'stddev': [sig]}
         # out_df = pd.concat([out_df, pd.DataFrame.from_dict(d)], ignore_index=True)
      
 
-    return
+    return tie_points
 
 
 import matplotlib.pyplot as plt
@@ -512,46 +498,9 @@ model_output = read_SWModel.choose(model_name, spacecraft_name, model_starttime,
 #     Find jumps in bulk velocity
 # =============================================================================
 sigma_cutoff = 4
-spacecraft_data = find_Jumps(spacecraft_data, tag, sigma_cutoff, 2.0, resolution_width=0.0)
-model_output = find_Jumps(model_output, tag, sigma_cutoff, 2.0, resolution_width=0.0)
+spacecraft_data = find_Jumps(spacecraft_data, tag, sigma_cutoff, 2.0, resolution_width=12.0)
+model_output = find_Jumps(model_output, tag, sigma_cutoff, 2.0, resolution_width=12.0)
 
 print(len(spacecraft_data), len(model_output))
 
 test = find_OptimalDTW(spacecraft_data, model_output, 'jumps', 'p_dyn')
-
-    # ## Display the warping curve, i.e. the alignment curve
-    # with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-    #     fig, ax = plt.subplots()
-    #     ax.plot(out_df['shift'], out_df['r'])
-    #     ax.hlines(y=r_baseline, xmin=out_df['shift'].iloc[0], xmax=out_df['shift'].iloc[-1], color='black', linestyle=':')
-    #     plt.show()
-        
-    #     ax = out_alignment.plot(type="threeway")
-    #     ax.plot([0, len(out_alignment.query)], [0, len(out_alignment.reference)])
-    #     ax.text(0.1, 0.9, 'Dist. = ' + '{:8.5}'.format(out_alignment.distance), transform=ax.transAxes)
-    
-    #     plt.show()
-        
-    #     fig, ax = plt.subplots()
-    #     ax.plot(out_alignment.reference, color='black')
-    #     ax.plot(out_alignment.query + 2)
-    #     for q_i in np.where(out_alignment.query != 0)[0]:
-    #         warped_index = int(np.mean(np.where(out_alignment.index1 == q_i)[0]))
-    #         xcoord = [out_alignment.index1[warped_index], out_alignment.index2[warped_index]]
-    #         ycoord = [out_alignment.query[xcoord[0]]+2, out_alignment.reference[xcoord[1]]]
-    #         ax.plot(xcoord, ycoord, color='xkcd:gray', linestyle=':')
-    #     plt.show()
-        
-    #     wt = dtw.warp(out_alignment,index_reference=False)
-    #     wt = np.append(wt, len(query)-1)
-    
-    #     fig, ax = plt.subplots()
-    #     #ax.plot(query[wt])                       
-    #     #ax.plot(reference, color='black', linestyle=':')
-    #     # ax.plot(spacecraft_data.index, query[wt])                       
-    #     # ax.plot(spacecraft_data.index, reference, color='black', linestyle=':')
-    #     ax.scatter(spacecraft_data.index, out_alignment.query[wt], marker='o')                       
-    #     ax.plot(spacecraft_data.index, out_alignment.reference, color='black')
-    #     ax.set_yscale('log')
-    #     plt.show()
-     
