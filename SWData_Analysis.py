@@ -89,7 +89,7 @@ def find_Jumps(dataframe, tag, sigma_cutoff, smoothing_width, resolution_width=0
     rolling_dataframe = dataframe.rolling(2*halftimedelta, min_periods=1, 
                                           center=True, closed='left')  
     smooth = rolling_dataframe[tag].mean()
-    smooth_derivative = np.gradient(smooth, dataframe.index.values.astype(np.int64))
+    smooth_derivative = np.gradient(smooth, dataframe.index.values.astype(np.float64))
     
     #  Take the z-score of the derivative of the smoothed input,
     #  then normalize it based on a cutoff sigma
