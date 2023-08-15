@@ -252,6 +252,7 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
     None.
 
     """
+    from sklearn.metrics import confusion_matrix
     
     if metric_tag == None: metric_tag = comparison_tag
     total_slope_limit = 4*24.  #  in hours i.e., can't jump more than 1 day
@@ -263,7 +264,10 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
     
     shifts = np.arange(start_shift, stop_shift+1, 1)
     print(start_shift, stop_shift)
-    out_df = pd.DataFrame(columns=['shift', 'distance', 'normalizeddistance', 'r', 'stddev', 'false_negatives', 'false_postives'])
+    out_df = pd.DataFrame(columns=['shift', 'distance', 'normalizeddistance', 
+                                   'r', 'stddev', 
+                                   'true_negative', 'true_positive', 
+                                   'false_negative', 'false_positive'])
     for shift in shifts:
         
         # =============================================================================
@@ -279,10 +283,7 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
         # !!!! ADD support for open_end here
         shift_reference_df = reference_df.copy()
         shift_reference_df.index = shift_reference_df.index - dt.timedelta(hours=shift)
-        shift_reference_df = shift_reference_df.reindex(query_df.index, method='nearest')
-        
-        print(len(shift_reference_df))
-        
+        shift_reference_df = shift_reference_df.reindex(query_df.index, method='nearest')        
     
         reference = shift_reference_df[comparison_tag].to_numpy('float64')
         query = query_df[comparison_tag].to_numpy('float64')    
@@ -302,6 +303,37 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
             return tie_points
         
         tie_points = find_TiePointsInJumps(alignment)
+        tie_points.insert(0, (0,0))  #  As long as open_start = False
+        tie_points.append((len(query)-1, len(reference)-1))  #  As long as open_end=False
+        
+        test_arr = np.zeros(len(query))
+        for points1, points2 in zip(tie_points, tie_points[1:]):
+            #  Get the indices in test_arr that map to equivalent points in the reference
+            reference_sample_indx = np.linspace(points1[1], points2[1]-1, points2[0]-points1[0]+1)
+            test_arr[points1[0]:points2[0]+1] = reference_sample_indx
+        
+        interp_ref_comparison = np.interp(test_arr, np.arange(0, len(test_arr)), shift_reference_df[comparison_tag])
+        test_df = pd.DataFrame(interp_ref_comparison,  columns=['ref'], index=query_df.index)
+        test_df = find_Jumps(test_df, 'ref', sigma_cutoff, 2.0, resolution_width=0.0)
+        interp_ref_comparison = np.roll(test_df['jumps'].to_numpy('float64'), 1) #  !!!! JUST A BANDAID
+        
+        
+        interp_ref_metric = np.interp(test_arr, np.arange(0,len(test_arr)), shift_reference_df[metric_tag])
+        
+        #print(tie_points)
+        #return query, reference, test_arr, interp_ref_comparison
+        cm = confusion_matrix(query, interp_ref_comparison, labels=[0,1])
+        
+        accuracy = (cm[0,0] + cm[1,1])/(cm[0,0] + cm[1,0] + cm[0,1] + cm[1,1])
+        precision = (cm[1,1])/(cm[0,1] + cm[1,1])
+        recall = (cm[1,1])/(cm[1,0] + cm[1,1])
+        f1_score = 2 * (precision * recall)/(precision + recall)
+        
+        t1 = np.log10(interp_ref_metric)
+        t2 = np.log10(query_df[metric_tag].to_numpy('float64'))
+        
+        r = scipy.stats.pearsonr(t1, t2)[0]
+        sig = np.std(t1)
         
         def plot_DTWViews():
             # =============================================================================
@@ -362,11 +394,18 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
                               va='center', ha='center', rotation=45, fontsize=16,
                               transform=axs['A'].transAxes)
                 
+                axs['A'].text(0.01, 0.99, 'Alignment Curve',
+                              va='top', ha='left', fontsize=16,
+                              transform=axs['A'].transAxes)
+                axs['A'].text(0.01, 1.05, 'Input Reference Shifted by ' + str(shift),
+                              va='bottom', ha='left', fontsize=16,
+                              transform=axs['A'].transAxes)
+                
                 vertical_shift = np.max(query_df[comparison_tag])*1.5
                 axs['D'].plot(query_df.index, query_df[comparison_tag], color=spacecraft_colors['Juno'])
                 axs['D'].plot(shift_reference_df.index, shift_reference_df[comparison_tag]+vertical_shift, color=model_colors['Tao'])
                 axs['D'].yaxis.tick_right()
-                axs['D'].set(yticks=[1, 2.5], yticklabels=['Query', 'Reference'])
+                axs['D'].set(ylim=[0,3], yticks=[1, 2.5], yticklabels=['Query', 'Reference'])
                 
                 tie_points = find_TiePointsInJumps(alignment)
                 connecting_lines = []
@@ -378,10 +417,18 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
                 lc = mc.LineCollection(connecting_lines, 
                                        linewidths=1, linestyles=":", color='gray', linewidth=2)
                 axs['D'].add_collection(lc)
-                  
+                axs['D'].text(0.01, 0.99, 'Peak Matching',
+                              va='top', ha='left', fontsize=16,
+                              transform=axs['D'].transAxes)  
+                
                 axs['E'].plot(query_df.index, query_df[metric_tag], color=spacecraft_colors['Juno'])
-                axs['E'].plot(shift_reference_df.index, shift_reference_df[metric_tag], color=model_colors['Tao'])
-
+                axs['E'].plot(shift_reference_df.index, interp_ref_metric, color=model_colors['Tao'])
+                axs['E'].text(0.01, 0.90, 'r = ' + f'{r:.2f}', 
+                              va='top', ha='left', fontsize=16,
+                              transform=axs['E'].transAxes)  
+                axs['E'].text(0.01, 0.99, 'Warped Reference compared to Query',
+                              va='top', ha='left', fontsize=16,
+                              transform=axs['E'].transAxes)  
                 
                 
                 for ax in [axs['A'], axs['C'], axs['D'], axs['E']]:
@@ -405,27 +452,34 @@ def find_OptimalDTW(query_df, reference_df, comparison_tag, metric_tag=None):
             plt.show()
             return
             
-        plot_DTWViews()
+        plot_DTWViews()    
         
-        # t1 = np.log10(shift_reference_df['p_dyn'].to_numpy('float64')[wt])
-        # t2 = np.log10(query_df['p_dyn'].to_numpy('float64'))
+        # fig, ax = plt.subplots()
+        # ax.plot(np.arange(0, len(shift_reference_df)), shift_reference_df[metric_tag])
+        # ax.plot(np.arange(0, len(interp_ref_metric)), interp_ref_metric)
+        # plt.show()
         
-        # r = scipy.stats.pearsonr(t1, t2)[0]
-        # sig = np.std(np.log10(shift_reference_df['p_dyn'][wt]))
+        # # if (r > out_df['r']).all():
+        # #     out_alignment = copy.deepcopy(alignment)
+        # #     print(shift)
         
-        # if (r > out_df['r']).all():
-        #     out_alignment = copy.deepcopy(alignment)
-        #     print(shift)
-        
-        # d = {'shift': [shift],
-        #       'distance': [alignment.distance],
-        #       'normalizeddistance': [alignment.normalizedDistance],
-        #       'r': [r],
-        #       'stddev': [sig]}
-        # out_df = pd.concat([out_df, pd.DataFrame.from_dict(d)], ignore_index=True)
+        d = {'shift': [shift],
+              'distance': [alignment.distance],
+              'normalizeddistance': [alignment.normalizedDistance],
+              'r': [r],
+              'stddev': [sig],
+              'true_negative': cm[0,0],
+              'true_positive': cm[1,1],
+              'false_negative': cm[1,0],
+              'false_positive': cm[0,1],
+              'accuracy': accuracy,
+              'precision': precision,
+              'recall': recall,
+              'f1_score': f1_score}
+        out_df = pd.concat([out_df, pd.DataFrame.from_dict(d)], ignore_index=True)
      
 
-    return tie_points
+    return out_df
 
 
 import matplotlib.pyplot as plt
@@ -498,8 +552,8 @@ model_output = read_SWModel.choose(model_name, spacecraft_name, model_starttime,
 #     Find jumps in bulk velocity
 # =============================================================================
 sigma_cutoff = 4
-spacecraft_data = find_Jumps(spacecraft_data, tag, sigma_cutoff, 2.0, resolution_width=12.0)
-model_output = find_Jumps(model_output, tag, sigma_cutoff, 2.0, resolution_width=12.0)
+spacecraft_data = find_Jumps(spacecraft_data, tag, sigma_cutoff, 2.0, resolution_width=0.0)
+model_output = find_Jumps(model_output, tag, sigma_cutoff, 2.0, resolution_width=0.0)
 
 print(len(spacecraft_data), len(model_output))
 
