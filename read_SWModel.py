@@ -259,6 +259,8 @@ def HUXt(target, starttime, finaltime, basedir=''):
     match target.lower():
         case 'jupiter':
             filenames = ['Jupiter_2016_Owens_HuxT.csv', 'Jupiter_2020_Owens_HuxT.csv']
+        case 'juno':
+            filenames = ['Jupiter_2016_Owens_HuxT.csv']
         case _:
             logging.warning('This version of the HUXt reader'
                             ' does not support ' + target + ' observations.')
@@ -281,6 +283,7 @@ def HUXt(target, starttime, finaltime, basedir=''):
                                     (file_data.index < finaltime)]
         
         data = SWModel_Parameter_Concatenator(data, span_data)
+    
     
     return(data)
 
