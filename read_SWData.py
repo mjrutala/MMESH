@@ -121,7 +121,8 @@ def make_DerezzedData(df_tuple, resolution=None):
     match resolution:
         case None:
             #  Do not resample
-            result_list.append(*df_tuple)
+            for df in df_tuple:
+                result_list.append(df)
         
         case str():
             #  As long as the input is a string, use resample
