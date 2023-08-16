@@ -270,17 +270,27 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
         reference_sample_indx = np.linspace(points1[1], points2[1]-1, points2[0]-points1[0]+1)
         test_arr[points1[0]:points2[0]+1] = reference_sample_indx
      
-    interp_ref_comparison = np.interp(test_arr, np.arange(0, len(test_arr)), shift_reference_df[basis_tag])
-    test_df = pd.DataFrame(interp_ref_comparison,  columns=['ref'], index=query_df.index)
-    test_df = find_Jumps(test_df, 'ref', sigma_cutoff, 2.0, resolution_width=0.0)
-    interp_ref_comparison = np.roll(test_df['jumps'].to_numpy('float64'), 1) #  !!!! JUST A BANDAID
-     
-     
+    interp_ref_basis = np.interp(test_arr, np.arange(0, len(test_arr)), shift_reference_df[basis_tag])
+    # test_df = pd.DataFrame(interp_ref_basis,  columns=['ref'], index=query_df.index)
+    # test_df = find_Jumps(test_df, 'ref', sigma_cutoff, 2.0, resolution_width=0.0)
+    # interp_ref_basis = np.roll(test_df['jumps'].to_numpy('float64'), 1) #  !!!! JUST A BANDAID
+    
+    #  !!!! May not work with feature widths/implicit errors
+    temp_arr = np.zeros(len(query))
+    for i, (ref1, ref2) in enumerate(zip(interp_ref_basis[0:-1], interp_ref_basis[1:])):
+        if ref1 + ref2 >= 1:
+            if ref1 > ref2:
+                temp_arr[i] = 1.0
+            else:
+                temp_arr[i+1] = 1.0
+    
+    interp_ref_basis = temp_arr
     interp_ref_metric = np.interp(test_arr, np.arange(0,len(test_arr)), shift_reference_df[metric_tag])
-     
+    
+    
     #print(tie_points)
-    #return query, reference, test_arr, interp_ref_comparison
-    cm = confusion_matrix(query, interp_ref_comparison, labels=[0,1])
+    #return query, reference, test_arr, interp_ref_basis
+    cm = confusion_matrix(query, interp_ref_basis, labels=[0,1])
     
     accuracy = (cm[0,0] + cm[1,1])/(cm[0,0] + cm[1,0] + cm[0,1] + cm[1,1])
     precision = (cm[1,1])/(cm[0,1] + cm[1,1])
@@ -293,7 +303,7 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
     r = scipy.stats.pearsonr(t1, t2)[0]
     sig = np.std(t1)
     
-    plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_tag)    
+    plot_DTWViews(query_df, shift_reference_df, shift, alignment, basis_tag, metric_tag)    
     
     # fig, ax = plt.subplots()
     # ax.plot(np.arange(0, len(shift_reference_df)), shift_reference_df[metric_tag])
@@ -483,7 +493,7 @@ def find_OptimalDTW(query_df, reference_df, basis_tag, metric_tag=None):
         d = find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, total_slope_limit = total_slope_limit)
         out_df = pd.concat([out_df, pd.DataFrame.from_dict(d)], ignore_index=True)
      
-
+        
     return out_df
 
 
