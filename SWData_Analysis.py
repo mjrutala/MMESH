@@ -131,8 +131,8 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
         case ('u_mag' | 'flow speed'):
             tag = 'u_mag'
             ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
-            plot_kw = {'yscale': 'linear', 'ylim': (350, 550),
-                       'yticks': np.arange(350,550+50,100)}
+            plot_kw = {'yscale': 'linear', 'ylim': (350, 600),
+                       'yticks': np.arange(350,600+50,100)}
         case ('p_dyn' | 'pressure'):
             tag = 'p_dyn'
             ylabel = r'Solar Wind Dynamic Pressure $p_{dyn}$ [nPa]'
@@ -168,7 +168,7 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
         models[model] = read_SWModel.choose(model, spacecraft_name, 
                                        starttime, stoptime)
     #!!! Only because HUXt doesn't have Juno yet
-    #models['HUXt'] = read_SWModel.choose('HUXt', 'Jupiter', starttime, stoptime)
+    # models['HUXt'] = read_SWModel.choose('HUXt', 'Jupiter', starttime, stoptime)
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig, axs = plt.subplots(figsize=(8,6), nrows=len(models), sharex=True, squeeze=False)
@@ -311,13 +311,13 @@ def plot_histograms():
 # =============================================================================
 def plot_TaylorDiagrams():
     
-    for parameter in ['u_mag', 'p_dyn', 'n_tot', 'B_mag']:
+    for parameter in ['u_mag', 'p_dyn']:
         
         _ = plot_TaylorDiagram_Baseline(parameter, 'Juno', 
-                                        ['Tao', 'SWMF-OH', 'MSWIM2D', 'ENLIL'], 
+                                        ['Tao', 'ENLIL', 'HUXt'], 
                                         dt.datetime(2016, 5, 15), dt.datetime(2016, 6, 25))
         _ = plot_TaylorDiagram_ConstantTimeWarping(parameter, 'Juno', 
-                                                   ['Tao', 'SWMF-OH', 'MSWIM2D', 'ENLIL'], 
+                                                   ['Tao', 'ENLIL', 'HUXt'], 
                                                    dt.datetime(2016, 5, 15), dt.datetime(2016, 6, 25))
 
 def plot_TaylorDiagram_Baseline(parameter, spacecraft_name, model_names, starttime, stoptime):
@@ -377,9 +377,9 @@ def plot_TaylorDiagram_Baseline(parameter, spacecraft_name, model_names, startti
                                               axis='index', method='nearest')
         
     #!!! Only because HUXt doesn't have Juno yet
-    models['HUXt'] = read_SWModel.choose('HUXt', 'Jupiter', starttime, stoptime)
-    models['HUXt'] = models['HUXt'].reindex(spacecraft.data.index, axis='index', method='nearest')
-    
+    # models['HUXt'] = read_SWModel.choose('HUXt', 'Jupiter', starttime, stoptime)
+    # models['HUXt'] = models['HUXt'].reindex(spacecraft.data.index, axis='index', method='nearest')
+    stats_df = {name: pd.DataFrame(columns=['r', 'stddev', 'rmse']) for name in model_names}
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         """
         It would be really ideal to write plot_TaylorDiagram such that there's a 
@@ -411,11 +411,14 @@ def plot_TaylorDiagram_Baseline(parameter, spacecraft_name, model_names, startti
                     sc_timeseries = np.log10(sc_timeseries)
                 
                 stats, rmse = TD.find_TaylorStatistics(model_timeseries, sc_timeseries)
+                d = {'r': [stats[0]],
+                     'stddev': [stats[1]],
+                     'rmse': [rmse]}
+                stats_df[model] = pd.concat([stats_df[model], pd.DataFrame.from_dict(d)], ignore_index=True)
                 
                 ax.scatter(np.arccos(stats[0]), stats[1], 
                         marker=model_symbols[model], s=48, c=model_colors[model], edgecolors='black',
                         label=model)
-                #print(stats)
                 
         ax.set_ylim([0, 1.5*np.nanstd(sc_timeseries)])
         ax.text(0.5, 0.9, ylabel,
@@ -430,7 +433,7 @@ def plot_TaylorDiagram_Baseline(parameter, spacecraft_name, model_names, startti
         plt.savefig('figures/' + save_filestem, dpi=300, bbox_inches=extent)
     plt.show()
     
-    return()
+    return(stats_df)
 
 def plot_TaylorDiagram_ConstantTimeWarping(parameter, spacecraft_name, model_names, starttime, stoptime):
     import matplotlib.pyplot as plt
@@ -479,10 +482,10 @@ def plot_TaylorDiagram_ConstantTimeWarping(parameter, spacecraft_name, model_nam
     spacecraft.read_processeddata(starttime, stoptime, resolution=99)
     spacecraft.find_state(reference_frame, observer)
     
-    shifts = np.arange(-72, 72+6, 6)  #  -/+ hours of shift for the timeseries
-    shifted_stats = {name: [] for name in model_names}
-    shifted_stats['HUXt'] = []
-    for model, shifted_stat in shifted_stats.items():
+    shifts = np.arange(-96, 96+6, 6)  #  -/+ hours of shift for the timeseries
+    #shifted_stats = {name: [] for name in model_names}
+    shifted_stats = {name: pd.DataFrame(columns=['shift', 'r', 'stddev', 'rmse']) for name in model_names}
+    for model in model_names:
         for shift in shifts:
             #  Shifting the start and stop times *before* reading the model
             #  means that we don't need to cut the model/data later ->
@@ -492,9 +495,9 @@ def plot_TaylorDiagram_ConstantTimeWarping(parameter, spacecraft_name, model_nam
             
             model_info = read_SWModel.choose(model, spacecraft_name, 
                                              shifted_starttime, shifted_stoptime)
-            if model == 'HUXt':
-                model_info = read_SWModel.choose(model, 'Jupiter', 
-                                                 shifted_starttime, shifted_stoptime)
+            # if model == 'HUXt':
+            #     model_info = read_SWModel.choose(model, 'Jupiter', 
+            #                                      shifted_starttime, shifted_stoptime)
             if len(model_info) > 0:
                 model_info.index = model_info.index - dt.timedelta(hours = int(shift))
                 model_info = model_info.reindex(spacecraft.data.index, axis='index', method='nearest')
@@ -507,11 +510,24 @@ def plot_TaylorDiagram_ConstantTimeWarping(parameter, spacecraft_name, model_nam
                     model_timeseries = np.log10(model_timeseries)
                     sc_timeseries = np.log10(sc_timeseries)
                 
+                if np.isnan(model_timeseries).all() == True:
+                    print('model_timeseries is all nans')
+                if np.isnan(sc_timeseries).all() == True:
+                    print('sc_timeseries is all nans')
                 stats, rmse = TD.find_TaylorStatistics(model_timeseries, sc_timeseries)
-                shifted_stat.append(stats)
+                #shifted_stat.append(stats)
+                d = {'shift': [shift],
+                     'r': [stats[0]],
+                     'stddev': [stats[1]],
+                     'rmse': [rmse]}
+                shifted_stats[model] = pd.concat([shifted_stats[model], pd.DataFrame.from_dict(d)], ignore_index=True)
             
             else:
-                shifted_stat.append((np.nan, np.nan))
+                d = {'shift': [shift],
+                     'r': [np.nan],
+                     'stddev': [np.nan],
+                     'rmse': [np.nan]}
+                shifted_stats[model] = pd.concat([shifted_stats[model], pd.DataFrame.from_dict(d)], ignore_index=True)
             
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         """
@@ -529,17 +545,22 @@ def plot_TaylorDiagram_ConstantTimeWarping(parameter, spacecraft_name, model_nam
                                         color='red', marker='X', markersize='0')
         
         for model, shifted_stat in shifted_stats.items():
-            if not np.isnan(shifted_stat).all():
+            #if not np.isnan(shifted_stat).all():
                 
-                plot_thetar = [(np.arccos(s1), s2) for s1, s2 in shifted_stat]
-                
-                shifted_stat_plot = ax.scatter(*zip(*plot_thetar), 
-                                               marker=model_symbols[model], s=24, c=shifts,
-                                               zorder=1)
-                center_indx = np.where(shifts == 0)[0][0]
-                ax.scatter(*plot_thetar[center_indx],
-                           marker=model_symbols[model], s=48, c=model_colors[model],
-                           edgecolors='black', zorder=2, label=model)
+            #plot_thetar = [(np.arccos(s1), s2) for s1, s2 in shifted_stat]
+            
+            # shifted_stat_plot = ax.scatter(*zip(*plot_thetar), 
+            #                                marker=model_symbols[model], s=24, c=shifts,
+            #                                zorder=1)
+            
+            shifted_stat_plot = ax.scatter(np.arccos(shifted_stat['r']), shifted_stat['stddev'], 
+                                            marker=model_symbols[model], s=24, c=shifts,
+                                            zorder=1)
+            
+            center_indx = np.where(shifts == 0)[0][0]
+            ax.scatter(np.arccos(shifted_stat['r'].iloc[center_indx]), shifted_stat['stddev'].iloc[center_indx], 
+                       marker=model_symbols[model], s=48, c=model_colors[model],
+                       edgecolors='black', zorder=2, label=model)
             
         ax.set_ylim([0, 1.5*np.nanstd(sc_timeseries)])
         ax.text(0.5, 0.9, ylabel,
@@ -561,7 +582,7 @@ def plot_TaylorDiagram_ConstantTimeWarping(parameter, spacecraft_name, model_nam
         plt.savefig('figures/' + save_filestem, dpi=300, bbox_inches=extent)
     plt.show()
     
-    return()
+    return(shifted_stats)
     
 def SWData_TaylorDiagram_Binary():
     #import datetime as dt
