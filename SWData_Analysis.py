@@ -343,13 +343,13 @@ def plot_TaylorDiagram_Baseline(parameter, spacecraft_name, model_names, startti
                        'yticks': np.arange(350,550+50,100)}
         case ('p_dyn' | 'pressure'):
             tag = 'p_dyn'
-            ylabel = r'log Solar Wind Dynamic Pressure $log_{10}(p_{dyn})$ [$log_{10}(nPa)$]'
-            plot_kw = {'yscale': 'log', 'ylim': (0, 0.6),
+            ylabel = r'Solar Wind Dynamic Pressure $(p_{dyn})$ [nPa]'
+            plot_kw = {'yscale': 'linear', 'ylim': (0, 0.6),
                        'yticks': 10.**np.arange(-3,0+1,1)}
         case ('n_tot' | 'density'):
             tag = 'n_tot'
-            ylabel = r'log Solar Wind Ion Density $log_{10}(n_{tot})$ [$log_{10}(cm^{-3})$]'
-            plot_kw = {'yscale': 'log', 'ylim': (0, 0.6),
+            ylabel = r'Solar Wind Ion Density $(n_{tot})$ [$cm^{-3}$]'
+            plot_kw = {'yscale': 'linear', 'ylim': (0, 0.6),
                        'yticks': 10.**np.arange(-2, 0+1, 1)}
         case ('B_mag' | 'magnetic field'):
             tag = 'B_mag'
@@ -458,13 +458,13 @@ def plot_TaylorDiagram_ConstantTimeWarping(parameter, spacecraft_name, model_nam
                        'yticks': np.arange(350,550+50,100)}
         case ('p_dyn' | 'pressure'):
             tag = 'p_dyn'
-            ylabel = r'log Solar Wind Dynamic Pressure $log_{10}(p_{dyn})$ [$log_{10}(nPa)$]'
-            plot_kw = {'yscale': 'log', 'ylim': (0, 0.6),
+            ylabel = r'Solar Wind Dynamic Pressure $(p_{dyn})$ [nPa]'
+            plot_kw = {'yscale': 'linear', 'ylim': (0, 0.6),
                        'yticks': 10.**np.arange(-3,0+1,1)}
         case ('n_tot' | 'density'):
             tag = 'n_tot'
-            ylabel = r'log Solar Wind Ion Density $log_{10}(n_{tot})$ [$log_{10}(cm^{-3})$]'
-            plot_kw = {'yscale': 'log', 'ylim': (0, 0.6),
+            ylabel = r'lSolar Wind Ion Density $(n_{tot})$ [$cm^{-3}$]'
+            plot_kw = {'yscale': 'linear', 'ylim': (0, 0.6),
                        'yticks': 10.**np.arange(-2, 0+1, 1)}
         case ('B_mag' | 'magnetic field'):
             tag = 'B_mag'
