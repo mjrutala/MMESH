@@ -113,6 +113,49 @@ def plot_TaylorDiagram(test_data, ref_data, ax=None, **plt_kwargs):
     
     return(fig, ax)
    
+def plot_TaylorDiagram_fromstats(ref_std, ax=None, **plt_kwargs):
+
+    #  If no axis is included, look for a current one or make one!!!!
+    if ax == None:
+        fig = plt.figure(figsize=(8,6))
+        ax = fig.add_subplot(111, projection='polar')
+        
+        # Set title and labels
+        ax.text(0.5, 0.85, 'Pearson Correlation Coefficient (r)', 
+                color='black',
+                horizontalalignment='center', verticalalignment='top',
+                transform = ax.transAxes)
+        #ax.set_title('Pearson Correlation Coefficient', pad=-80)
+        ax.set_xlabel(r'Standard Deviation ($\sigma$)')
+        ax.xaxis.set_label_coords(0.5, 0.2)
+        
+        #  Default to include negative correlations
+        ax.set_thetamin(0)
+        ax.set_thetamax(180)
+        theta_ticks = [-0.99, -0.95, -0.9, -0.8, -0.6, -0.4, -0.2, 0, 
+                       0.2, 0.4, 0.6, 0.8, 0.9, 0.95, 0.99]
+        ax.set_xticks([np.arccos(ang) for ang in theta_ticks])
+        ax.set_xticklabels(theta_ticks)
+        
+        #  Centered RMS difference circles, centered on reference
+        #plt.autoscale(False)
+        ax.plot(0, ref_std, marker='o', color='black', markersize=12)
+        ax.plot(np.linspace(0, np.pi, 180), np.zeros(180)+ref_std, color='black', linestyle='--')
+        
+        RMS_r = np.arange(ref_std/3., 3*ref_std+ref_std/3., ref_std/3.)
+        for r in RMS_r:
+            x = r * np.cos(np.linspace(0, 2*np.pi, 100))
+            y = r * np.sin(np.linspace(0, 2*np.pi, 100))
+            x2 = x + (ref_std)
+            y2 = y #  Reference point is on y=0 by definition
+            ax.plot(np.arctan2(y2,x2), np.sqrt(x2**2 + y2**2), color='gray', linestyle=':')
+        
+        #plt.autoscale(True)
+        #ax.set_position([0.5, -6.5, 14, 14])
+        # Show plot
+        #plt.show()
+    
+    return(fig, ax)
 
 def example_TaylorDiagram():
     
