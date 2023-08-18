@@ -11,7 +11,7 @@ import datetime as dt
 import numpy as np
 
 import SWData_Analysis as swda
-#import DTW_Application as dtwa
+import DTW_Application as dtwa
 
 starttime = dt.datetime(2016, 5, 10)
 endtime = dt.datetime(2016, 7, 1)
@@ -20,6 +20,8 @@ _ = swda.plot_SingleTimeseries('u_mag', 'Juno', ['Tao', 'ENLIL', 'HUXt'], startt
 
 u_mag_baseline = swda.plot_TaylorDiagram_Baseline('u_mag', 'Juno', ['Tao', 'ENLIL', 'HUXt'], starttime, endtime)
 u_mag_shifts = swda.plot_TaylorDiagram_ConstantTimeWarping('u_mag', 'Juno', ['Tao', 'ENLIL', 'HUXt'], starttime, endtime)
+u_mag_sc_std, u_mag_dtw_stats = dtwa.compare_SpacecraftAndModels('Juno', ['Tao', 'ENLIL', 'HUXt'], starttime, endtime, 'jumps', 'u_mag')
+_ = dtwa.plot_TaylorDiagramDTW_FromStats(u_mag_sc_std, u_mag_dtw_stats, 'u_mag', 'TaylorDiagram_DTW_Juno_u_mag.png')
 print('Baseline correlation between Tao and Juno speeds: ' + str(u_mag_baseline['Tao']['r'].iloc[0]))
 print('Max correlation between Tao and Juno speeds for constant shifts: ' + str(np.max(u_mag_shifts['Tao']['r'])))
 print('Baseline correlation between Enlil and Juno speeds: ' + str(u_mag_baseline['ENLIL']['r'].iloc[0]))
@@ -31,6 +33,8 @@ _ = swda.plot_SingleTimeseries('p_dyn', 'Juno', ['Tao', 'ENLIL'], starttime, end
 
 p_dyn_baseline = swda.plot_TaylorDiagram_Baseline('p_dyn', 'Juno', ['Tao', 'ENLIL'], starttime, endtime)
 p_dyn_shifts = swda.plot_TaylorDiagram_ConstantTimeWarping('p_dyn', 'Juno', ['Tao', 'ENLIL'], starttime, endtime)
+p_dyn_sc_std, p_dyn_dtw_stats = dtwa.compare_SpacecraftAndModels('Juno', ['Tao', 'ENLIL'], starttime, endtime, 'jumps', 'p_dyn')
+_ = dtwa.plot_TaylorDiagramDTW_FromStats(p_dyn_sc_std, p_dyn_dtw_stats, 'p_dyn', 'TaylorDiagram_DTW_Juno_p_dyn.png')
 print('Baseline correlation between Tao and Juno pressures: ' + str(p_dyn_baseline['Tao']['r'].iloc[0]))
 print('Max correlation between Tao and Juno pressures for constant shifts: ' + str(np.max(p_dyn_shifts['Tao']['r'])))
 print('Baseline correlation between Enlil and Juno pressures: ' + str(p_dyn_baseline['ENLIL']['r'].iloc[0]))
