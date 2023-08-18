@@ -10,6 +10,8 @@ import datetime as dt
 import numpy as np
 import pandas as pd
 import copy 
+import dtw
+import matplotlib.pyplot as plt
 
 spacecraft_colors = {'Pioneer 10': '#F6E680',
                      'Pioneer 11': '#FFD485',
@@ -233,7 +235,10 @@ def view_DTWStepPatterns():
      
 #     return(out_df, out_alignment)
 
-def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, total_slope_limit=24.0):
+def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, total_slope_limit=24.0,
+                      intermediate_plots=True):
+    import plot_TaylorDiagram as TD
+    import scipy 
     window_args = {'window_size': total_slope_limit}
     
     from sklearn.metrics import confusion_matrix
@@ -261,8 +266,8 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
                          window_type='slantedband', window_args=window_args)
      
     tie_points = find_TiePointsInJumps(alignment)
-    tie_points.insert(0, (0,0))  #  As long as open_start = False
-    tie_points.append((len(query)-1, len(reference)-1))  #  As long as open_end=False
+    #tie_points.insert(0, (0,0))  #  As long as open_begin = False
+    #tie_points.append((len(query)-1, len(reference)-1))  #  As long as open_end=False
      
     test_arr = np.zeros(len(query))
     for points1, points2 in zip(tie_points, tie_points[1:]):
@@ -293,17 +298,26 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
     cm = confusion_matrix(query, interp_ref_basis, labels=[0,1])
     
     accuracy = (cm[0,0] + cm[1,1])/(cm[0,0] + cm[1,0] + cm[0,1] + cm[1,1])
-    precision = (cm[1,1])/(cm[0,1] + cm[1,1])
+    if cm[1,1] == 0.: 
+        precision = 0.
+    else:
+        precision = (cm[1,1])/(cm[0,1] + cm[1,1])
     recall = (cm[1,1])/(cm[1,0] + cm[1,1])
     f1_score = 2 * (precision * recall)/(precision + recall)
     
-    t1 = np.log10(interp_ref_metric)
-    t2 = np.log10(query_df[metric_tag].to_numpy('float64'))
+    #if metric_tag in ['p_dyn', 'n_tot']:
+    #    t1 = np.log10(interp_ref_metric)
+    #else:
+    t1 = interp_ref_metric
+    t2 = query_df[metric_tag].to_numpy('float64')
     
-    r = scipy.stats.pearsonr(t1, t2)[0]
-    sig = np.std(t1)
     
-    plot_DTWViews(query_df, shift_reference_df, shift, alignment, basis_tag, metric_tag)    
+    (r, sig), rmse = TD.find_TaylorStatistics(t1, t2)
+    #r = scipy.stats.pearsonr(t1, t2)[0]
+    #sig = np.std(t1)
+    
+    if intermediate_plots == True:
+        plot_DTWViews(query_df, shift_reference_df, shift, alignment, basis_tag, metric_tag)    
     
     # fig, ax = plt.subplots()
     # ax.plot(np.arange(0, len(shift_reference_df)), shift_reference_df[metric_tag])
@@ -319,6 +333,7 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
           'normalizeddistance': [alignment.normalizedDistance],
           'r': [r],
           'stddev': [sig],
+          'rmse': [rmse],
           'true_negative': cm[0,0],
           'true_positive': cm[1,1],
           'false_negative': cm[1,0],
@@ -330,11 +345,17 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
     
     return d
 
-def find_TiePointsInJumps(alignment):
+def find_TiePointsInJumps(alignment, open_end=False, open_begin=False):
     tie_points = []
     for unity in np.where(alignment.query == 1.0)[0]:
         i = np.where(alignment.index1 == unity)[0][0]
         tie_points.append((alignment.index1[i], alignment.index2[i]))
+        
+    if open_begin == False:
+        tie_points.insert(0, (0,0))
+    if open_end == False:
+        tie_points.append((alignment.N-1, alignment.M-1))
+    
     return tie_points
 
 def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_tag):
@@ -344,6 +365,7 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
     #       - Matched features
     #       - Metric time series comparison
     # =============================================================================
+    import matplotlib.pyplot as plt
     from matplotlib import collections  as mc
     import matplotlib.dates as mdates
     mosaic =    '''
@@ -352,7 +374,6 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
                 BAAADDD
                 .CCCDDD
                 '''
-    
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
     #with plt.style.context('default'):
         fig, axs = plt.subplot_mosaic(mosaic, figsize=(14,8), 
@@ -423,15 +444,24 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
                       va='top', ha='left', fontsize=16,
                       transform=axs['D'].transAxes)  
         
+        test_arr = np.zeros(len(alignment.query))
+        for points1, points2 in zip(tie_points, tie_points[1:]):
+            #  Get the indices in test_arr that map to equivalent points in the reference
+            reference_sample_indx = np.linspace(points1[1], points2[1]-1, points2[0]-points1[0]+1)
+            test_arr[points1[0]:points2[0]+1] = reference_sample_indx
+        interp_ref_metric = np.interp(test_arr, np.arange(0,len(test_arr)), reference_df[metric_tag])
+        
+
         axs['E'].plot(query_df.index, query_df[metric_tag], color=spacecraft_colors['Juno'])
-        # axs['E'].plot(reference_df.index, interp_ref_metric, color=model_colors['Tao'])
+        axs['E'].plot(reference_df.index, interp_ref_metric, color=model_colors['Tao'])
         # axs['E'].text(0.01, 0.90, 'r = ' + f'{r:.2f}', 
         #               va='top', ha='left', fontsize=16,
         #               transform=axs['E'].transAxes)  
         axs['E'].text(0.01, 0.99, 'Warped Reference compared to Query',
                       va='top', ha='left', fontsize=16,
                       transform=axs['E'].transAxes)  
-        
+        print(len(np.where(reference_df[basis_tag] == 1.)[0]))
+        print(np.where(reference_df[basis_tag] == 1.)[0])
         
         for ax in [axs['A'], axs['C'], axs['D'], axs['E']]:
             ax.xaxis.set_major_locator(date_locator)
@@ -454,7 +484,8 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
     plt.show()
     return
 
-def find_OptimalDTW(query_df, reference_df, basis_tag, metric_tag=None):
+
+def find_OptimalDTW(query_df, reference_df, basis_tag, metric_tag=None, intermediate_plots=None):
     """
     Uses open-ended dynamic time warping to find
     Attempts to match the query to the reference for a variety of start times
@@ -488,86 +519,157 @@ def find_OptimalDTW(query_df, reference_df, basis_tag, metric_tag=None):
                                    'r', 'stddev', 
                                    'true_negative', 'true_positive', 
                                    'false_negative', 'false_positive'])
+    
     for shift in shifts:
         
-        d = find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, total_slope_limit = total_slope_limit)
+        d = find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, 
+                              total_slope_limit = total_slope_limit, intermediate_plots=intermediate_plots)
         out_df = pd.concat([out_df, pd.DataFrame.from_dict(d)], ignore_index=True)
      
         
     return out_df
 
-
-import matplotlib.pyplot as plt
-import dtw as dtw
-import spiceypy as spice
-
-import read_SWModel
-import spacecraftdata
-from SWData_Analysis import find_Jumps
-import scipy
-
-# =============================================================================
-#    Would-be inputs go here 
-# =============================================================================
-tag = 'u_mag'  #  solar wind property of interest
-spacecraft_name = 'Juno'
-model_name = 'Tao'
-starttime = dt.datetime(1990, 1, 1)
-stoptime = dt.datetime(2017, 1, 1)
-reference_frame = 'SUN_INERTIAL'
-observer = 'SUN'
-intrinsic_error = 1.0 #  This is the error in one direction, i.e. the total width of the arrival time is 2*intrinsic_error
-
-# =============================================================================
-#  Would-be keywords go here
-# =============================================================================
-window_in_days = 13.5
-stepsize_in_days = 0.5
-#resolution_in_min = 60.
-max_lag_in_days = 6.0
-min_lag_in_days = -6.0
-
-spacecraft_temporalresolution_inh = 1.0
+def compare_SpacecraftAndModels(spacecraft_name, model_names, starttime, stoptime, basis_tag, metric_tag=None):
     
-#  Parse inputs and keywords
-resolution_str = '{}Min'.format(int(spacecraft_temporalresolution_inh*60.))
-# =============================================================================
-#  Read in spacecraft data; calculate the target-sun-Earth angle
-# =============================================================================
-sc_info = spacecraftdata.SpacecraftData(spacecraft_name)
-sc_info.read_processeddata(starttime, stoptime, resolution=resolution_str, combined=True)
-sc_info.find_state(reference_frame, observer)
-sc_info.find_subset(coord1_range=r_range*sc_info.au_to_km,
-                    coord3_range=lat_range*np.pi/180.,
-                    transform='reclat')
+
+    import matplotlib.pyplot as plt
+    import dtw as dtw
+    import spiceypy as spice
     
-spice.furnsh(sc_info.SPICE_METAKERNEL)
-ang_datetimes = sc_info.data.index  
-ets = spice.datetime2et(ang_datetimes)
-ang = [np.abs(spice.trgsep(et, sc_info.name, 'POINT', None, 'Earth', 'POINT', None, 'Sun', 'None')*180/np.pi) for et in ets]
-sc_info.data['a_tse'] = ang
-spice.kclear()
+    import read_SWModel
+    import spacecraftdata
+    from SWData_Analysis import find_Jumps
+    import scipy
+    
+    # =============================================================================
+    #    Would-be inputs go here 
+    # =============================================================================
+    #tag = 'u_mag'  #  solar wind property of interest
+    #spacecraft_name = 'Juno'
+    #model_name = 'Tao'
+    #starttime = dt.datetime(1990, 1, 1)
+    #stoptime = dt.datetime(2017, 1, 1)
+    reference_frame = 'SUN_INERTIAL'
+    observer = 'SUN'
+    #intrinsic_error = 1.0 #  This is the error in one direction, i.e. the total width of the arrival time is 2*intrinsic_error
+    
+    # =============================================================================
+    #  Would-be keywords go here
+    # =============================================================================
+    window_in_days = 13.5
+    stepsize_in_days = 0.5
+    #resolution_in_min = 60.
+    max_lag_in_days = 6.0
+    min_lag_in_days = -6.0
+    
+    spacecraft_temporalresolution_inh = 1.0
+        
+    #  Parse inputs and keywords
+    resolution_str = '{}Min'.format(int(spacecraft_temporalresolution_inh*60.))
+    # =============================================================================
+    #  Read in spacecraft data; calculate the target-sun-Earth angle
+    # =============================================================================
+    sc_info = spacecraftdata.SpacecraftData(spacecraft_name)
+    sc_info.read_processeddata(starttime, stoptime, resolution=resolution_str, combined=True)
+    sc_info.find_state(reference_frame, observer)
+    sc_info.find_subset(coord1_range=r_range*sc_info.au_to_km,
+                        coord3_range=lat_range*np.pi/180.,
+                        transform='reclat')
+        
+    spice.furnsh(sc_info.SPICE_METAKERNEL)
+    ang_datetimes = sc_info.data.index  
+    ets = spice.datetime2et(ang_datetimes)
+    ang = [np.abs(spice.trgsep(et, sc_info.name, 'POINT', None, 'Earth', 'POINT', None, 'Sun', 'None')*180/np.pi) for et in ets]
+    sc_info.data['a_tse'] = ang
+    spice.kclear()
+    
+    spacecraft_data = sc_info.data
+       
+    # =============================================================================
+    #  Read in model outputs
+    # =============================================================================
+    model_starttime = spacecraft_data.index[0] - dt.timedelta(hours=24*3)
+    model_stoptime = spacecraft_data.index[-1] + dt.timedelta(hours=24*3+1)  #  Closed interval
+    stats_df = {model_name: pd.DataFrame() for model_name in model_names}
+    for model_name in model_names:
+        
+        model_output = read_SWModel.choose(model_name, spacecraft_name, model_starttime, model_stoptime, resolution='60Min')
+        
+        # =============================================================================
+        #  Get baseline correlation coefficient
+        # =============================================================================
+        # aligned_model_output = model_output.reindex(spacecraft_data.index, method='nearest')
+        # r_baseline = scipy.stats.pearsonr(aligned_model_output['p_dyn'], spacecraft_data['p_dyn'])[0]
+        
+        # =============================================================================
+        #     Find jumps in bulk velocity
+        # =============================================================================
+        sigma_cutoff = 4
+        spacecraft_data = find_Jumps(spacecraft_data, 'u_mag', sigma_cutoff, 2.0, resolution_width=0.0)
+        model_output = find_Jumps(model_output, 'u_mag', sigma_cutoff, 2.0, resolution_width=0.0)
+        
+        stats = find_OptimalDTW(spacecraft_data, model_output, basis_tag, metric_tag, intermediate_plots=True)
+        stats_df[model_name] = pd.concat([stats_df[model_name], stats], ignore_index=True)
+    
+    
+    
+        ref_std = np.nanstd(spacecraft_data[metric_tag])
+    return ref_std, stats_df
 
-spacecraft_data = sc_info.data
-   
-# =============================================================================
-#  Read in model outputs
-# =============================================================================
-model_starttime = spacecraft_data.index[0] - dt.timedelta(hours=24*3)
-model_stoptime = spacecraft_data.index[-1] + dt.timedelta(hours=24*3+1)  #  Closed interval
-model_output = read_SWModel.choose(model_name, spacecraft_name, model_starttime, model_stoptime)
 
-# =============================================================================
-#  Get baseline correlation coefficient
-# =============================================================================
-# aligned_model_output = model_output.reindex(spacecraft_data.index, method='nearest')
-# r_baseline = scipy.stats.pearsonr(aligned_model_output['p_dyn'], spacecraft_data['p_dyn'])[0]
+def plot_TaylorDiagramDTW_FromStats(ref_std, stats_df, metric_tag, filename=''):
+    import matplotlib.pyplot as plt
+    import plot_TaylorDiagram as TD
+    
+    # 
+    savefile_stem = filename
+    if '.' in savefile_stem:
+        savefile_stem = savefile_stem.split('.')[0]
+        
+    match metric_tag:
+        case ('u_mag' | 'flow speed'):
+            tag = 'u_mag'
+            ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
+            plot_kw = {'yscale': 'linear', 'ylim': (0, 60),
+                       'yticks': np.arange(350,550+50,100)}
+        case ('p_dyn' | 'pressure'):
+            tag = 'p_dyn'
+            ylabel = r'Solar Wind Dynamic Pressure $(p_{dyn})$ [nPa]'
+            plot_kw = {'yscale': 'log', 'ylim': (0, 0.6),
+                       'yticks': 10.**np.arange(-3,0+1,1)}
+    
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        
+        fig, ax = TD.plot_TaylorDiagram_fromstats(ref_std)
+        
+        for model_name, stat_df in stats_df.items():
+            shifted_stat_plot = ax.scatter(np.arccos(stat_df['r'].to_numpy('float64')), stat_df['stddev'].to_numpy('float64'), 
+                                            marker=model_symbols[model_name], s=24, c=stat_df['shift'],
+                                            zorder=1)
+            
+            best_indx = np.argmax(stat_df['r'])
+            ax.scatter(np.arccos(stat_df['r'].iloc[best_indx]), stat_df['stddev'].iloc[best_indx], 
+                       marker=model_symbols[model_name], s=48, c=model_colors[model_name],
+                       edgecolors='black', zorder=2, label=model_name)
+            
+        ax.set_ylim([0, 1.5*ref_std])
+        #ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
+        ax.text(0.5, 0.9, ylabel,
+                horizontalalignment='center', verticalalignment='top',
+                transform = ax.transAxes)
+        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand')
+        ax.set_axisbelow(True)
+        
+        plt.colorbar(shifted_stat_plot, location='right', orientation='vertical', 
+                      label='Model Shift [hr]',
+                      fraction=0.2, pad=0.08, shrink=0.6, aspect=15,
+                      ticks=[-72, -48, -24, 0, 24, 48, 72])
+        
+    extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+    extent = extent.expanded(1.5, 1.0)
+    extent.intervalx = extent.intervalx + 0.5
 
-# =============================================================================
-#     Find jumps in bulk velocity
-# =============================================================================
-sigma_cutoff = 4
-spacecraft_data = find_Jumps(spacecraft_data, tag, sigma_cutoff, 2.0, resolution_width=0.0)
-model_output = find_Jumps(model_output, tag, sigma_cutoff, 2.0, resolution_width=0.0)
-
-test = find_OptimalDTW(spacecraft_data, model_output, 'jumps', 'u_mag')
+    for suffix in ['.png', '.pdf']:
+        plt.savefig('figures/' + savefile_stem, dpi=300, bbox_inches=extent)
+    plt.show()            
+        
