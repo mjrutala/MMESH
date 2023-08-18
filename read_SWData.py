@@ -115,18 +115,18 @@ def get_fromCDAWeb(spacecraft, basedir='',
 # =============================================================================
 #  
 # =============================================================================
-def make_DerezzedData(df_tuple, resolution=None):
+def make_DerezzedData(*dfs, resolution=None):
     
     result_list = []
     match resolution:
         case None:
             #  Do not resample
-            for df in df_tuple:
+            for df in dfs:
                 result_list.append(df)
         
         case str():
             #  As long as the input is a string, use resample
-            for df in df_tuple:
+            for df in dfs:
                 resample = df.resample(resolution).mean()
                 result_list.append(resample)
             
@@ -135,7 +135,7 @@ def make_DerezzedData(df_tuple, resolution=None):
             #  The find the largest such t_delta among all DataFrames
             #  And scale to that
             percentiles = []
-            for df in df_tuple:
+            for df in dfs:
                 if len(df) > 0:
                     df['t_delta'] = (df.index.to_series().shift(-1) - 
                                     df.index.to_series()).dt.total_seconds()
@@ -143,13 +143,15 @@ def make_DerezzedData(df_tuple, resolution=None):
                 
             resolution = np.max(percentiles)
             
-            for df in df_tuple:
+            for df in dfs:
                 if len(df) > 0:
                     df = df.resample('{:.0f}s'.format(resolution)).mean()
                     df = df.drop(['t_delta'], axis='columns')
                     result_list.append(df)
-
-    return(tuple(result_list))      
+    
+    result = tuple(result_list)
+    if len(result) == 1: result = result[0]
+    return result      
             
 # =============================================================================
 # 
@@ -275,9 +277,9 @@ def Juno_published(starttime, stoptime, basedir='', resolution=None, combined=Fa
     # =========================================================================
     plasma_data = read_Juno_Wilson2018(starttime, stoptime)
     mag_data = read_Juno_AMDAMAG(starttime, stoptime)
-    all_data = (plasma_data, mag_data,)
+    #all_data = (plasma_data, mag_data,)
     
-    all_data = make_DerezzedData(all_data, resolution=resolution)
+    all_data = make_DerezzedData(plasma_data, mag_data, resolution=resolution)
     
     data = pd.concat(all_data, axis=1)
     
@@ -407,9 +409,9 @@ def Ulysses(starttime, stoptime, basedir='', resolution=None):
     # =============================================================================
     plasma_data = read_Ulysses_plasma(starttime, stoptime)
     mag_data = read_Ulysses_MAG(starttime, stoptime)
-    all_data = (plasma_data, mag_data,)
+    #all_data = (plasma_data, mag_data,)
     
-    all_data = make_DerezzedData(all_data, resolution=resolution)
+    all_data = make_DerezzedData(plasma_data, mag_data, resolution=resolution)
     
     data = pd.concat(all_data, axis=1)
     
