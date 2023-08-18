@@ -16,6 +16,8 @@ import logging
 
 from pathlib import Path
 
+from read_SWData import make_DerezzedData
+
 m_p = 1.67e-27
 kg_per_amu = 1.66e-27 # 
 
@@ -26,7 +28,7 @@ default_df = pd.DataFrame(columns=['u_mag', 'n_tot', 'p_dyn', 'B_mag',
                                    'T_proton', 'T_alpha',
                                    'B_r', 'B_t', 'B_n', 'B_pol'])
 
-def Tao(target, starttime, finaltime, basedir=''):
+def Tao(target, starttime, finaltime, basedir='', resolution=None):
     
     #  basedir is expected to be the folder /SolarWindEM
     target = target.lower().replace(' ', '')
@@ -127,9 +129,11 @@ def Tao(target, starttime, finaltime, basedir=''):
     #data = data.set_index('datetime')
     data = data.reindex(columns=default_df.columns)
     
+    data = make_DerezzedData(data, resolution=resolution)
+    
     return(data)
 
-def SWMFOH(target, starttime, finaltime, basedir=''):
+def SWMFOH(target, starttime, finaltime, basedir='', resolution=None):
     
     #  basedir is expected to be the folder /SolarWindEM
     model_path = 'models/swmf-oh/'
@@ -200,10 +204,13 @@ def SWMFOH(target, starttime, finaltime, basedir=''):
     data['p_dyn'] = data['p_dyn_proton']
     data['n_tot'] = data['n_proton']
     
-    data = data.set_index('datetime')
+    #data = data.set_index('datetime')
+    
+    data = make_DerezzedData(data, resolution=resolution)
+    
     return(data)
 
-def MSWIM2D(target, starttime, finaltime, basedir=''):
+def MSWIM2D(target, starttime, finaltime, basedir='', resolution=None):
     
     model_path = 'models/MSWIM2D/'
     full_path = basedir + model_path + target.lower() + '/'
@@ -248,10 +255,12 @@ def MSWIM2D(target, starttime, finaltime, basedir=''):
     data['p_dyn'] = data['p_dyn_proton']
     data['n_tot'] = data['n_proton']
     
-    data = data.set_index('datetime')
+    #data = data.set_index('datetime')
+    data = make_DerezzedData(data, resolution=resolution)
+    
     return(data)
 
-def HUXt(target, starttime, finaltime, basedir=''):
+def HUXt(target, starttime, finaltime, basedir='', resolution=None):
     
     model_path = 'models/HUXt/'
     full_path = basedir + model_path + target.lower() + '/'
@@ -284,10 +293,12 @@ def HUXt(target, starttime, finaltime, basedir=''):
         
         data = SWModel_Parameter_Concatenator(data, span_data)
     
+    # !!!! This wwould be increasing resolution, not decreasing it... does it work?
+    data = make_DerezzedData(data, resolution=resolution)
     
     return(data)
 
-def Heliocast(target, starttime, finaltime, data_path=''):
+def Heliocast(target, starttime, finaltime, data_path='', resolution=None):
     import pandas as pd
     import numpy as np
     m_p = 1.67e-27 # proton mass
@@ -321,9 +332,11 @@ def Heliocast(target, starttime, finaltime, data_path=''):
     data['Umag'] = np.sqrt(data['Ur']**2 + data['Ut']**2 + data['Up']**2)
     data['Pdyn'] = (data['rho'] * 1e6) * (data['Umag'] * 1e3)**2 * 1e9
     
+    data = make_DerezzedData(data, resolution=resolution)
+    
     return(data.reset_index(drop=True))
 
-def ENLIL(target, starttime, finaltime, basedir=''):
+def ENLIL(target, starttime, finaltime, basedir='', resolution=None):
     
     target = target.lower().replace(' ', '')
     #  basedir is expected to be the folder /SolarWindEM
@@ -400,22 +413,28 @@ def ENLIL(target, starttime, finaltime, basedir=''):
     data['p_dyn'] = data['p_dyn_proton']
     data['n_tot'] = data['n_proton']
     
-    #data = data.set_index('datetime')
+    data = make_DerezzedData(data, resolution=resolution)
+    
     return(data)
 
-def choose(model, target, starttime, stoptime, basedir=''):
+def choose(model, target, starttime, stoptime, basedir='', resolution=None):
     
     match model.lower():
         case 'tao':
-            result = Tao(target, starttime, stoptime, basedir=basedir)
+            result = Tao(target, starttime, stoptime, 
+                         basedir=basedir, resolution=resolution)
         case 'huxt':
-            result = HUXt(target, starttime, stoptime, basedir=basedir)
+            result = HUXt(target, starttime, stoptime, 
+                          basedir=basedir, resolution=resolution)
         case 'mswim2d':
-            result = MSWIM2D(target, starttime, stoptime, basedir=basedir)
+            result = MSWIM2D(target, starttime, stoptime, 
+                             basedir=basedir, resolution=resolution)
         case 'swmf-oh':
-            result = SWMFOH(target, starttime, stoptime, basedir=basedir)
+            result = SWMFOH(target, starttime, stoptime, 
+                            basedir=basedir, resolution=resolution)
         case 'enlil':
-            result = ENLIL(target, starttime, stoptime, basedir=basedir)
+            result = ENLIL(target, starttime, stoptime, 
+                           basedir=basedir, resolution=resolution)
         case _:
             result = None
             raise Exception("Model '" + model.lower() + "' is not currently supported.") 
