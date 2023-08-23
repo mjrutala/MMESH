@@ -12,7 +12,111 @@ import numpy as np
 
 import spacecraftdata
 import read_SWModel
+import numpy as np
+import astropy.units as u
+from astropy.time import Time
+import matplotlib.pyplot as plt
+import datetime
+import os
 
+r_range = [4.9, 5.5]
+lat_range = [-6.1, 6.1]
+
+def run_HUXtAtSpacecraft(spacecraft_names):
+    import copy
+    import matplotlib.pyplot as plt
+    
+    import spiceypy as spice
+    
+    import spacecraftdata as SpacecraftData
+
+    import huxt as H
+    import huxt_analysis as HA
+    import huxt_inputs as Hin
+    
+    # =============================================================================
+    # Find
+    # =============================================================================
+    reference_frame = 'SUN_INERTIAL' # HGI  #'ECLIPJ2000'
+    observer = 'SUN'
+    
+    spacecraft_list = []
+    for sc_name in spacecraft_names:
+        spacecraft_list.append(SpacecraftData.SpacecraftData(sc_name))
+    
+    
+    for sc in spacecraft_list:
+        sc.find_lifetime()
+        
+        sc.read_processeddata(sc.starttime, sc.stoptime)
+        sc.find_state(reference_frame, observer)
+        sc.find_subset(coord1_range=np.array(r_range)*sc.au_to_km, 
+                       coord3_range=np.array(lat_range)*np.pi/180., 
+                       transform='reclat')
+        
+        #  This bit splits the spacecraft data up into chunks to plot
+        sc_deltas = sc.data.index.to_series().diff()
+        gaps_indx = np.where(sc_deltas > dt.timedelta(days=30))[0]
+        start_indx = np.insert(gaps_indx, 0, 0)
+        stop_indx = np.append(gaps_indx, len(sc.data.index))-1
+        
+        print('Start and stop dates for ' + sc.name)
+        for first, final in zip(start_indx, stop_indx):
+            print(sc.data.index[first].strftime('%Y-%m-%d') + 
+                  ' -- ' + 
+                  sc.data.index[final].strftime('%Y-%m-%d'))
+            print(str((sc.data.index[final] - sc.data.index[first]).total_seconds()/3600.) + ' total hours')
+            rlonlat = [spice.reclat(np.array(row[['x_pos', 'y_pos', 'z_pos']], dtype='float64')) for indx, row in sc.data.iterrows()]
+            rlonlat = np.array(rlonlat).T
+            print('Radial range of: ' + str(np.min(rlonlat[0,:])/sc.au_to_km) +
+                  ' - ' + str(np.max(rlonlat[0,:])/sc.au_to_km) + ' AU')
+            print('Heliolatitude range of: ' + str(np.min(rlonlat[2,:])*180/np.pi) +
+                  ' - ' + str(np.max(rlonlat[2,:])*180/np.pi) + 'deg.')
+            print('------------------------------------------')      
+
+def simpleHUXtRun(spacecraft_name, year):
+    import time as benchmark_time
+    
+    import sys
+    sys.path.append('/Users/mrutala/projects/HUXt-DIAS/code/')
+    import huxt as H
+    import huxt_analysis as HA
+    import huxt_inputs as Hin
+    
+    runstart = dt.datetime(2016, 1, 1)
+    runend = dt.datetime(2016, 2, 1)
+    simtime = (runend-runstart).days * u.day
+    r_min = 215 *u.solRad
+
+    benchmark_starttime = benchmark_time.time()
+
+    #download and process the OMNI data
+    time, vcarr, bcarr = Hin.generate_vCarr_from_OMNI(runstart, runend)
+
+    #set up the model, with (optional) time-dependent bpol boundary conditions
+    model = Hin.set_time_dependent_boundary(vcarr, time, runstart, simtime, 
+                                            r_min=r_min, r_max=1290*u.solRad, dt_scale=2.0, latitude=0*u.deg,
+                                            bgrid_Carr = bcarr, lon_start=68*u.deg, lon_stop=72*u.deg, frame='sidereal')
+
+
+    model.solve([])
+    
+    benchmark_totaltime = benchmark_time.time() - benchmark_starttime
+    print('Time elapsed in solving the model: {}'.format(benchmark_totaltime))
+    
+    HA.plot(model, (0/4.)*simtime)
+    HA.plot(model, (1/4.)*simtime)
+    HA.plot(model, (2/4.)*simtime)
+    HA.plot(model, (3/4.)*simtime)
+    HA.plot(model, (4/4.)*simtime)
+
+    sc_series = HA.get_observer_timeseries(model, observer=spacecraft_name)
+    
+    filename = spacecraft_name + '_' + str(year) + '_' + 'HUXt.csv'
+    print(filename)
+    sc_series.to_csv(filename)
+    
+    return(sc_series)
 
 
 def plot_spacecraftcoverage_solarcycle():
@@ -29,8 +133,8 @@ def plot_spacecraftcoverage_solarcycle():
     #import read_SWData
     import spacecraftdata as SpacecraftData
     
-    r_range = [4.9, 5.5]  #  [4.0, 6.4]
-    lat_range = [-6.1, 6.1]  #  [-10, 10]
+    # r_range = [4.9, 5.5]  #  [4.0, 6.4]
+    # lat_range = [-6.1, 6.1]  #  [-10, 10]
     
     # =============================================================================
     # Find when Ulysses was within +/- 30 deg. of the ecliptic, and near 5 AU
