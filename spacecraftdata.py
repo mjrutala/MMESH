@@ -111,13 +111,12 @@ class SpacecraftData:
         if starttime == None:
             if self.starttime == None:
                 raise ValueError('No start time found.')
-        else: self.starttimme = starttime
+        else: self.starttime = starttime
         
         if stoptime == None:
             if self.stoptime == None:
                 raise ValueError('No stop tme found.')
         else: self.stoptime = stoptime
-        
         
         datetimes = np.arange(self.starttime, self.stoptime, timedelta).astype(dt.datetime)
         
