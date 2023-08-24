@@ -28,7 +28,7 @@ default_df = pd.DataFrame(columns=['u_mag', 'n_tot', 'p_dyn', 'B_mag',
                                    'T_proton', 'T_alpha',
                                    'B_r', 'B_t', 'B_n', 'B_pol'])
 
-def Tao(target, starttime, finaltime, basedir='', resolution=None):
+def Tao(target, starttime, stoptime, basedir='', resolution=None):
     
     #  basedir is expected to be the folder /SolarWindEM
     target = target.lower().replace(' ', '')
@@ -113,7 +113,7 @@ def Tao(target, starttime, finaltime, basedir='', resolution=None):
         
         #  Ditch unrequested data now so you don't need to hold it all in memory
         span_data = file_data.loc[(file_data.index >= starttime) &
-                                    (file_data.index < finaltime)]
+                                    (file_data.index < stoptime)]
         
         data = SWModel_Parameter_Concatenator(data, span_data)
         
@@ -133,7 +133,7 @@ def Tao(target, starttime, finaltime, basedir='', resolution=None):
     
     return(data)
 
-def SWMFOH(target, starttime, finaltime, basedir='', resolution=None):
+def SWMFOH(target, starttime, stoptime, basedir='', resolution=None):
     
     #  basedir is expected to be the folder /SolarWindEM
     model_path = 'models/swmf-oh/'
@@ -192,7 +192,7 @@ def SWMFOH(target, starttime, finaltime, basedir='', resolution=None):
         
         #  Ditch unrequested data now so you don't need to hold it all in memory
         span_data = file_data.loc[(file_data.index >= starttime) &
-                                    (file_data.index < finaltime)]
+                                    (file_data.index < stoptime)]
         
         data = SWModel_Parameter_Concatenator(data, span_data)
     
@@ -210,7 +210,7 @@ def SWMFOH(target, starttime, finaltime, basedir='', resolution=None):
     
     return(data)
 
-def MSWIM2D(target, starttime, finaltime, basedir='', resolution=None):
+def MSWIM2D(target, starttime, stoptime, basedir='', resolution=None):
     
     model_path = 'models/MSWIM2D/'
     full_path = basedir + model_path + target.lower() + '/'
@@ -243,7 +243,7 @@ def MSWIM2D(target, starttime, finaltime, basedir='', resolution=None):
         
         #  Ditch unrequested data now so you don't need to hold it all in memory
         span_data = file_data.loc[(file_data.index >= starttime) &
-                                    (file_data.index < finaltime)]
+                                    (file_data.index < stoptime)]
         
         data = SWModel_Parameter_Concatenator(data, span_data)
 
@@ -260,7 +260,7 @@ def MSWIM2D(target, starttime, finaltime, basedir='', resolution=None):
     
     return(data)
 
-def HUXt(target, starttime, finaltime, basedir='', resolution=None):
+def HUXt(target, starttime, stoptime, basedir='', resolution=None):
     
     model_path = 'models/HUXt/'
     full_path = basedir + model_path + target.lower() + '/'
@@ -289,7 +289,7 @@ def HUXt(target, starttime, finaltime, basedir='', resolution=None):
         
         #  Ditch unrequested data now so you don't need to hold it all in memory
         span_data = file_data.loc[(file_data.index >= starttime) &
-                                    (file_data.index < finaltime)]
+                                    (file_data.index < stoptime)]
         
         data = SWModel_Parameter_Concatenator(data, span_data)
     
@@ -298,7 +298,7 @@ def HUXt(target, starttime, finaltime, basedir='', resolution=None):
     
     return(data)
 
-def Heliocast(target, starttime, finaltime, data_path='', resolution=None):
+def Heliocast(target, starttime, stoptime, data_path='', resolution=None):
     import pandas as pd
     import numpy as np
     m_p = 1.67e-27 # proton mass
@@ -324,7 +324,7 @@ def Heliocast(target, starttime, finaltime, data_path='', resolution=None):
                              header=0)
         temp_data['datetime'] = pd.to_datetime(temp_data['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
         
-        sub_data = temp_data.loc[(temp_data['datetime'] >= starttime) & (temp_data['datetime'] < finaltime)]
+        sub_data = temp_data.loc[(temp_data['datetime'] >= starttime) & (temp_data['datetime'] < stoptime)]
         
         data = pd.concat([data, sub_data])
     
@@ -336,7 +336,7 @@ def Heliocast(target, starttime, finaltime, data_path='', resolution=None):
     
     return(data.reset_index(drop=True))
 
-def ENLIL(target, starttime, finaltime, basedir='', resolution=None):
+def ENLIL(target, starttime, stoptime, basedir='', resolution=None):
     
     target = target.lower().replace(' ', '')
     #  basedir is expected to be the folder /SolarWindEM
@@ -401,7 +401,7 @@ def ENLIL(target, starttime, finaltime, basedir='', resolution=None):
         
         #  Ditch unrequested data now so you don't need to hold it all in memory
         span_data = file_data.loc[(file_data.index >= starttime) &
-                                    (file_data.index < finaltime)]
+                                    (file_data.index < stoptime)]
         
         data = SWModel_Parameter_Concatenator(data, span_data)
     
@@ -481,5 +481,149 @@ def SWModel_Parameter_Concatenator(running_dataframe, current_dataframe):
     else:
         output_df = pd.concat([r_df, c_df])        
             
-
     return(output_df)
+
+def runHUXt(target, starttime, stoptime, basedir=''):
+    """
+    We're going to run HUXt at relatively high temporal (and potentially 
+    spatial) resolution, so it's essential that we run it over as little a 
+    volume of space as possible.
+    
+    To this end, we need to:
+        1) Get the helioposition of the spacecraft (r, lon, lat)
+        2) If the spacecraft covers too large an area, split the time domain
+            into several small sections
+        3) Run HUXt over all the necessary sparial sections
+        4) Combine the HUXt dataframes back together
+        5) Return this dataframe (and save it?)
+
+    Parameters
+    ----------
+    target : TYPE
+        DESCRIPTION.
+    starttime : TYPE
+        DESCRIPTION.
+    stoptime : TYPE
+        DESCRIPTION.
+    basedir : TYPE, optional
+        DESCRIPTION. The default is ''.
+
+    Returns
+    -------
+    None.
+
+    """
+    
+    #!!!! Get spacecraft longitudes during this time span
+    #  Or split up the time span dynamically so each HUXt run only needs to be ~2-4ish degrees lon.
+    #  Then look into how sampling in 3D works (i.e., with latitude) -- hpopefully theres another easy sampler like sc_series...
+    #  Then move this to read_model? Maybe with a renaming as well (Model class? models.py? ...)
+    
+    import sys
+    sys.path.append('/Users/mrutala/projects/HUXt-DIAS/code/')
+    
+    import matplotlib.pyplot as plt
+    import spiceypy as spice
+    import astropy.units as u
+    
+    import spacecraftdata as SpacecraftData
+    import huxt as H
+    import huxt_analysis as HA
+    import huxt_inputs as Hin
+    
+    lon_limit = 2.*(360/128.)  #  degrees, 128 bins by default
+    
+    reference_frame = 'SUN_INERTIAL' # HGI
+    observer = 'SUN'
+    
+    spacecraft = SpacecraftData.SpacecraftData(target)
+    spacecraft.make_timeseries(starttime, stoptime, dt.timedelta(hours=1))
+    spacecraft.find_state(reference_frame, observer, keep_kernels=True)  #  Keep kernels to find Earth's position later
+    #spacecraft.find_subset(coord1_range=np.array(r_range)*sc.au_to_km, 
+    #                       coord3_range=np.array(lat_range)*np.pi/180., 
+    #                       transform='reclat')
+    
+    positions = spacecraft.data[['x_pos', 'y_pos', 'z_pos']].to_numpy('float64')
+    r, lon, lat = zip(*[spice.reclat(list(pos)) for pos in positions])
+    spacecraft.data['r_pos'] = np.array(r)
+    spacecraft.data['lon_pos'] = np.array(lon) * (180/np.pi)
+    # spacecraft.data['lat_pos'] = np.array(lat) * (180/np.pi)
+    
+    earth_pos, ltime = spice.spkpos('EARTH', spice.datetime2et(spacecraft.data.index), reference_frame, 'NONE', observer)
+    earth_r, earth_lon, earth_lat = zip(*[spice.reclat(pos) for pos in earth_pos])
+    spacecraft.data['earth_lon'] = np.array(earth_lon) * (180/np.pi)
+    
+    # =========================================================================
+    #   Find the the indices to split up the position into managable chunks
+    #   N.B. this won't work for non-monotonic longitude arrays
+    # =========================================================================
+    lon_range = spacecraft.data['lon_pos'][-1] - spacecraft.data['lon_pos'][0]
+    if lon_range < 0: lon_range += 360.
+    
+    lon_segments = np.ceil(lon_range/lon_limit)
+    
+    indx_list = []
+    for i in range(int(lon_segments)):
+        i_step = spacecraft.data['lon_pos'][0] + ((lon_range/lon_segments) * i)
+        indx_list.append(np.argmin(abs(spacecraft.data['lon_pos'] - i_step)))
+        
+    start_indx = indx_list
+    stop_indx = indx_list[1:] + [len(spacecraft.data)]
+    
+    output_list = []
+    for start, stop in zip(start_indx, stop_indx):
+        run_start = spacecraft.data.index[start]
+        run_stop = spacecraft.data.index[stop-1] + dt.timedelta(days=1)  #  HUXt ends runs a little early, seemingly
+        run_time = (run_stop - run_start).days * u.day
+        
+        lon_start = (spacecraft.data['lon_pos'][start] - spacecraft.data['earth_lon'][start] + 360) % 360.
+        lon_stop = (spacecraft.data['lon_pos'][stop-1] - spacecraft.data['earth_lon'][start] + 360) % 360.
+        
+        r_min = 215 * u.solRad
+        
+        #download and process the OMNI data
+        time, vcarr, bcarr = Hin.generate_vCarr_from_OMNI(run_start, run_stop)
+        
+        #set up the model, with (optional) time-dependent bpol boundary conditions
+        model = Hin.set_time_dependent_boundary(vcarr, time, run_start, run_time, 
+                                                r_min=r_min, r_max=1290*u.solRad, dt_scale=1.0, latitude=0*u.deg,
+                                                bgrid_Carr = bcarr, lon_start=lon_start*u.deg, lon_stop=lon_stop*u.deg, frame='sidereal')
+
+        model.solve([])
+        
+        #HA.plot(model, 1*u.day)
+        
+        spacecraft_df = HA.get_observer_timeseries(model, observer=target)
+        
+        output_list.append(spacecraft_df)
+        del model
+        
+        print('HUXt run for {} - {} complete.'.format(run_start.strftime('%d-%m-%Y'), run_stop.strftime('%d-%m-%Y')))
+    
+    spice.kclear()
+    
+    output_concat = pd.concat(output_list, axis=0, ignore_index=True)
+    output_concat = output_concat.set_index(output_concat['time'])
+    output_concat = output_concat.drop(labels='time', axis='columns')
+    output_concat = output_concat.sort_index(axis='index')
+    result = output_concat.resample('60Min').mean()
+    result = result.loc[(result.index >= starttime) & (result.index < stoptime)]
+    
+    #  Finally, reset the heliolongitude in the output dataframe, since the 
+    #  input longitudes are meaningless (Earth's lon. is reset to 0 each time)
+    result['lon'] = spacecraft.data['lon_pos']
+    
+    filestem = '{}_{}-{}_HUXt'.format(target.lower(), starttime.strftime('%Y%j'), stoptime.strftime('%Y%j'))
+
+    result.to_csv(basedir + filestem + '.csv')    
+    
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, axs = plt.subplots(nrows=2, figsize=(8,8))
+        
+        axs[0].scatter(result['r'], result['lon'])
+        
+        axs[1].scatter(spacecraft.data['r_pos'], spacecraft.data['lon_pos'])
+        
+        plt.show()
+    
+    return result
