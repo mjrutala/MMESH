@@ -93,6 +93,11 @@ def simpleHUXtRun(spacecraft_name, year):
     #download and process the OMNI data
     time, vcarr, bcarr = Hin.generate_vCarr_from_OMNI(runstart, runend)
 
+    #!!!! Get spacecraft longitudes during this time span
+    #  Or split up the time span dynamically so each HUXt run only needs to be ~2-4ish degrees lon.
+    #  Then look into how sampling in 3D works (i.e., with latitude) -- hpopefully theres another easy sampler like sc_series...
+    #  Then move this to read_model? Maybe with a renaming as well (Model class? models.py? ...)
+
     #set up the model, with (optional) time-dependent bpol boundary conditions
     model = Hin.set_time_dependent_boundary(vcarr, time, runstart, simtime, 
                                             r_min=r_min, r_max=1290*u.solRad, dt_scale=2.0, latitude=0*u.deg,
