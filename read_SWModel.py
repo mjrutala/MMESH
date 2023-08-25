@@ -634,7 +634,7 @@ def runHUXt(target, starttime, stoptime, basedir=''):
     indx = np.where((result['lon'] - lon_start_arr) < 0)[0]
     if len(indx) > 0:
         print('Spacecraft longitude is less than the longitude start value')
-        print('Mean residuals: ' + str(result['lon'][indx].to_numpy('float64') - np.mean(lon_start_arr[indx])))
+        print('Mean residuals: ' + str(np.mean(result['lon'][indx].to_numpy('float64') - lon_start_arr[indx])))
         print('If this is small, it is likely due to the dataframe resampling.')
     #
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
