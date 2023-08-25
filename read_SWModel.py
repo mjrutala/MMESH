@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""
+'''
 Created on Tue Apr 11 10:09:36 2023
 
 @author: Matt Rutala
-"""
+'''
 
-"""
+'''
 target = string, startdate & finaldata = datetime
-"""
+'''
 import pandas as pd
 import numpy as np
 import datetime as dt
@@ -246,7 +246,6 @@ def MSWIM2D(target, starttime, stoptime, basedir='', resolution=None):
                                     (file_data.index < stoptime)]
         
         data = SWModel_Parameter_Concatenator(data, span_data)
-
     data['rho_proton'] = data['rho_proton'] * kg_per_amu  # kg / cm^3
     data['n_proton'] = data['rho_proton'] / m_p  # / cm^3
     data['u_mag'] = np.sqrt(data['u_x']**2 + data['u_y']**2 + data['u_z']**2) # km/s
@@ -265,11 +264,27 @@ def HUXt(target, starttime, stoptime, basedir='', resolution=None):
     model_path = 'models/HUXt/'
     full_path = basedir + model_path + target.lower() + '/'
     
-    match target.lower():
+    match target.replace(' ','').lower():
         case 'jupiter':
             filenames = ['Jupiter_2016_Owens_HuxT.csv', 'Jupiter_2020_Owens_HuxT.csv']
         case 'juno':
-            filenames = ['Jupiter_2016_Owens_HuxT.csv']
+            filenames = ['juno_2015001-2016001_HUXt.csv', 'juno_2016001-2017001_HUXt.csv']
+        case 'ulysses':
+            filenames = ['ulysses_1991001-1992001_HUXt.csv', 'ulysses_1992001-1993001_HUXt.csv',
+                         'ulysses_1997001-1998001_HUXt.csv', 'ulysses_1998001-1999001_HUXt.csv',
+                         'ulysses_1999001-2000001_HUXt.csv', 'ulysses_2003001-2004001_HUXt.csv',
+                         'ulysses_2004001-2005001_HUXt.csv']
+        case 'voyager 1':
+            filenames = ['voyager1_1978001-1979001_HUXt.csv', 'voyager1_1979001-1980001_HUXt.csv']
+        case 'voyager 2':
+            filenames = ['voyager2_1978001-1979001_HUXt.csv', 'voyager2_1979001-1980001_HUXt.csv',
+                         'voyager2_1980001-1981001_HUXt.csv']
+        case 'pioneer 10':
+            filenames = ['pioneer10_1973001-1974001_HUXt.csv', 'pioneer10_1974001-1975001_HUXt.csv']
+        case 'pioneer 11':
+            filenames = ['pioneer11_1974001-1975001_HUXt.csv', 'pioneer11_1975001-1976001_HUXt.csv',
+                         'pioneer11_1976001-1977001_HUXt.csv', 'pioneer11_1977001-1978001_HUXt.csv',
+                         'pioneer11_1978001-1979001_HUXt.csv', 'pioneer11_1979001-1980001_HUXt.csv']
         case _:
             logging.warning('This version of the HUXt reader'
                             ' does not support ' + target + ' observations.')
@@ -284,7 +299,10 @@ def HUXt(target, starttime, stoptime, basedir='', resolution=None):
         file_data = pd.read_csv(full_path + filename, 
                              names=column_headers, 
                              header=0)
-        file_data['datetime'] = pd.to_datetime(file_data['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
+        try:
+            file_data['datetime'] = pd.to_datetime(file_data['datetime'], format='%Y-%m-%d %H:%M:%S.%f')
+        except ValueError:
+            file_data['datetime'] = pd.to_datetime(file_data['datetime'], format='%Y-%m-%d %H:%M:%S')
         file_data = file_data.set_index('datetime')
         
         #  Ditch unrequested data now so you don't need to hold it all in memory
@@ -362,10 +380,17 @@ def ENLIL(target, starttime, stoptime, basedir='', resolution=None):
         case 'juno':
             filenames = ['ccmc_enlil_juno_20160509.txt',
                          'ccmc_enlil_juno_20160606.txt']
-        # case 'galileo':
-        #     filenames = []
-        # case 'cassini':
-        #     filenames = []
+        case 'ulysses':
+            filenames = ['ccmc_enlil_ulysses_19910105.txt', 'ccmc_enlil_ulysses_19910918.txt',
+                         'ccmc_enlil_ulysses_19911015.txt', 'ccmc_enlil_ulysses_19911111.txt',
+                         'ccmc_enlil_ulysses_19911208.txt', 'ccmc_enlil_ulysses_19920201.txt',
+                         'ccmc_enlil_ulysses_19920228.txt', 'ccmc_enlil_ulysses_19970618.txt',
+                         'ccmc_enlil_ulysses_19970715.txt', 'ccmc_enlil_ulysses_19970811.txt',
+                         'ccmc_enlil_ulysses_19970908.txt', 'ccmc_enlil_ulysses_19971005.txt',
+                         'ccmc_enlil_ulysses_19971101.txt', 'ccmc_enlil_ulysses_19971128.txt',
+                         'ccmc_enlil_ulysses_19971226.txt', 'ccmc_enlil_ulysses_19980122.txt',
+                         'ccmc_enlil_ulysses_19980218.txt', 'ccmc_enlil_ulysses_19980318.txt',
+                         'ccmc_enlil_ulysses_19980414.txt']
         case _:
             logging.warning('This version of the ENLIL reader'
                             ' does not support ' + target + ' observations.')
@@ -437,7 +462,7 @@ def choose(model, target, starttime, stoptime, basedir='', resolution=None):
                            basedir=basedir, resolution=resolution)
         case _:
             result = None
-            raise Exception("Model '" + model.lower() + "' is not currently supported.") 
+            raise Exception('Model '' + model.lower() + '' is not currently supported.') 
     return(result)
 
 def SWModel_Parameter_Concatenator(running_dataframe, current_dataframe):
@@ -484,7 +509,7 @@ def SWModel_Parameter_Concatenator(running_dataframe, current_dataframe):
     return(output_df)
 
 def runHUXt(target, starttime, stoptime, basedir=''):
-    """
+    '''
     We're going to run HUXt at relatively high temporal (and potentially 
     spatial) resolution, so it's essential that we run it over as little a 
     volume of space as possible.
@@ -512,7 +537,7 @@ def runHUXt(target, starttime, stoptime, basedir=''):
     -------
     None.
 
-    """
+    '''
     
     #!!!! Get spacecraft longitudes during this time span
     #  Or split up the time span dynamically so each HUXt run only needs to be ~2-4ish degrees lon.
@@ -584,7 +609,7 @@ def runHUXt(target, starttime, stoptime, basedir=''):
         lon_start = (np.min(spacecraft.data['lon_pos'][start:stop]) - spacecraft.data['earth_lon'][start] + 360) % 360.
         lon_stop = (np.max(spacecraft.data['lon_pos'][start:stop]) - spacecraft.data['earth_lon'][start] + 360) % 360.
         
-        #  Fix the starting and stopping longitudes to the longitude values the model actually uses
+        #  Fix the starting and stopping longitudes to the longitude values the model actually usesFi
         lon_start = lon_valid[np.where(lon_valid <= lon_start)[0][-1]] % 360.
         lon_stop = lon_valid[np.where(lon_valid >= lon_stop)[0][0]] % 360.
         
