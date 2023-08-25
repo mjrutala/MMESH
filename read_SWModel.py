@@ -532,7 +532,7 @@ def runHUXt(target, starttime, stoptime, basedir=''):
     import huxt_inputs as Hin
     
     lon_res = (360/128.)
-    lon_valid = np.arange(0, 360, lon_res)
+    lon_valid = np.arange(0, 360+lon_res, lon_res)
     lon_limit = 2.*lon_res #  degrees, 128 bins by default
     
     reference_frame = 'SUN_INERTIAL' # HGI
@@ -585,8 +585,8 @@ def runHUXt(target, starttime, stoptime, basedir=''):
         lon_stop = (np.max(spacecraft.data['lon_pos'][start:stop]) - spacecraft.data['earth_lon'][start] + 360) % 360.
         
         #  Fix the starting and stopping longitudes to the longitude values the model actually uses
-        lon_start = lon_valid[np.where(lon_valid <= lon_start)[0][-1]]
-        lon_stop = lon_valid[np.where(lon_valid >= lon_stop)[0][0]]
+        lon_start = lon_valid[np.where(lon_valid <= lon_start)[0][-1]] % 360.
+        lon_stop = lon_valid[np.where(lon_valid >= lon_stop)[0][0]] % 360.
         
         lon_start_arr[start:stop] = (lon_start + spacecraft.data['earth_lon'][start] + 360) % 360.
         lon_stop_arr[start:stop] = (lon_stop + spacecraft.data['earth_lon'][start] + 360) % 360.
