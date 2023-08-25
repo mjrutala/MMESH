@@ -102,6 +102,8 @@ def find_Jumps(dataframe, tag, sigma_cutoff, smoothing_width, resolution_width=0
     
     #  Set the resolution (width) of the jump
     jumps = np.zeros(len(rough_jumps))
+    print(len(dataframe))
+    print(dataframe.index[0], dataframe.index[-1])
     for span in rough_jump_spans:
         center_indx = np.mean(span)
         center = dataframe.index[int(center_indx)]
@@ -131,7 +133,7 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
         case ('u_mag' | 'flow speed'):
             tag = 'u_mag'
             ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
-            plot_kw = {'yscale': 'linear', 'ylim': (350, 600),
+            plot_kw = {'yscale': 'linear', 'ylim': (250, 600),
                        'yticks': np.arange(350,600+50,100)}
         case ('p_dyn' | 'pressure'):
             tag = 'p_dyn'
@@ -166,9 +168,7 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
     models = dict.fromkeys(model_names, None)
     for model in models.keys():
         models[model] = read_SWModel.choose(model, spacecraft_name, 
-                                       starttime, stoptime)
-    #!!! Only because HUXt doesn't have Juno yet
-    # models['HUXt'] = read_SWModel.choose('HUXt', 'Jupiter', starttime, stoptime)
+                                       starttime, stoptime, resolution='60Min')
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig, axs = plt.subplots(figsize=(8,6), nrows=len(models), sharex=True, squeeze=False)
@@ -198,8 +198,7 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
             model_label_box = dict(facecolor=model_colors[model], 
                                    edgecolor=model_colors[model], 
                                    pad=0.1, boxstyle='round')
-            # !!!! Again, special for HUXt
-            if model == 'HUXt': model += '*'
+           
             ax.text(0.01, 0.95, model, color='black',
                     horizontalalignment='left', verticalalignment='top',
                     bbox = model_label_box,
