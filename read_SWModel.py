@@ -531,7 +531,9 @@ def runHUXt(target, starttime, stoptime, basedir=''):
     import huxt_analysis as HA
     import huxt_inputs as Hin
     
-    lon_limit = 2.*(360/128.)  #  degrees, 128 bins by default
+    lon_res = (360/128.)
+    lon_valid = np.arange(0, 360, lon_res)
+    lon_limit = 2.*lon_res #  degrees, 128 bins by default
     
     reference_frame = 'SUN_INERTIAL' # HGI
     observer = 'SUN'
@@ -571,29 +573,42 @@ def runHUXt(target, starttime, stoptime, basedir=''):
     stop_indx = indx_list[1:] + [len(spacecraft.data)]
     
     output_list = []
+    lon_start_arr = np.zeros(len(spacecraft.data))
+    lon_stop_arr = np.zeros(len(spacecraft.data))
     for start, stop in zip(start_indx, stop_indx):
         run_start = spacecraft.data.index[start]
         run_stop = spacecraft.data.index[stop-1] + dt.timedelta(days=1)  #  HUXt ends runs a little early, seemingly
         run_time = (run_stop - run_start).days * u.day
         
-        lon_start = (spacecraft.data['lon_pos'][start] - spacecraft.data['earth_lon'][start] + 360) % 360.
-        lon_stop = (spacecraft.data['lon_pos'][stop-1] - spacecraft.data['earth_lon'][start] + 360) % 360.
+        #  Find the bounding longitudes for this duration
+        lon_start = (np.min(spacecraft.data['lon_pos'][start:stop]) - spacecraft.data['earth_lon'][start] + 360) % 360.
+        lon_stop = (np.max(spacecraft.data['lon_pos'][start:stop]) - spacecraft.data['earth_lon'][start] + 360) % 360.
+        
+        #  Fix the starting and stopping longitudes to the longitude values the model actually uses
+        lon_start = lon_valid[np.where(lon_valid <= lon_start)[0][-1]]
+        lon_stop = lon_valid[np.where(lon_valid >= lon_stop)[0][0]]
+        
+        lon_start_arr[start:stop] = (lon_start + spacecraft.data['earth_lon'][start] + 360) % 360.
+        lon_stop_arr[start:stop] = (lon_stop + spacecraft.data['earth_lon'][start] + 360) % 360.
         
         r_min = 215 * u.solRad
+        r_max = (10. * u.AU).to(u.solRad)
         
         #download and process the OMNI data
         time, vcarr, bcarr = Hin.generate_vCarr_from_OMNI(run_start, run_stop)
         
         #set up the model, with (optional) time-dependent bpol boundary conditions
         model = Hin.set_time_dependent_boundary(vcarr, time, run_start, run_time, 
-                                                r_min=r_min, r_max=1290*u.solRad, dt_scale=1.0, latitude=0*u.deg,
+                                                r_min=r_min, r_max=r_max, dt_scale=1.0, latitude=0*u.deg,
                                                 bgrid_Carr = bcarr, lon_start=lon_start*u.deg, lon_stop=lon_stop*u.deg, frame='sidereal')
 
         model.solve([])
         
-        #HA.plot(model, 1*u.day)
+        HA.plot(model, 1*u.day)
+        plt.show()
         
         spacecraft_df = HA.get_observer_timeseries(model, observer=target)
+        spacecraft_df['lon'] = (spacecraft_df['lon']*(180/np.pi) + spacecraft.data['earth_lon'][start] + 360) % 360.
         
         output_list.append(spacecraft_df)
         del model
@@ -609,21 +624,35 @@ def runHUXt(target, starttime, stoptime, basedir=''):
     result = output_concat.resample('60Min').mean()
     result = result.loc[(result.index >= starttime) & (result.index < stoptime)]
     
+    #
+    indx = np.where((lon_stop_arr - result['lon']) < 0)[0]
+    if len(indx) > 0:
+        print('Spacecraft longitude is greater than the longitude stop value')
+        print('Mean residuals: ' + str(np.mean(lon_stop_arr[indx] - result['lon'][indx].to_numpy('float64'))))
+        print('If this is small, it is likely due to the dataframe resampling.')
+        
+    indx = np.where((result['lon'] - lon_start_arr) < 0)[0]
+    if len(indx) > 0:
+        print('Spacecraft longitude is less than the longitude start value')
+        print('Mean residuals: ' + str(result['lon'][indx].to_numpy('float64') - np.mean(lon_start_arr[indx])))
+        print('If this is small, it is likely due to the dataframe resampling.')
+    #
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, ax = plt.subplots(nrows=1, figsize=(8,5))      
+        ax.scatter(result['r']*u.solRad.to(u.AU), result['lon'], s=4)
+        ax.plot(result['r']*u.solRad.to(u.AU), lon_start_arr, color='black', linestyle='--')
+        ax.plot(result['r']*u.solRad.to(u.AU), lon_stop_arr, color='black', linestyle=':')
+        plt.show()
+    
+        
     #  Finally, reset the heliolongitude in the output dataframe, since the 
     #  input longitudes are meaningless (Earth's lon. is reset to 0 each time)
-    result['lon'] = spacecraft.data['lon_pos']
+    # result['lon'] = spacecraft.data['lon_pos']
     
-    filestem = '{}_{}-{}_HUXt'.format(target.lower(), starttime.strftime('%Y%j'), stoptime.strftime('%Y%j'))
+    filestem = '{}_{}-{}_HUXt'.format(target.replace(' ', '').lower(), 
+                                      starttime.strftime('%Y%j'), 
+                                      stoptime.strftime('%Y%j'))
 
     result.to_csv(basedir + filestem + '.csv')    
-    
-    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-        fig, axs = plt.subplots(nrows=2, figsize=(8,8))
-        
-        axs[0].scatter(result['r'], result['lon'])
-        
-        axs[1].scatter(spacecraft.data['r_pos'], spacecraft.data['lon_pos'])
-        
-        plt.show()
     
     return result
