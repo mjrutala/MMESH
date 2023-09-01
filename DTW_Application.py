@@ -297,17 +297,13 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
     #return query, reference, test_arr, interp_ref_basis
     cm = confusion_matrix(query, interp_ref_basis, labels=[0,1])
     
-    accuracy = (cm[0,0] + cm[1,1])/(cm[0,0] + cm[1,0] + cm[0,1] + cm[1,1])
-    if cm[1,1] == 0.: 
-        precision = 0.
-    else:
+    #  The confusion matrix may well have 0s, which is fine
+    with np.errstate(divide='log'):
+        accuracy = (cm[0,0] + cm[1,1])/(cm[0,0] + cm[1,0] + cm[0,1] + cm[1,1])
         precision = (cm[1,1])/(cm[0,1] + cm[1,1])
-    recall = (cm[1,1])/(cm[1,0] + cm[1,1])
-    f1_score = 2 * (precision * recall)/(precision + recall)
+        recall = (cm[1,1])/(cm[1,0] + cm[1,1])
+        f1_score = 2 * (precision * recall)/(precision + recall)
     
-    #if metric_tag in ['p_dyn', 'n_tot']:
-    #    t1 = np.log10(interp_ref_metric)
-    #else:
     t1 = interp_ref_metric
     t2 = query_df[metric_tag].to_numpy('float64')
     
@@ -380,7 +376,10 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
                                       height_ratios=[2,2,2,1],
                                       width_ratios=[1,2,2,2,2,2,2])
         
-        date_locator = mdates.DayLocator(interval=5)
+        #  Approximate 10 major ticks, rounded to occur ever 5n days
+        interval = (query_df.index[-1] - query_df.index[0]).days/10.
+        interval = 5 * round(interval/5.)
+        date_locator = mdates.DayLocator(interval=interval)
         #date_formatter = mdates.DateFormatter('%j')
         
         def date_context_formatter(ticks):
@@ -460,8 +459,8 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
         axs['E'].text(0.01, 0.99, 'Warped Reference compared to Query',
                       va='top', ha='left', fontsize=16,
                       transform=axs['E'].transAxes)  
-        print(len(np.where(reference_df[basis_tag] == 1.)[0]))
-        print(np.where(reference_df[basis_tag] == 1.)[0])
+        #print(len(np.where(reference_df[basis_tag] == 1.)[0]))
+        #print(np.where(reference_df[basis_tag] == 1.)[0])
         
         for ax in [axs['A'], axs['C'], axs['D'], axs['E']]:
             ax.xaxis.set_major_locator(date_locator)
@@ -506,7 +505,7 @@ def find_OptimalDTW(query_df, reference_df, basis_tag, metric_tag=None, intermed
     """
     
     if metric_tag == None: metric_tag = basis_tag
-    total_slope_limit = 4*24.  #  in hours i.e., can't jump more than 1 day
+    total_slope_limit = 4*24.  #  in hours i.e., can't jump more than 4 day
     # =============================================================================
     #     Shifting and reindexing the model
     # =============================================================================    
@@ -577,6 +576,7 @@ def compare_SpacecraftAndModels(spacecraft_name, model_names, starttime, stoptim
                         transform='reclat')
         
     spice.furnsh(sc_info.SPICE_METAKERNEL)
+    spice.furnsh('/Users/mrutala/SPICE/generic/metakernel_planetary.txt')
     ang_datetimes = sc_info.data.index  
     ets = spice.datetime2et(ang_datetimes)
     ang = [np.abs(spice.trgsep(et, sc_info.name, 'POINT', None, 'Earth', 'POINT', None, 'Sun', 'None')*180/np.pi) for et in ets]
@@ -606,9 +606,11 @@ def compare_SpacecraftAndModels(spacecraft_name, model_names, starttime, stoptim
         # =============================================================================
         sigma_cutoff = 4
         spacecraft_data = find_Jumps(spacecraft_data, 'u_mag', sigma_cutoff, 2.0, resolution_width=0.0)
+        print('Spacecraft done')
         model_output = find_Jumps(model_output, 'u_mag', sigma_cutoff, 2.0, resolution_width=0.0)
+        print('Model ' + model_name + ' done')
         
-        stats = find_OptimalDTW(spacecraft_data, model_output, basis_tag, metric_tag, intermediate_plots=True)
+        stats = find_OptimalDTW(spacecraft_data, model_output, basis_tag, metric_tag, intermediate_plots=False)
         stats_df[model_name] = pd.concat([stats_df[model_name], stats], ignore_index=True)
     
     
