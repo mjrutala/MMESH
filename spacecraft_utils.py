@@ -29,7 +29,9 @@ def run_HUXtAtSpacecraft(spacecraft_names):
     import spiceypy as spice
     
     import spacecraftdata as SpacecraftData
-
+    
+    import sys
+    sys.path.append('/Users/mrutala/projects/HUXt-DIAS/code/')
     import huxt as H
     import huxt_analysis as HA
     import huxt_inputs as Hin
