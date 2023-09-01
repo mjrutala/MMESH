@@ -262,7 +262,7 @@ def MSWIM2D(target, starttime, stoptime, basedir='', resolution=None):
 def HUXt(target, starttime, stoptime, basedir='', resolution=None):
     
     model_path = 'models/HUXt/'
-    full_path = basedir + model_path + target.lower() + '/'
+    full_path = basedir + model_path + target.replace(' ', '').lower() + '/'
     
     match target.replace(' ','').lower():
         case 'jupiter':
@@ -274,14 +274,14 @@ def HUXt(target, starttime, stoptime, basedir='', resolution=None):
                          'ulysses_1997001-1998001_HUXt.csv', 'ulysses_1998001-1999001_HUXt.csv',
                          'ulysses_1999001-2000001_HUXt.csv', 'ulysses_2003001-2004001_HUXt.csv',
                          'ulysses_2004001-2005001_HUXt.csv']
-        case 'voyager 1':
+        case 'voyager1':
             filenames = ['voyager1_1978001-1979001_HUXt.csv', 'voyager1_1979001-1980001_HUXt.csv']
-        case 'voyager 2':
+        case 'voyager2':
             filenames = ['voyager2_1978001-1979001_HUXt.csv', 'voyager2_1979001-1980001_HUXt.csv',
                          'voyager2_1980001-1981001_HUXt.csv']
-        case 'pioneer 10':
+        case 'pioneer10':
             filenames = ['pioneer10_1973001-1974001_HUXt.csv', 'pioneer10_1974001-1975001_HUXt.csv']
-        case 'pioneer 11':
+        case 'pioneer11':
             filenames = ['pioneer11_1974001-1975001_HUXt.csv', 'pioneer11_1975001-1976001_HUXt.csv',
                          'pioneer11_1976001-1977001_HUXt.csv', 'pioneer11_1977001-1978001_HUXt.csv',
                          'pioneer11_1978001-1979001_HUXt.csv', 'pioneer11_1979001-1980001_HUXt.csv']
