@@ -2354,3 +2354,45 @@ def test_DynamicTimeWarping():
     return(alignment)
 
    
+
+def run_SolarWindEMF():
+    
+    import sys
+    sys.path.append('/Users/mrutala/projects/SolarWindEM/')
+    import SolarWindEMF as swemf
+    
+    spacecraft_name = 'Juno'
+    model_names = ['Tao', 'ENLIL', 'HUXt']
+    
+    starttime = dt.datetime(2016, 5, 1)
+    stoptime = dt.datetime(2016, 7, 1)
+    
+    reference_frame = 'SUN_INERTIAL'
+    observer = 'SUN'
+    
+    #  Load spacecraft data
+    spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
+    spacecraft.read_processeddata(starttime, stoptime, resolution='60Min')
+    spacecraft.find_state(reference_frame, observer)
+    spacecraft.find_subset(coord1_range=np.array(r_range)*spacecraft.au_to_km, 
+                           coord3_range=np.array(lat_range)*np.pi/180., 
+                           transform='reclat')
+
+    #  Read models
+    models = dict.fromkeys(model_names, None)
+    for model in models.keys():
+        models[model] = read_SWModel.choose(model, spacecraft_name, 
+                                       starttime, stoptime, resolution='60Min')
+        
+    test = swemf.SolarWindData()
+    test.addData(spacecraft_name, spacecraft.data)
+    
+    test.addModel('Tao', models['Tao'])
+    test.addModel('ENLIL', models['ENLIL'])
+    test.addModel('HUXt', models['HUXt'])
+    
+    temp = test.baseline()
+    
+    temp = test.warp('u_mag', 'u_mag')
+    
+    return temp
