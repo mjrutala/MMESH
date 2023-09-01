@@ -228,7 +228,6 @@ def Juno_published(starttime, stoptime, basedir='', resolution=None, combined=Fa
         #  Find the time between the nth observation and the n+1th
         #output_spacecraft_data['t_delta'] = (output_spacecraft_data.index.to_series().shift(-1) - 
         #                                                 output_spacecraft_data.index.to_series()).dt.total_seconds()
-        
         return(output_spacecraft_data)
     
     # =========================================================================
