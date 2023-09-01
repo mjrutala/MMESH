@@ -11,6 +11,7 @@ import numpy as np
 
 import spacecraftdata
 import read_SWModel
+import matplotlib.pyplot as plt
 
 spacecraft_colors = {'Pioneer 10': '#F6E680',
                      'Pioneer 11': '#FFD485',
@@ -89,12 +90,19 @@ def find_Jumps(dataframe, tag, sigma_cutoff, smoothing_width, resolution_width=0
     rolling_dataframe = dataframe.rolling(2*halftimedelta, min_periods=1, 
                                           center=True, closed='left')  
     smooth = rolling_dataframe[tag].mean()
-    smooth_derivative = np.gradient(smooth, dataframe.index.values.astype(np.float64))
+    smooth_derivative = np.gradient(smooth, smooth.index.values.astype(np.float64))
     
     #  Take the z-score of the derivative of the smoothed input,
     #  then normalize it based on a cutoff sigma
-    rough_jumps = smooth_derivative / np.std(smooth_derivative)
-    rough_jumps = np.where(rough_jumps > sigma_cutoff, 1, 0)
+    smooth_derivative_zscore = smooth_derivative / np.nanstd(smooth_derivative)
+    rough_jumps = np.where(smooth_derivative_zscore > sigma_cutoff, 1, 0)
+    
+    #!!!!!!!! NEED TO CATCH NO JUMPS!
+    if (rough_jumps == 0.).all():
+        print('No jumps in this time series! Must be quiescent solar wind conditions...')
+        plt.plot(smooth_derivative_zscore)
+        dataframe[output_tag] = rough_jumps
+        return(dataframe)
     
     #  Separate out each jump into a list of indices
     rough_jumps_indx = np.where(rough_jumps == 1)[0]
@@ -102,8 +110,6 @@ def find_Jumps(dataframe, tag, sigma_cutoff, smoothing_width, resolution_width=0
     
     #  Set the resolution (width) of the jump
     jumps = np.zeros(len(rough_jumps))
-    print(len(dataframe))
-    print(dataframe.index[0], dataframe.index[-1])
     for span in rough_jump_spans:
         center_indx = np.mean(span)
         center = dataframe.index[int(center_indx)]
