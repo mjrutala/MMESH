@@ -90,17 +90,66 @@ class SolarWindData:
     
     def __init__(self):
         
+        self.metric_tags = ['u_mag', 'p_dyn', 'n_tot', 'B_mag']
+        
         self.spacecraft_name = ''
         self.spacecraft_df = ''
         
         self.model_names = []
         self.model_dfs = {}
         
+    def addData(self, spacecraft_name, spacecraft_df):
+        
+        self.spacecraft_name = spacecraft_name
+        self.spacecraft_df = spacecraft_df
+        
+    def addModel(self, model_name, model_df):
+        
+        self.model_names.append(model_name)
+        self.model_dfs[model_name] = model_df
+
     def baseline(self):
+        import scipy
+        import numpy as np
+        import pandas as pd
         
-        for model_name, model_df in model_dfs.items():
+        models_stats = {}
+        for model_name, model_df in self.model_dfs.items():
             
+            model_stats = {}
+            for m_tag in self.metric_tags:
+                
+                #  Find overlap between data and this model, ignoring NaNs
+                i1 = self.spacecraft_df.dropna(subset=[m_tag]).index
+                i2 = model_df.dropna(subset=[m_tag]).index
+                intersection_indx = i1.intersection(i2) 
+                
+                if len(intersection_indx) > 2:
+                    #  Calculate r (corr. coeff.) and both standard deviations
+                    r, pvalue = scipy.stats.pearsonr(self.spacecraft_df[m_tag].loc[intersection_indx],
+                                             model_df[m_tag].loc[intersection_indx])
+                    model_stddev = np.std(model_df[m_tag].loc[intersection_indx])
+                    spacecraft_stddev = np.std(self.spacecraft_df[m_tag].loc[intersection_indx])
+                else:
+                    r = 0
+                    model_stddev = 0
+                    spacecraft_stddev = 0
+                
+                model_stats[m_tag] = (spacecraft_stddev, model_stddev, r)
+                
+            models_stats[model_name] = model_stats
         
-    def warp(self):
-    
-    
+        return (models_stats)
+        
+    def warp(self, basis_tag, metric_tag):
+        import sys
+        import DTW_Application as dtwa
+        shifts = [0]
+        
+        for model_name, model_df in self.model_dfs.items():
+            for shift in shifts:
+                test = dtwa.find_SolarWindDTW(self.spacecraft_df, model_df, shift, 
+                                         basis_tag, metric_tag, 
+                                         total_slope_limit=96.0,
+                                         intermediate_plots=True)
+                return(test)
