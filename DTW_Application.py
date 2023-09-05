@@ -292,9 +292,6 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
     interp_ref_basis = temp_arr
     interp_ref_metric = np.interp(test_arr, np.arange(0,len(test_arr)), shift_reference_df[metric_tag])
     
-    
-    #print(tie_points)
-    #return query, reference, test_arr, interp_ref_basis
     cm = confusion_matrix(query, interp_ref_basis, labels=[0,1])
     
     #  The confusion matrix may well have 0s, which is fine
@@ -315,15 +312,6 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
     if intermediate_plots == True:
         plot_DTWViews(query_df, shift_reference_df, shift, alignment, basis_tag, metric_tag)    
     
-    # fig, ax = plt.subplots()
-    # ax.plot(np.arange(0, len(shift_reference_df)), shift_reference_df[metric_tag])
-    # ax.plot(np.arange(0, len(interp_ref_metric)), interp_ref_metric)
-    # plt.show()
-    
-    # # if (r > out_df['r']).all():
-    # #     out_alignment = copy.deepcopy(alignment)
-    # #     print(shift)
-    
     d = {'shift': [shift],
           'distance': [alignment.distance],
           'normalizeddistance': [alignment.normalizedDistance],
@@ -339,7 +327,12 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
           'recall': recall,
           'f1_score': f1_score}
     
-    return d
+    zeropoint = shift_reference_df.index[0]
+    delta_t = np.interp(test_arr, np.arange(0, len(test_arr)), (shift_reference_df.index - zeropoint).total_seconds()) - (shift_reference_df.index - zeropoint).total_seconds()
+    delta_t = pd.DataFrame(data=delta_t, index=shift_reference_df.index, columns=['time_lag'])
+    #delta_t = shift_reference_df.index - shift_reference_df.index[0]
+    
+    return d, delta_t
 
 def find_TiePointsInJumps(alignment, open_end=False, open_begin=False):
     tie_points = []
@@ -473,8 +466,6 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
         
         axs['A'].set_xticklabels([])
         axs['A'].set_yticklabels([])
-        
-        
         
         axs['E'].set(xlim=axs['D'].get_xlim(), xticklabels=[],
                      yscale='log')
