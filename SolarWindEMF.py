@@ -86,17 +86,25 @@ class SolarWindEM:
 
     
 #  There should be a model_output class, which has methods to warp it
-class SolarWindData:
+class Trajectory:
+    """
+    The Trajectory class is designed to hold trajectory information in 4D
+    (x, y, z, t), together with model and spacecraft data along the same path.
+    A given trajectory may correspond to 1 spacecraft but any number of models.
+    """
     
     def __init__(self):
         
         self.metric_tags = ['u_mag', 'p_dyn', 'n_tot', 'B_mag']
+        self.em_parameters = ['u_mag', 'n_tot', 'p_dyn', 'B_mag']
         
         self.spacecraft_name = ''
         self.spacecraft_df = ''
         
         self.model_names = []
         self.model_dfs = {}
+        
+        self.trajectory = ''
         
     def addData(self, spacecraft_name, spacecraft_df):
         
@@ -144,12 +152,64 @@ class SolarWindData:
     def warp(self, basis_tag, metric_tag):
         import sys
         import DTW_Application as dtwa
-        shifts = [0]
+        import SWData_Analysis as swda
+        import numpy as np
+        import pandas as pd
+        
+        shifts = [0]  #  Needs to be input
+        sigma_cutoff = 3  #  Needs to be input
+        smoothing_time_spacecraft = 4.0  #  Needs to be input
+        smoothing_time_model = 1.0  #  Needs to be input
+        
+        resolution_width_spacecraft = 0.0  #  Input?
+        resolution_width_model = 0.0  #  Input?
+        
+        self.spacecraft_df = swda.find_Jumps(self.spacecraft_df, 'u_mag', 
+                                             sigma_cutoff, 
+                                             smoothing_time_spacecraft, 
+                                             resolution_width=resolution_width_spacecraft)
         
         for model_name, model_df in self.model_dfs.items():
+            
+            model_df = swda.find_Jumps(model_df, 'u_mag', 
+                                       sigma_cutoff, 
+                                       smoothing_time_model, 
+                                       resolution_width=resolution_width_model)
+            
             for shift in shifts:
-                test = dtwa.find_SolarWindDTW(self.spacecraft_df, model_df, shift, 
+                test, test_dt = dtwa.find_SolarWindDTW(self.spacecraft_df, model_df, shift, 
                                          basis_tag, metric_tag, 
                                          total_slope_limit=96.0,
                                          intermediate_plots=True)
-                return(test)
+                
+            model_df = pd.concat([model_df, test_dt], axis='columns')
+            self.model_dfs[model_name] = model_df
+                
+        return test, test_dt
+    
+    def ensemble(self, weights = None):
+        import pandas as pd
+        
+        weights_df = pd.DataFrame(columns = self.em_parameters)
+        
+        if weights == None:
+            for model in self.model_names:
+                all_nans = ~self.model_dfs[model].isna().all()
+                overlap_col = list(set(all_nans.index) & set(weights_df.columns))
+                weights_df.loc[model] = all_nans[overlap_col].astype(int)
+                weights_df = weights_df.div(weights_df.sum())
+        
+        # if dict, use dict
+        # if list/array, assign to dict in order
+        # if none, make dict with even weights
+        
+        self.ensemble = pd.DataFrame(columns = self.em_parameters)
+        
+        for model, model_df in self.model_dfs.items(): print(len(model_df))
+        
+        for tag in self.em_parameters:
+            for model, model_df in self.model_dfs.items():
+                
+                self.ensemble[tag] = weights_df[tag][model] * model_df[tag]
+        
+        print(weights_df.div(weights_df.sum()))
