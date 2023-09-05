@@ -2373,26 +2373,91 @@ def run_SolarWindEMF():
     #  Load spacecraft data
     spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
     spacecraft.read_processeddata(starttime, stoptime, resolution='60Min')
-    spacecraft.find_state(reference_frame, observer)
-    spacecraft.find_subset(coord1_range=np.array(r_range)*spacecraft.au_to_km, 
-                           coord3_range=np.array(lat_range)*np.pi/180., 
-                           transform='reclat')
-
-    #  Read models
-    models = dict.fromkeys(model_names, None)
-    for model in models.keys():
-        models[model] = read_SWModel.choose(model, spacecraft_name, 
-                                       starttime, stoptime, resolution='60Min')
-        
-    test = swemf.SolarWindData()
+    # spacecraft.find_state(reference_frame, observer)
+    # spacecraft.find_subset(coord1_range=np.array(r_range)*spacecraft.au_to_km, 
+    #                        coord3_range=np.array(lat_range)*np.pi/180., 
+    #                        transform='reclat')
+            
+    test = swemf.Trajectory()
     test.addData(spacecraft_name, spacecraft.data)
     
-    test.addModel('Tao', models['Tao'])
-    test.addModel('ENLIL', models['ENLIL'])
-    test.addModel('HUXt', models['HUXt'])
+    #  Read models
+    for model_name in model_names:
+        model = read_SWModel.choose(model_name, spacecraft_name, 
+                                    starttime, stoptime, resolution='60Min')
+        test.addModel(model_name, model)
+
+
     
     temp = test.baseline()
     
-    temp = test.warp('u_mag', 'u_mag')
+    #temp = test.ensemble()
     
+    temp = test.warp('jumps', 'u_mag')
     return temp
+    
+    
+#     #==========================
+#     #  Load spacecraft data
+#     starttime = dt.datetime(1991, 12, 8)
+#     stoptime = dt.datetime(1992, 2, 2)
+#     spacecraft_name = 'Ulysses'
+    
+#     spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
+#     spacecraft.read_processeddata(starttime, stoptime, resolution='60Min')
+#     # spacecraft.find_state(reference_frame, observer)
+#     # spacecraft.find_subset(coord1_range=np.array(r_range)*spacecraft.au_to_km, 
+#     #                        coord3_range=np.array(lat_range)*np.pi/180., 
+#     #                        transform='reclat')
+    
+#     test2 = swemf.Trajectory()
+#     test2.addData(spacecraft_name, spacecraft.data)
+    
+#     #  Read models
+#     for model in model_names:
+#         temp = read_SWModel.choose(model, spacecraft_name, 
+#                                        starttime, stoptime, resolution='60Min')
+#         test2.addModel(model, temp)
+    
+#     temp = test2.warp('jumps', 'u_mag')
+    
+#     #==========================
+#     #  Load spacecraft data
+#     starttime = dt.datetime(1997, 8, 14)
+#     stoptime = dt.datetime(1998, 4, 16)
+#     spacecraft_name = 'Ulysses'
+    
+#     spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
+#     spacecraft.read_processeddata(starttime, stoptime, resolution='60Min')
+#     # spacecraft.find_state(reference_frame, observer)
+#     # spacecraft.find_subset(coord1_range=np.array(r_range)*spacecraft.au_to_km, 
+#     #                        coord3_range=np.array(lat_range)*np.pi/180., 
+#     #                        transform='reclat')
+    
+#     test3 = swemf.Trajectory()
+#     test3.addData(spacecraft_name, spacecraft.data)
+    
+#     #  Read models
+#     for model in model_names:
+#         temp = read_SWModel.choose(model, spacecraft_name, 
+#                                        starttime, stoptime, resolution='60Min')
+#         test3.addModel(model, temp)
+    
+#     temp = test3.warp('jumps', 'u_mag')
+    
+# # =============================================================================
+# #     
+# # =============================================================================
+   
+#     joined_model = 'ENLIL'
+#     joined = pd.concat([test.model_dfs[joined_model], test2.model_dfs[joined_model], test3.model_dfs[joined_model]])
+    
+#     fig, ax = plt.subplots(nrows=3)
+#     ax[0].scatter(test.model_dfs[joined_model].index, test.model_dfs[joined_model]['time_lag']/3600., s=0.001)
+#     ax[1].scatter(test2.model_dfs[joined_model].index, test2.model_dfs[joined_model]['time_lag']/3600., s=0.001)
+#     ax[2].scatter(test3.model_dfs[joined_model].index, test3.model_dfs[joined_model]['time_lag']/3600., s=0.001)
+#     plt.show()
+    
+#     plt.scatter(joined.index, joined['time_lag']/3600., s=0.0001)
+    
+#     return joined
