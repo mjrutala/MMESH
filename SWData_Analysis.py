@@ -2378,23 +2378,23 @@ def run_SolarWindEMF():
     #                        coord3_range=np.array(lat_range)*np.pi/180., 
     #                        transform='reclat')
             
-    test = swemf.Trajectory()
-    test.addData(spacecraft_name, spacecraft.data)
+    traj0 = swemf.Trajectory()
+    traj0.addData(spacecraft_name, spacecraft.data)
     
     #  Read models
     for model_name in model_names:
         model = read_SWModel.choose(model_name, spacecraft_name, 
                                     starttime, stoptime, resolution='60Min')
-        test.addModel(model_name, model)
+        traj0.addModel(model_name, model)
 
 
     
-    temp = test.baseline()
+    baseline_test = traj0.baseline()
     
     #temp = test.ensemble()
     
-    temp = test.warp('jumps', 'u_mag')
-    return temp
+    traj0.warp('jumps', 'u_mag', shifts=np.arange(-72, 72+6, 6))
+    return traj0
     
     
 #     #==========================
