@@ -103,6 +103,8 @@ class Trajectory:
         
         self.model_names = []
         self.model_dfs = {}
+        self.model_dtw_stats = {}
+        self.model_dtw_times = {}
         
         self.trajectory = ''
         
@@ -148,18 +150,22 @@ class Trajectory:
             models_stats[model_name] = model_stats
         
         return (models_stats)
+    
+    def shift(self, basis_tag, metric_tag, shifts=[0]):
         
-    def warp(self, basis_tag, metric_tag):
+        return
+        
+    def warp(self, basis_tag, metric_tag, shifts=[0]):
         import sys
         import DTW_Application as dtwa
         import SWData_Analysis as swda
         import numpy as np
         import pandas as pd
         
-        shifts = [0]  #  Needs to be input
-        sigma_cutoff = 3  #  Needs to be input
-        smoothing_time_spacecraft = 4.0  #  Needs to be input
-        smoothing_time_model = 1.0  #  Needs to be input
+        #shifts = [0]  #  Needs to be input
+        sigma_cutoff = 4  #  Needs to be input
+        smoothing_time_spacecraft = 2.0  #  Needs to be input
+        smoothing_time_model = 2.0  #  Needs to be input
         
         resolution_width_spacecraft = 0.0  #  Input?
         resolution_width_model = 0.0  #  Input?
@@ -176,16 +182,26 @@ class Trajectory:
                                        smoothing_time_model, 
                                        resolution_width=resolution_width_model)
             
+            stats = []
+            time_deltas = []
             for shift in shifts:
-                test, test_dt = dtwa.find_SolarWindDTW(self.spacecraft_df, model_df, shift, 
-                                         basis_tag, metric_tag, 
-                                         total_slope_limit=96.0,
-                                         intermediate_plots=True)
+                stat, time_delta = dtwa.find_SolarWindDTW(self.spacecraft_df, model_df, shift, 
+                                                          basis_tag, metric_tag, 
+                                                          total_slope_limit=96.0,
+                                                          intermediate_plots=True,
+                                                          model_name = model_name,
+                                                          spacecraft_name = self.spacecraft_name)
+                time_delta = time_delta.rename(columns={'time_lag': str(shift)})
                 
-            model_df = pd.concat([model_df, test_dt], axis='columns')
-            self.model_dfs[model_name] = model_df
-                
-        return test, test_dt
+                stats.append(pd.DataFrame.from_dict(stat))
+                time_deltas.append(time_delta)
+            
+            stats_df = pd.concat(stats, axis='index', ignore_index=True)
+            times_df = pd.concat(time_deltas, axis='columns')
+            self.model_dtw_stats[model_name] = stats_df
+            self.model_dtw_times[model_name] = times_df
+            
+        return
     
     def ensemble(self, weights = None):
         import pandas as pd
