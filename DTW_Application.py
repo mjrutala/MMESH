@@ -360,6 +360,7 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
     import matplotlib
     from matplotlib import collections  as mc
     import matplotlib.dates as mdates
+    import matplotlib.patheffects as pe
     mosaic =    '''
                 BAAAEEE
                 BAAAEEE
@@ -410,17 +411,21 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
         axs['A'].text(0.01, 1.02, 'Spacecraft: ' + spacecraft_name, 
                       va='bottom', ha='left', fontsize=10, color=spacecraft_color,
                       transform=axs['A'].transAxes)
-        axs['A'].text(0.5, 1.02, 'Input Reference lagged by ' + str(shift) + ' hours',
+        axs['A'].text(0.75, 1.02, 'Input Reference lagged by ' + str(shift) + ' hours',
                       va='bottom', ha='left', fontsize=10,
-                      transform=axs['E'].transAxes)
+                      transform=axs['A'].transAxes)
         
         
-        axs['A'].plot(query_df.index[alignment.index1], reference_df.index[alignment.index2])
+        axs['A'].plot(query_df.index[alignment.index1], reference_df.index[alignment.index2],
+                      color='white', 
+                      path_effects=[pe.Stroke(linewidth=4, foreground='k'), pe.Normal()])
         axs['A'].plot(axs['A'].get_xlim(), axs['A'].get_xlim(), color='gray', linestyle='--')
         axs['A'].set(xlim=[query_df.index[0], query_df.index[-1]], 
                      ylim=[reference_df.index[0], reference_df.index[-1]])
         
-        print('CUMULATIVE COST IS A ', np.shape(alignment.costMatrix))
+        axs['A'].imshow(alignment.costMatrix, interpolation='None', origin='lower',
+                        aspect='auto', 
+                        extent=list(axs['A'].get_xlim())+list(axs['A'].get_ylim()))
         
         axs['A'].text(1/3., 2/3., 'reference lags query', 
                       va='center', ha='center', rotation=45, fontsize=10,
