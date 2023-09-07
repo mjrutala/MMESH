@@ -357,25 +357,29 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
     #       - Metric time series comparison
     # =============================================================================
     import matplotlib.pyplot as plt
+    import matplotlib
     from matplotlib import collections  as mc
     import matplotlib.dates as mdates
     mosaic =    '''
                 BAAAEEE
                 BAAAEEE
-                BAAADDD
-                .CCCDDD
+                BAAAEEE
+                .CCCFFF
+                .DDDFFF
+                .DDDFFF
                 '''
                 
     model_color = 'red' if model_name == None else model_colors[model_name]
     spacecraft_color = 'blue' if spacecraft_name == None else spacecraft_colors[spacecraft_name]
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
     #with plt.style.context('default'):
-        fig, axs = plt.subplot_mosaic(mosaic, figsize=(14,8), 
-                                      height_ratios=[2,2,2,1],
-                                      width_ratios=[1,2,2,2,2,2,2])
+        fig, axs = plt.subplot_mosaic(mosaic, figsize=(8,6), 
+                                      height_ratios=[1,1,1,1,1,1],
+                                      width_ratios=[1,1,1,1,1,1,1])
+        plt.subplots_adjust(left=0.1, bottom=0.1, right=0.9, top=0.9, hspace=0.2, wspace=0.1)
         
-        #  Approximate 10 major ticks, rounded to occur ever 10n days
-        interval = (query_df.index[-1] - query_df.index[0]).days/10.
+        #  Approximate 6 major ticks, rounded to occur ever 10n days
+        interval = (query_df.index[-1] - query_df.index[0]).days/6.
         interval = 10 * round(interval/10.)
         date_locator = mdates.DayLocator(interval=interval)
         #date_formatter = mdates.DateFormatter('%j')
@@ -400,35 +404,46 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
                 return tick_str
             return date_formatter
         
-        axs['B'].plot(reference_df[basis_tag], reference_df.index, color=model_color)
-        axs['C'].plot(query_df.index, query_df[basis_tag], color=spacecraft_color)
+        axs['A'].text(0.01, 1.1, 'Model: ' + model_name, 
+                      va='bottom', ha='left', fontsize=10, color=model_color,
+                      transform=axs['A'].transAxes)
+        axs['A'].text(0.01, 1.02, 'Spacecraft: ' + spacecraft_name, 
+                      va='bottom', ha='left', fontsize=10, color=spacecraft_color,
+                      transform=axs['A'].transAxes)
+        axs['A'].text(0.5, 1.02, 'Input Reference lagged by ' + str(shift) + ' hours',
+                      va='bottom', ha='left', fontsize=10,
+                      transform=axs['E'].transAxes)
+        
         
         axs['A'].plot(query_df.index[alignment.index1], reference_df.index[alignment.index2])
         axs['A'].plot(axs['A'].get_xlim(), axs['A'].get_xlim(), color='gray', linestyle='--')
-        axs['A'].set(xlim=axs['C'].get_xlim(), ylim=axs['B'].get_ylim())
+        axs['A'].set(xlim=[query_df.index[0], query_df.index[-1]], 
+                     ylim=[reference_df.index[0], reference_df.index[-1]])
+        
+        print('CUMULATIVE COST IS A ', np.shape(alignment.costMatrix))
         
         axs['A'].text(1/3., 2/3., 'reference lags query', 
-                      va='center', ha='center', rotation=45, fontsize=16,
+                      va='center', ha='center', rotation=45, fontsize=10,
                       transform=axs['A'].transAxes)
         axs['A'].text(2/3., 1/3., 'reference leads query', 
-                      va='center', ha='center', rotation=45, fontsize=16,
+                      va='center', ha='center', rotation=45, fontsize=10,
                       transform=axs['A'].transAxes)
         
         axs['A'].text(0.01, 0.99, 'Alignment Curve',
-                      va='top', ha='left', fontsize=16,
+                      va='top', ha='left', fontsize=10,
                       transform=axs['A'].transAxes)
-        axs['A'].text(0.01, 1.025, 'Input Reference Shifted by ' + str(shift),
-                      va='bottom', ha='left', fontsize=16,
-                      transform=axs['A'].transAxes)
-        axs['A'].text(0.01, 1.075, 'Model: ' + model_name, 
-                      va='bottom', ha='left', fontsize=16,
-                      transform=axs['A'].transAxes)
+        
+        # =====================================================================
+        #   Plot the reference and query time series
+        # =====================================================================
+        axs['B'].plot(reference_df[basis_tag], reference_df.index, color=model_color)
+        axs['C'].plot(query_df.index, query_df[basis_tag], color=spacecraft_color)
         
         vertical_shift = np.max(query_df[basis_tag])*1.5
         axs['D'].plot(query_df.index, query_df[basis_tag], color=spacecraft_color)
         axs['D'].plot(reference_df.index, reference_df[basis_tag]+vertical_shift, color=model_color)
-        axs['D'].yaxis.tick_right()
         axs['D'].set(ylim=[0,3], yticks=[1, 2.5], yticklabels=['Query', 'Reference'])
+        axs['D'].tick_params(axis='y', labelsize=10)
         
         tie_points = find_TiePointsInJumps(alignment)
         connecting_lines = []
@@ -441,7 +456,7 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
                                linewidths=1, linestyles=":", color='gray', linewidth=2)
         axs['D'].add_collection(lc)
         axs['D'].text(0.01, 0.99, 'Peak Matching',
-                      va='top', ha='left', fontsize=16,
+                      va='top', ha='left', fontsize=10,
                       transform=axs['D'].transAxes)  
         
         test_arr = np.zeros(len(alignment.query))
@@ -451,33 +466,48 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
             test_arr[points1[0]:points2[0]+1] = reference_sample_indx
         interp_ref_metric = np.interp(test_arr, np.arange(0,len(test_arr)), reference_df[metric_tag])
         
-
         axs['E'].plot(query_df.index, query_df[metric_tag], color=spacecraft_color)
-        axs['E'].plot(reference_df.index, interp_ref_metric, color=model_color)
+        axs['E'].plot(reference_df.index, reference_df[metric_tag], color=model_color)
         # axs['E'].text(0.01, 0.90, 'r = ' + f'{r:.2f}', 
         #               va='top', ha='left', fontsize=16,
         #               transform=axs['E'].transAxes)  
-        axs['E'].text(0.01, 0.99, 'Warped Reference compared to Query',
-                      va='top', ha='left', fontsize=16,
+        axs['E'].text(0.01, 0.99, 'Reference & Query',
+                      va='top', ha='left', fontsize=10,
                       transform=axs['E'].transAxes)  
+
+        axs['F'].plot(query_df.index, query_df[metric_tag], color=spacecraft_color)
+        axs['F'].plot(reference_df.index, interp_ref_metric, color=model_color)
+        # axs['E'].text(0.01, 0.90, 'r = ' + f'{r:.2f}', 
+        #               va='top', ha='left', fontsize=16,
+        #               transform=axs['E'].transAxes)  
+        axs['F'].text(0.01, 0.99, 'Warped Reference & Query',
+                      va='top', ha='left', fontsize=10,
+                      transform=axs['F'].transAxes)  
         #print(len(np.where(reference_df[basis_tag] == 1.)[0]))
         #print(np.where(reference_df[basis_tag] == 1.)[0])
         
-        for ax in [axs['A'], axs['C'], axs['D'], axs['E']]:
+        for ax in [axs['A'], axs['C'], axs['D'], axs['E'], axs['F']]:
             ax.xaxis.set_major_locator(date_locator)
             ax.xaxis.set_minor_locator(mdates.DayLocator(interval=1))
             ax.xaxis.set_major_formatter(date_context_formatter(ax.get_xticks()))
+            ax.tick_params(axis='x', labelsize=10)
         for ax in [axs['A'], axs['B']]:
             ax.yaxis.set_major_locator(date_locator)
-            ax.xaxis.set_minor_locator(mdates.DayLocator(interval=1))
+            ax.yaxis.set_minor_locator(mdates.DayLocator(interval=1))
             ax.yaxis.set_major_formatter(date_context_formatter(ax.get_yticks()))
+            ax.tick_params(axis='y', labelsize=10)
         
         axs['A'].set_xticklabels([])
         axs['A'].set_yticklabels([])
+        axs['B'].get_xaxis().set_visible(False)
+        axs['C'].set_xticklabels([])
+        axs['C'].get_yaxis().set_visible(False)
         
-        axs['E'].set(xlim=axs['D'].get_xlim(), xticklabels=[],
-                     yscale='log')
+        # axs['E'].set(xlim=axs['D'].get_xlim(), xticklabels=[],
+        #              yscale='log')
+        axs['E'].set_xticklabels([])
         axs['E'].yaxis.tick_right()
+        axs['F'].yaxis.tick_right()
     
     plt.show()
     return
