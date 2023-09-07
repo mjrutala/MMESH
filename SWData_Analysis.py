@@ -156,6 +156,10 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
             ylabel = r'Solar Wind Magnetic Field Magnitude $B_{mag}$ [nT]'
             plot_kw = {'yscale': 'linear', 'ylim': (0, 5),
                        'yticks': np.arange(0, 5+1, 2)}
+        case ('jumps'):
+            tag = 'jumps'
+            ylabel = r'$\sigma$-normalized derivative of $u_{mag}$, binarized at 3'
+            plot_kw = plot_kw = {'yscale': 'linear', 'ylim': (-0.25, 1.25)}
     #
     save_filestem = 'Timeseries_{}_{}_{}-{}'.format(spacecraft_name.replace(' ', ''),
                                                     tag,
@@ -169,12 +173,19 @@ def plot_SingleTimeseries(parameter, spacecraft_name, model_names, starttime, st
     spacecraft.find_subset(coord1_range=np.array(r_range)*spacecraft.au_to_km, 
                            coord3_range=np.array(lat_range)*np.pi/180., 
                            transform='reclat')
+    
+    #!!!!!!!! SHOULDNT BE HARDCODED LIKE THIS
+    spacecraft.data = find_Jumps(spacecraft.data, 'u_mag', 3, 2, resolution_width=0.0)
 
     #  Read models
     models = dict.fromkeys(model_names, None)
     for model in models.keys():
-        models[model] = read_SWModel.choose(model, spacecraft_name, 
+        m = read_SWModel.choose(model, spacecraft_name, 
                                        starttime, stoptime, resolution='60Min')
+        #!!!!!!!! SHOULDNT BE HARDCODED LIKE THIS
+        m = find_Jumps(m, 'u_mag', 3, 2, resolution_width=0.0)
+        
+        models[model] = m
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig, axs = plt.subplots(figsize=(8,6), nrows=len(models), sharex=True, squeeze=False)
@@ -2393,7 +2404,7 @@ def run_SolarWindEMF():
     
     #temp = test.ensemble()
     
-    traj0.warp('jumps', 'u_mag', shifts=np.arange(-72, 72+6, 6))
+    traj0.warp('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6))
     return traj0
     
     
