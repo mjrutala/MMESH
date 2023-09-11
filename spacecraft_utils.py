@@ -24,6 +24,7 @@ import PlottingConstants as pc
 r_range = [4.9, 5.5]
 lat_range = [-6.1, 6.1]
 
+
 def run_HUXtAtSpacecraft(spacecraft_names):
     import copy
     import matplotlib.pyplot as plt
@@ -128,7 +129,49 @@ def simpleHUXtRun(spacecraft_name, year):
     return(sc_series)
 
 
-def plot_spacecraftcoverage_solarcycle():
+def get_SpacecraftDataCoverage():
+    import copy
+    import spacecraftdata as SpacecraftData
+    
+    # =============================================================================
+    #   Would-be inputs
+    # =============================================================================
+    spacecraft_names = ['Juno', 'Ulysses', 'Voyager 1', 'Voyager 2', 'Pioneer 10', 'Pioneer 11']
+    
+    # =============================================================================
+    # Find when Ulysses was within +/- 30 deg. of the ecliptic, and near 5 AU
+    # =============================================================================
+    reference_frame = 'SUN_INERTIAL' # HGI  #'ECLIPJ2000'
+    observer = 'SUN'
+
+    spacecraft_list = []
+    times = {}
+    for name in spacecraft_names:
+        sc_reltosun = SpacecraftData.SpacecraftData(name)
+        sc_reltosun.read_processeddata(everything=True)
+        sc_reltosun.find_state(reference_frame, observer)
+        sc_reltosun.find_subset(coord1_range=np.array(r_range)*sc_reltosun.au_to_km, # 4.4 - 6
+                        coord3_range=np.array(lat_range)*np.pi/180., 
+                        transform='reclat')
+        
+        # sc_reltojup = copy.deepcopy(sc_reltosun)
+        
+        # sc_reltosun.find_state('SUN_INTERTIAL', 'SUN')
+        # sc.find_subset(coord1_range=np.array(r_range)*sc.au_to_km, # 4.4 - 6
+        #                coord3_range=np.array(lat_range)*np.pi/180., 
+        #                transform='reclat')
+        
+        # sc_reltojup.find_state('ECLIPJ2000', 'JUPITER')
+        # sc.find_subset(coord1_range=np.array([])*sc.au_to_km, # 4.4 - 6
+        #                coord3_range=np.array(lat_range)*np.pi/180., 
+        #                transform='reclat')
+        
+        spacecraft_list.append(sc_reltosun)
+        times[name] = (sc_reltosun.data.index[0], sc_reltosun.data.index[-1])
+        
+    return times
+    
+def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
     import copy
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
@@ -146,9 +189,12 @@ def plot_spacecraftcoverage_solarcycle():
     #import read_SWData
     import spacecraftdata as SpacecraftData
     
-    # r_range = [4.9, 5.5]  #  [4.0, 6.4]
-    # lat_range = [-6.1, 6.1]  #  [-10, 10]
+    # =============================================================================
+    #   Would-be inputs
+    # =============================================================================
+    spacecraft_names = ['Juno', 'Ulysses', 'Voyager 1', 'Voyager 2', 'Pioneer 10', 'Pioneer 11']
     
+        
     # =============================================================================
     # Find when Ulysses was within +/- 30 deg. of the ecliptic, and near 5 AU
     # =============================================================================
@@ -156,25 +202,21 @@ def plot_spacecraftcoverage_solarcycle():
     observer = 'SUN'
 
     spacecraft_list = []
-    spacecraft_list.append(SpacecraftData.SpacecraftData('Pioneer 10'))
-    spacecraft_list.append(SpacecraftData.SpacecraftData('Pioneer 11'))
-    spacecraft_list.append(SpacecraftData.SpacecraftData('Voyager 1'))
-    spacecraft_list.append(SpacecraftData.SpacecraftData('Voyager 2'))
-    spacecraft_list.append(SpacecraftData.SpacecraftData('Ulysses'))
-    spacecraft_list.append(SpacecraftData.SpacecraftData('Juno'))
+    for name in spacecraft_names:
+        sc_reltosun = SpacecraftData.SpacecraftData(name)
+        spacecraft_list.append(sc_reltosun)
     
     for sc in spacecraft_list:
         # temp_sc = copy.deepcopy(sc)
-        # temp_sc.find_lifetime()
-        # temp_sc.make_timeseries()
-        # temp_sc.find_state(reference_frame, observer)
+        
+        sc.make_timeseries(*spacecraft_lifetimes[sc.name])
+        sc.find_state(reference_frame, observer)
         # temp_sc.find_subset(coord1_range=np.array(r_range)*sc.au_to_km, # 4.4 - 6
         #                     coord3_range=np.array(lat_range)*np.pi/180., 
         #                     transform='reclat')
         # startdate = temp_sc.data.index[0]
         # stopdate = temp_sc.data.index[-1]
-        sc.read_processeddata(everything=True)
-        sc.find_state(reference_frame, observer)
+        
         sc.find_subset(coord1_range=np.array(r_range)*sc.au_to_km, # 4.4 - 6
                        coord3_range=np.array(lat_range)*np.pi/180., 
                        transform='reclat')
@@ -229,16 +271,16 @@ def plot_spacecraftcoverage_solarcycle():
             #  a continuous line-- so use a collection of patches
             rectangle_list = []
             for x0, xf in zip(start_indx, stop_indx):
-                print(x0, xf)
+                
                 ll_corner = (mdates.date2num(sc.data.index[x0]), box_centers[sc.name]-box_height/2.)
                 
                 width = mdates.date2num(sc.data.index[xf-1]) - mdates.date2num(sc.data.index[x0])
                 
                 rectangle_list.append(patches.Rectangle(ll_corner, width, box_height))
                 
-                print(ll_corner, width, box_height)
+                
             
-            axs[0].add_collection(collections.PatchCollection(rectangle_list, facecolors=pc.spacecraft_colors[sc.name]))
+            axs[0].add_collection(collections.PatchCollection(rectangle_list, facecolors=pc.spacecraft_colors[sc.name], alpha=0.5))
             
             # obs_len = len(sc.data.index)
             # definite_obs = [[sc.data.index, np.flip(sc.data.index)],
