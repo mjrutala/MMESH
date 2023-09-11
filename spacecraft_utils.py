@@ -19,6 +19,8 @@ import matplotlib.pyplot as plt
 import datetime
 import os
 
+import PlottingConstants as pc
+
 r_range = [4.9, 5.5]
 lat_range = [-6.1, 6.1]
 
@@ -129,6 +131,10 @@ def simpleHUXtRun(spacecraft_name, year):
 def plot_spacecraftcoverage_solarcycle():
     import copy
     import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+    import matplotlib.collections as collections
+    import matplotlib.dates as mdates
+    
     #import datetime as dt
     #import numpy as np
     
@@ -173,12 +179,13 @@ def plot_spacecraftcoverage_solarcycle():
                        coord3_range=np.array(lat_range)*np.pi/180., 
                        transform='reclat')
     
-    spacecraft_labels = {'Pioneer 10': 1,
-                         'Pioneer 11': 2,
-                         'Voyager 1': 3, 
-                         'Voyager 2': 4, 
-                         'Ulysses'  : 5, 
-                         'Juno'     : 6}
+    box_height = 0.8
+    box_centers = {'Pioneer 10': 1,
+                   'Pioneer 11': 2,
+                   'Voyager 1': 3, 
+                   'Voyager 2': 4, 
+                   'Ulysses'  : 5, 
+                   'Juno'     : 6}
     
     # =============================================================================
     # F10.4 Radio flux from the sun
@@ -200,6 +207,7 @@ def plot_spacecraftcoverage_solarcycle():
             #  This bit splits the spacecraft data up into chunks to plot
             sc_deltas = sc.data.index.to_series().diff()
             gaps_indx = np.where(sc_deltas > dt.timedelta(days=30))[0]
+            
             start_indx = np.insert(gaps_indx, 0, 0)
             stop_indx = np.append(gaps_indx, len(sc.data.index))-1
             
@@ -216,17 +224,31 @@ def plot_spacecraftcoverage_solarcycle():
                 print('Heliolatitude range of: ' + str(np.min(rlonlat[2,:])*180/np.pi) +
                       ' - ' + str(np.max(rlonlat[2,:])*180/np.pi) + 'deg.')
             print('------------------------------------------')
-            # rectangle_list = []
-            # for x0, xf in zip(np.insert(start_indx, 0, 0), stop_indx):
-            #     ll_corner = (sc.data.index[x0].timestamp(), spacecraft_labels[sc.name]-0.333)
-            #     width = sc.data.index[xf-1].timestamp() - sc.data.index[x0].timestamp()
-            #     height = 0.666
-                
-            #     rectangle_list.append(patch.Rectangle(ll_corner, width, height))
-            # ax0twin.add_collection(PatchCollection(rectangle_list))
             
-            axs[0].plot(sc.data.index, np.zeros(len(sc.data.index))+spacecraft_labels[sc.name], 
-                        linestyle='None', marker='|', markersize=12, color=spacecraft_colors[sc.name])
+            #  If the spacecraft data is split into chunks, we don't want to plot
+            #  a continuous line-- so use a collection of patches
+            rectangle_list = []
+            for x0, xf in zip(start_indx, stop_indx):
+                print(x0, xf)
+                ll_corner = (mdates.date2num(sc.data.index[x0]), box_centers[sc.name]-box_height/2.)
+                
+                width = mdates.date2num(sc.data.index[xf-1]) - mdates.date2num(sc.data.index[x0])
+                
+                rectangle_list.append(patches.Rectangle(ll_corner, width, box_height))
+                
+                print(ll_corner, width, box_height)
+            
+            axs[0].add_collection(collections.PatchCollection(rectangle_list, facecolors=pc.spacecraft_colors[sc.name]))
+            
+            # obs_len = len(sc.data.index)
+            # definite_obs = [[sc.data.index, np.flip(sc.data.index)],
+            #                 [np.zeros(obs_len)+box_centers[sc.name]+box_width, 
+            #                  np.zeros(obs_len)+box_centers[sc.name]-box_width]]
+            # borderline_obs = 0
+            
+            
+            # axs[0].plot(sc.data.index, np.zeros(len(sc.data.index))+spacecraft_labels[sc.name], 
+            #             linestyle='None', marker='|', markersize=12, color=pc.spacecraft_colors[sc.name])
             
         axs[0].set_xlim((dt.datetime(1970, 1, 1), dt.datetime(2020, 1, 1)))
         
@@ -237,8 +259,8 @@ def plot_spacecraftcoverage_solarcycle():
         axs[1].set_ylim((50, 300))
         
         axs[0].set_ylim((0,7))
-        axs[0].set_yticks(list(spacecraft_labels.values()))
-        axs[0].set_yticklabels(list(spacecraft_labels.keys()))
+        axs[0].set_yticks(list(box_centers.values()))
+        axs[0].set_yticklabels(list(box_centers.keys()))
         axs[0].set_ylabel('Spacecraft')
         
         #plt.tight_layout()
@@ -248,8 +270,7 @@ def plot_spacecraftcoverage_solarcycle():
         plt.show()
         spice.kclear()
         
-def plot_SpacecraftSpatialCoverage():
-    import matplotlib.pyplot as plt
+def plot_FullSpacecraftTrajectory():
     import copy
     import spiceypy as spice
     import spacecraftdata as SpacecraftData
@@ -271,16 +292,14 @@ def plot_SpacecraftSpatialCoverage():
     spacecraft_list.append(SpacecraftData.SpacecraftData('Juno'))
     
     for sc in spacecraft_list:
-        #sc.find_lifetime()
-        #sc.make_timeseries()
-        sc.read_processeddata(everything=True)
+        sc.find_lifetime()
+        sc.make_timeseries()
+        #sc.read_processeddata(everything=True)
         sc.find_state(reference_frame, observer, keep_kernels=True)
         
     fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
     plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, wspace=0.05, hspace=0.05)
         
-
-    
     for sc in spacecraft_list:
         #  For each spacecraft, get the positions of Earth and Jupiter
         times = [spice.datetime2et(t) for t in sc.data.index]
@@ -297,19 +316,13 @@ def plot_SpacecraftSpatialCoverage():
         xyz_in_AU = [np.array(row[['x_pos', 'y_pos', 'z_pos']]).astype('float64')
                               for indx, row in sc.data.iterrows()]
         sph_in_AU = np.array([spice.recsph(row / sc.au_to_km) for row in xyz_in_AU])
-        #print(sph_in_AU)
-        #xyz_full_in_AU = np.array([row[['x_pos', 'y_pos', 'z_pos']]/sc.au_to_km
-        #                      for indx, row in sc_full.data.iterrows()])
         
-        #ax.plot(xyz_full_in_AU[:,0], xyz_full_in_AU[:,1],
-        #        color='gray', linewidth=1)
+        
         ax.plot((sph_in_AU[:,2]-jup_pos[:,2]), sph_in_AU[:,0], 
-                  label=sc.name, linewidth=1, color=spacecraft_colors[sc.name])
+                  label=sc.name, linewidth=1, color=pc.spacecraft_colors[sc.name])
         
         ax.plot((ear_pos[:,2]-jup_pos[:,2]), ear_pos[:,0], 
                 label='Earth', color='xkcd:kelly green', marker='o', markersize=1, linestyle='None')
-        #ax.plot(ear_pos[-1,0], ear_pos[-1,1],  
-        #        color='xkcd:kelly green', marker='o', markersize=4)
         
         ax.plot((jup_pos[:,2]-jup_pos[:,2]), jup_pos[:,0], 
                 label='Jupiter', color='xkcd:peach', marker='o', markersize=1, linestyle='None')
@@ -317,18 +330,12 @@ def plot_SpacecraftSpatialCoverage():
     
     ax.set_aspect(1)
     ax.set_rlim((0, 6))
-
-    return(jup_pos)
-    
-    
-    #ax.plot(jup_pos[-1,0], jup_pos[-1,1],
-    #        color='xkcd:peach', marker='o', markersize=4)
-    
-    #ax.set(xlim=[-6,6], 
-    #        ylim=[-6,6])
     
     plt.show()
     spice.kclear()
+    
+    return
+    
     
 def plot_spacecraft_spatial_coverage():
     import matplotlib.pyplot as plt
