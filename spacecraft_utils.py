@@ -167,7 +167,8 @@ def get_SpacecraftDataCoverage():
         #                transform='reclat')
         
         spacecraft_list.append(sc_reltosun)
-        times[name] = (sc_reltosun.data.index[0], sc_reltosun.data.index[-1])
+        times[name] = (sc_reltosun.data.index[0].to_pydatetime(), 
+                       sc_reltosun.data.index[-1].to_pydatetime())
         
     return times
     
@@ -244,8 +245,12 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
         axs[1].plot(solar_radio_flux['date'], solar_radio_flux['observed_flux'], 
                     marker='.', color='gray', markersize=2, linestyle='None')
         
+        
+        
         for sc in spacecraft_list:
-            
+            axs[0].plot(mdates.date2num(spacecraft_lifetimes[sc.name]), np.array((1,1)) * box_centers[sc.name],
+                        color=pc.spacecraft_colors[sc.name], linewidth=1.5)
+
             #  This bit splits the spacecraft data up into chunks to plot
             sc_deltas = sc.data.index.to_series().diff()
             gaps_indx = np.where(sc_deltas > dt.timedelta(days=30))[0]
@@ -280,7 +285,7 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
                 
                 
             
-            axs[0].add_collection(collections.PatchCollection(rectangle_list, facecolors=pc.spacecraft_colors[sc.name], alpha=0.5))
+            axs[0].add_collection(collections.PatchCollection(rectangle_list, facecolors=pc.spacecraft_colors[sc.name]))
             
             # obs_len = len(sc.data.index)
             # definite_obs = [[sc.data.index, np.flip(sc.data.index)],
