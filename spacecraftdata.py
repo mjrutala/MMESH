@@ -85,7 +85,7 @@ class SpacecraftData:
         self.starttime = None
         self.stoptime = None
         
-    def find_lifetime(self, keep_kernels=False):
+    def find_MetaKernelCoverage(self, keep_kernels=False):
         #import datetime as dt
         #import numpy as np
         import spiceypy as spice
