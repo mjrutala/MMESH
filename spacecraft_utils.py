@@ -269,28 +269,54 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
     reference_frame = 'SUN_INERTIAL' # HGI  #'ECLIPJ2000'
     observer = 'SUN'
 
-    spacecraft_list = []
+    rj_to_km = 71492.
+    
+    solarwind_range = [120, np.inf]
+    magnetopause_r = [70,120]  #  Feng+ 2023
+    #magnetopause_lon = [90, 270]  #  lon is angle measured from x through y
+    
+    sw_trajectory_list = []
+    mp_trajectory_list = []
     for name in spacecraft_names:
-        sc_reltosun = SpacecraftData.SpacecraftData(name)
-        spacecraft_list.append(sc_reltosun)
+        
+        sc_sw = SpacecraftData.SpacecraftData(name)
+        sc_sw.make_timeseries(*spacecraft_lifetimes[sc_sw.name])
+        sc_sw.find_state('SUN_INERTIAL', 'SUN')
+        sc_sw.find_subset(coord1_range=np.array(r_range)*sc_sw.au_to_km,
+                          coord3_range=np.array(lat_range)*np.pi/180., 
+                          transform='reclat')
+        
+        #   We already limited to the solar range
+        #   So now calculate position rel. to Jupiter for each of the remaining
+        #   times, and make another cut
+        sc_sw.find_state('IAU_JUPITER', 'JUPITER_BARYCENTER')
+        sc_sw.find_subset(coord1_range=np.array(solarwind_range)*rj_to_km,
+                          transform='reclat')
+        
+        sw_trajectory_list.append(sc_sw)
+        
+        #  Do it all again, but for a different cutoff:
+        sc_mp = SpacecraftData.SpacecraftData(name)
+        sc_mp.make_timeseries(*spacecraft_lifetimes[sc_mp.name])
+        sc_mp.find_state('SUN_INERTIAL', 'SUN')
+        sc_mp.find_subset(coord1_range=np.array(r_range)*sc_mp.au_to_km,
+                          coord3_range=np.array(lat_range)*np.pi/180., 
+                          transform='reclat')
+        
+        #   
+        sc_mp.find_state('IAU_JUPITER', 'JUPITER_BARYCENTER')
+        sc_mp.find_subset(coord1_range=np.array(magnetopause_r)*rj_to_km,
+                          #coord3_range=np.array(magnetopause_lon)*np.pi/180.,
+                          transform='reclat')
+        
+        mp_trajectory_list.append(sc_mp)
+        
+        fig, ax = plt.subplots()
+        ax.scatter(sc_sw.data.index, sc_sw.data.index, s=0.1)
+        ax.scatter(sc_mp.data.index, sc_mp.data.index, s=0.1)
+        plt.show()
     
-    for sc in spacecraft_list:
-        # temp_sc = copy.deepcopy(sc)
-        
-        sc.make_timeseries(*spacecraft_lifetimes[sc.name])
-        sc.find_state(reference_frame, observer)
-        # temp_sc.find_subset(coord1_range=np.array(r_range)*sc.au_to_km, # 4.4 - 6
-        #                     coord3_range=np.array(lat_range)*np.pi/180., 
-        #                     transform='reclat')
-        # startdate = temp_sc.data.index[0]
-        # stopdate = temp_sc.data.index[-1]
-        
-        sc.find_subset(coord1_range=np.array(r_range)*sc.au_to_km, # 4.4 - 6
-                       coord3_range=np.array(lat_range)*np.pi/180., 
-                       transform='reclat')
-        pos_reltosun = sc.data[['x_pos', 'y_pos', 'z_pos']]
-        
-    
+        #return sc_sw, sc_mp
     box_height = 0.8
     box_centers = {'Pioneer 10': 1,
                    'Pioneer 11': 2,
@@ -314,15 +340,10 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
         axs[1].plot(solar_radio_flux['date'], solar_radio_flux['observed_flux'], 
                     marker='.', color='gray', markersize=2, linestyle='None')
         
-        
-        
-        for sc in spacecraft_list:
-            axs[0].plot(mdates.date2num(spacecraft_lifetimes[sc.name]), np.array((1,1)) * box_centers[sc.name],
-                        color=pc.spacecraft_colors[sc.name], linewidth=1.5)
-
+        for sc in sw_trajectory_list:
             #  This bit splits the spacecraft data up into chunks to plot
             sc_deltas = sc.data.index.to_series().diff()
-            gaps_indx = np.where(sc_deltas > dt.timedelta(days=30))[0]
+            gaps_indx = np.where(sc_deltas > dt.timedelta(days=5))[0]
             
             start_indx = np.insert(gaps_indx, 0, 0)
             stop_indx = np.append(gaps_indx, len(sc.data.index))-1
@@ -348,7 +369,7 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
                 
                 ll_corner = (mdates.date2num(sc.data.index[x0]), box_centers[sc.name]-box_height/2.)
                 
-                width = mdates.date2num(sc.data.index[xf-1]) - mdates.date2num(sc.data.index[x0])
+                width = mdates.date2num(sc.data.index[xf] + dt.timedelta(days=1)) - mdates.date2num(sc.data.index[x0])
                 
                 rectangle_list.append(patches.Rectangle(ll_corner, width, box_height))
                 
@@ -356,17 +377,45 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
             
             axs[0].add_collection(collections.PatchCollection(rectangle_list, facecolors=pc.spacecraft_colors[sc.name]))
             
-            # obs_len = len(sc.data.index)
-            # definite_obs = [[sc.data.index, np.flip(sc.data.index)],
-            #                 [np.zeros(obs_len)+box_centers[sc.name]+box_width, 
-            #                  np.zeros(obs_len)+box_centers[sc.name]-box_width]]
-            # borderline_obs = 0
+           
+        for sc in mp_trajectory_list:
+            #  This bit splits the spacecraft data up into chunks to plot
+            sc_deltas = sc.data.index.to_series().diff()
+            gaps_indx = np.where(sc_deltas > dt.timedelta(days=5))[0]
             
+            start_indx = np.insert(gaps_indx, 0, 0)
+            stop_indx = np.append(gaps_indx, len(sc.data.index))-1
             
-            # axs[0].plot(sc.data.index, np.zeros(len(sc.data.index))+spacecraft_labels[sc.name], 
-            #             linestyle='None', marker='|', markersize=12, color=pc.spacecraft_colors[sc.name])
+            print('Start and stop dates for ' + sc.name)
+            for first, final in zip(start_indx, stop_indx):
+                print(sc.data.index[first].strftime('%Y-%m-%d') + 
+                      ' -- ' + 
+                      sc.data.index[final].strftime('%Y-%m-%d'))
+                print(str((sc.data.index[final] - sc.data.index[first]).total_seconds()/3600.) + ' total hours')
+                rlonlat = [spice.reclat(np.array(row[['x_pos', 'y_pos', 'z_pos']], dtype='float64')) for indx, row in sc.data.iterrows()]
+                rlonlat = np.array(rlonlat).T
+                print('Radial range of: ' + str(np.min(rlonlat[0,:])/sc.au_to_km) +
+                      ' - ' + str(np.max(rlonlat[0,:])/sc.au_to_km) + ' AU')
+                print('Heliolatitude range of: ' + str(np.min(rlonlat[2,:])*180/np.pi) +
+                      ' - ' + str(np.max(rlonlat[2,:])*180/np.pi) + 'deg.')
+            print('------------------------------------------')
             
-        axs[0].set_xlim((dt.datetime(1970, 1, 1), dt.datetime(2020, 1, 1)))
+            #  If the spacecraft data is split into chunks, we don't want to plot
+            #  a continuous line-- so use a collection of patches
+            rectangle_list = []
+            for x0, xf in zip(start_indx, stop_indx):
+                
+                ll_corner = (mdates.date2num(sc.data.index[x0]), box_centers[sc.name]-box_height/2.)
+                
+                width = mdates.date2num(sc.data.index[xf] + dt.timedelta(days=1)) - mdates.date2num(sc.data.index[x0])
+                
+                rectangle_list.append(patches.Rectangle(ll_corner, width, box_height))
+                
+                
+            #  Unfortunately, there will always be a 1 pixel space between rectangle patches, 
+            #  so these can't appear flush against one another when they should...
+            axs[0].add_collection(collections.PatchCollection(rectangle_list, facecolors='xkcd:gray', alpha=0.5))
+        axs[0].set_xlim((dt.datetime(1970, 1, 1), dt.datetime(2023, 1, 1)))
         
         axs[1].set_ylabel('Observed Radio Flux @ 10.7 cm [SFU]')
         axs[1].set_xlabel('Year')
