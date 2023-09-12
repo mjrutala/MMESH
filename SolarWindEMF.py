@@ -163,7 +163,7 @@ class Trajectory:
         import pandas as pd
         
         #shifts = [0]  #  Needs to be input
-        sigma_cutoff = 4  #  Needs to be input
+        sigma_cutoff = 3  #  Needs to be input
         smoothing_time_spacecraft = 2.0  #  Needs to be input
         smoothing_time_model = 2.0  #  Needs to be input
         
