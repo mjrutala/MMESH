@@ -32,6 +32,7 @@ class SpacecraftData:
         
         self.name = name
         self.basedir = basedir
+        self.SPICE_METAKERNEL_PLANETARY = basedir_spice+'generic/metakernel_planetary.txt'
         #  Unfortunately, spyder/pyflakes doesn't know that it's using python
         #  3.10+, so it'll show this match statement as an error-- it works!
         match self.name.lower():
@@ -105,7 +106,8 @@ class SpacecraftData:
             
         if not keep_kernels: spice.kclear()
     
-    def make_timeseries(self, starttime=None, stoptime=None, timedelta=dt.timedelta(days=1)):
+    def make_timeseries(self, starttime=None, stoptime=None, timedelta=dt.timedelta(days=1),
+                        returning = False):
         import numpy as np
         
         if starttime == None:
@@ -122,12 +124,16 @@ class SpacecraftData:
         
         if self.data.empty:
             self.data = pd.concat([self.data, pd.DataFrame(index=datetimes)])
+        else:
+            print('Spacecraft DataFrame already filled. Returning instead...')
+            returning = True
         #  In principle, this function could reindex the dataframe if it already exists
         #  But it would be unwieldy to pass a bunch of method terms, i.e. mean(), into it
         #  So I'm just going to return the datetimes if data exists...
+        if returning:
+            return pd.Index(datetimes)
         else:
-            print('Spacecraft DataFrame already filled. Returning timeseries...')
-            return(datetimes)
+            return
     
     def find_state(self, reference_frame, observer, keep_kernels=False):
         #import datetime as dt
@@ -140,10 +146,7 @@ class SpacecraftData:
         self.observer = observer
         
         #  Essential solar system and timekeeping kernels
-        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/lsk/latest_leapseconds.tls')
-        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-1.bsp')
-        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-2.bsp')
-        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/pck/pck00011.tpc')
+        spice.furnsh(self.SPICE_METAKERNEL_PLANETARY)
         
         #  Custom helio frames
         spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
