@@ -129,6 +129,72 @@ def simpleHUXtRun(spacecraft_name, year):
     return(sc_series)
 
 
+def get_SpacecraftLifetimes():
+    import spacecraftdata as SpacecraftData
+    
+    # =========================================================================
+    #   Would-be inputs
+    # =========================================================================
+    spacecraft_names = ['Juno', 'Ulysses', 'Voyager 1', 'Voyager 2', 'Pioneer 10', 'Pioneer 11']
+    
+    # =========================================================================
+    #   Find when Spacecraft was within lat_range of the solar equator, 
+    #   and within r_range from the sun
+    # =========================================================================
+    reference_frame = 'SUN_INERTIAL' # HGI  #'ECLIPJ2000'
+    observer = 'SUN'
+
+    # =========================================================================
+    #   Total spacecraft lifetimes, hardcoded, from launch to loss of contact
+    # =========================================================================
+    spacecraft_lifetimes = {'Juno':         (dt.datetime(2011, 8, 5), 
+                                             dt.datetime.now()),
+                            'Ulysses':      (dt.datetime(1990, 10, 6), 
+                                             dt.datetime(2009, 6, 30)),
+                            'Voyager 1':    (dt.datetime(1977, 9, 1), 
+                                             dt.datetime.now()),
+                            'Voyager 2':    (dt.datetime(1977, 8, 20), 
+                                             dt.datetime.now()),
+                            'Pioneer 10':   (dt.datetime(1972, 3, 3),
+                                             dt.datetime(2003, 1, 23)),
+                            'Pioneer 11':   (dt.datetime(1973, 4, 6),
+                                             dt.datetime(1995, 11, 24))}
+
+    spacecraft_list = []
+    times = {}
+    for name in spacecraft_names:
+        #  Initialize object
+        sc_reltosun = SpacecraftData.SpacecraftData(name)
+        
+        #  Find the SPICE kernel coverage
+        sc_reltosun.find_MetaKernelCoverage()
+        
+        #  Choose a start and stop time such that there is SPICE coverage
+        if (spacecraft_lifetimes[name][0] > sc_reltosun.starttime):
+            starttime = spacecraft_lifetimes[name][0]
+        else:
+            starttime = sc_reltosun.starttime
+            
+        if (spacecraft_lifetimes[name][1] < sc_reltosun.stoptime):
+            stoptime = spacecraft_lifetimes[name][1]
+        else:
+            stoptime = sc_reltosun.stoptime
+        
+        #  Make a timeseries
+        sc_reltosun.make_timeseries(starttime, stoptime)
+        
+        #  Check against the location requirements
+        sc_reltosun.find_state(reference_frame, observer)
+        sc_reltosun.find_subset(coord1_range=np.array(r_range)*sc_reltosun.au_to_km,
+                        coord3_range=np.array(lat_range)*np.pi/180., 
+                        transform='reclat')
+         
+        spacecraft_list.append(sc_reltosun)
+        times[name] = (sc_reltosun.data.index[0].to_pydatetime(), 
+                       sc_reltosun.data.index[-1].to_pydatetime())
+        
+    return times
+
 def get_SpacecraftDataCoverage():
     import copy
     import spacecraftdata as SpacecraftData
@@ -139,7 +205,8 @@ def get_SpacecraftDataCoverage():
     spacecraft_names = ['Juno', 'Ulysses', 'Voyager 1', 'Voyager 2', 'Pioneer 10', 'Pioneer 11']
     
     # =============================================================================
-    # Find when Ulysses was within +/- 30 deg. of the ecliptic, and near 5 AU
+    #   Find when Spacecraft was within lat_range of the solar equator, 
+    #   and within r_range from the sun
     # =============================================================================
     reference_frame = 'SUN_INERTIAL' # HGI  #'ECLIPJ2000'
     observer = 'SUN'
@@ -221,6 +288,8 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
         sc.find_subset(coord1_range=np.array(r_range)*sc.au_to_km, # 4.4 - 6
                        coord3_range=np.array(lat_range)*np.pi/180., 
                        transform='reclat')
+        pos_reltosun = sc.data[['x_pos', 'y_pos', 'z_pos']]
+        
     
     box_height = 0.8
     box_centers = {'Pioneer 10': 1,
