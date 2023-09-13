@@ -181,17 +181,16 @@ def get_SpacecraftLifetimes():
             stoptime = sc_reltosun.stoptime
         
         #  Make a timeseries
-        sc_reltosun.make_timeseries(starttime, stoptime)
+        # sc_reltosun.make_timeseries(starttime, stoptime)
         
-        #  Check against the location requirements
-        sc_reltosun.find_state(reference_frame, observer)
-        sc_reltosun.find_subset(coord1_range=np.array(r_range)*sc_reltosun.au_to_km,
-                        coord3_range=np.array(lat_range)*np.pi/180., 
-                        transform='reclat')
+        # #  Check against the location requirements
+        # sc_reltosun.find_state(reference_frame, observer)
+        # sc_reltosun.find_subset(coord1_range=np.array(r_range)*sc_reltosun.au_to_km,
+        #                 coord3_range=np.array(lat_range)*np.pi/180., 
+        #                 transform='reclat')
          
-        spacecraft_list.append(sc_reltosun)
-        times[name] = (sc_reltosun.data.index[0].to_pydatetime(), 
-                       sc_reltosun.data.index[-1].to_pydatetime())
+        # spacecraft_list.append(sc_reltosun)
+        times[name] = (starttime, stoptime)
         
     return times
 
@@ -415,7 +414,7 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
             #  Unfortunately, there will always be a 1 pixel space between rectangle patches, 
             #  so these can't appear flush against one another when they should...
             axs[0].add_collection(collections.PatchCollection(rectangle_list, facecolors='xkcd:gray', alpha=0.5))
-        axs[0].set_xlim((dt.datetime(1970, 1, 1), dt.datetime(2023, 1, 1)))
+        axs[0].set_xlim((dt.datetime(1970, 1, 1), dt.datetime(1980, 1, 1)))
         
         axs[1].set_ylabel('Observed Radio Flux @ 10.7 cm [SFU]')
         axs[1].set_xlabel('Year')
@@ -435,7 +434,7 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
         plt.show()
         spice.kclear()
         
-def plot_FullSpacecraftTrajectory():
+def plot_FullSpacecraftTrajectory(lifetimes):
     import copy
     import spiceypy as spice
     import spacecraftdata as SpacecraftData
@@ -445,8 +444,10 @@ def plot_FullSpacecraftTrajectory():
     spice.furnsh('/Users/mrutala/SPICE/generic/kernels/spk/planets/de441_part-2.bsp')
     spice.furnsh('/Users/mrutala/SPICE/generic/kernels/pck/pck00011.tpc')
     spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
-    observer='Solar System Barycenter'
-    reference_frame = 'ECLIPJ2000'
+    spice.furnsh('/Users/mrutala/SPICE/generic/kernels/fk/jupiter_v01.tf')
+    
+    observer = 'JUPITER BARYCENTER' #'Solar System Barycenter'
+    reference_frame = 'JUPITER_JSS' #'ECLIPJ2000'
 
     spacecraft_list = []
     spacecraft_list.append(SpacecraftData.SpacecraftData('Pioneer 10'))
@@ -455,48 +456,52 @@ def plot_FullSpacecraftTrajectory():
     spacecraft_list.append(SpacecraftData.SpacecraftData('Voyager 2'))
     spacecraft_list.append(SpacecraftData.SpacecraftData('Ulysses'))
     spacecraft_list.append(SpacecraftData.SpacecraftData('Juno'))
+    print(spice.frmnam(1500002))
     
     for sc in spacecraft_list:
-        sc.find_lifetime()
-        sc.make_timeseries()
+        sc.make_timeseries(*lifetimes[sc.name])
+        #sc.
         #sc.read_processeddata(everything=True)
-        sc.find_state(reference_frame, observer, keep_kernels=True)
-        
-    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-    plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, wspace=0.05, hspace=0.05)
-        
-    for sc in spacecraft_list:
-        #  For each spacecraft, get the positions of Earth and Jupiter
-        times = [spice.datetime2et(t) for t in sc.data.index]
         print(sc.name)
-        print(sc.data.index[0])
-        print(sc.data.index[-1])
-        
-        ear_pos, ear_lt = spice.spkpos('EARTH BARYCENTER', times, reference_frame, 'NONE', observer)
-        ear_pos = np.array([spice.recsph(row / sc.au_to_km) for row in ear_pos])
-        
-        jup_pos, jup_lt = spice.spkpos('JUPITER BARYCENTER', times, reference_frame, 'NONE', observer)
-        jup_pos = np.array([spice.recsph(row / sc.au_to_km) for row in jup_pos])
-        
-        xyz_in_AU = [np.array(row[['x_pos', 'y_pos', 'z_pos']]).astype('float64')
-                              for indx, row in sc.data.iterrows()]
-        sph_in_AU = np.array([spice.recsph(row / sc.au_to_km) for row in xyz_in_AU])
-        
-        
-        ax.plot((sph_in_AU[:,2]-jup_pos[:,2]), sph_in_AU[:,0], 
-                  label=sc.name, linewidth=1, color=pc.spacecraft_colors[sc.name])
-        
-        ax.plot((ear_pos[:,2]-jup_pos[:,2]), ear_pos[:,0], 
-                label='Earth', color='xkcd:kelly green', marker='o', markersize=1, linestyle='None')
-        
-        ax.plot((jup_pos[:,2]-jup_pos[:,2]), jup_pos[:,0], 
-                label='Jupiter', color='xkcd:peach', marker='o', markersize=1, linestyle='None')
-        
+        print(spice.frmnam(1500002))
+        sc.find_state(reference_frame, observer, keep_kernels=True)
     
-    ax.set_aspect(1)
-    ax.set_rlim((0, 6))
-    
-    plt.show()
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, ax = plt.subplots(subplot_kw={'projection': 'polar'}, figsize=(8,8))
+        plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, wspace=0.05, hspace=0.05)
+            
+        for sc in spacecraft_list:
+            #  For each spacecraft, get the positions of Earth and Jupiter
+            times = [spice.datetime2et(t) for t in sc.data.index]
+            print(sc.name)
+            print(sc.data.index[0])
+            print(sc.data.index[-1])
+            
+            ear_pos, ear_lt = spice.spkpos('EARTH BARYCENTER', times, reference_frame, 'NONE', observer)
+            ear_pos = np.array([spice.recsph(row / sc.au_to_km) for row in ear_pos])
+            
+            jup_pos, jup_lt = spice.spkpos('JUPITER BARYCENTER', times, reference_frame, 'NONE', observer)
+            jup_pos = np.array([spice.recsph(row / sc.au_to_km) for row in jup_pos])
+            
+            xyz_in_AU = [np.array(row[['x_pos', 'y_pos', 'z_pos']]).astype('float64')
+                                  for indx, row in sc.data.iterrows()]
+            sph_in_AU = np.array([spice.recsph(row / sc.au_to_km) for row in xyz_in_AU])
+            
+            
+            ax.plot((sph_in_AU[:,2]-jup_pos[:,2]), sph_in_AU[:,0], 
+                      label=sc.name, linewidth=1, color=pc.spacecraft_colors[sc.name])
+            
+            ax.plot((ear_pos[:,2]-jup_pos[:,2]), ear_pos[:,0], 
+                    label='Earth', color='xkcd:kelly green', marker='o', markersize=1, linestyle='None')
+            
+            ax.plot((jup_pos[:,2]-jup_pos[:,2]), jup_pos[:,0], 
+                    label='Jupiter', color='xkcd:peach', marker='o', markersize=1, linestyle='None')
+            
+        
+        ax.set_aspect(1)
+        ax.set_rlim((1, 8))
+        
+        plt.show()
     spice.kclear()
     
     return
