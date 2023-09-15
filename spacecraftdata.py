@@ -257,8 +257,17 @@ class SpacecraftData:
         self.data = self.data.iloc[criteria]
         return
     
+        def limit_toSW(self):
+            #  Return only measurements in the solar wind
+            #  (i.e., outside of any magnetospheres)
+            
+            #   Terrestrial Magnetosphere ()
+            
+            #   Jovian Magnetopause (Joy+ 2002 Model)
 
-        #self.date_range = None
-        #self.date_delta = None
-        #self.datetimes = None
-        #self.ephemeris = None
+            
+            
+            
+            
+            
+            
