@@ -129,7 +129,7 @@ class Trajectory:
         #self.trajectory = pd.Dataframe(index=index)
         
         self._data = None
-        self._master_df = pd.DataFrame()
+        self._primary_df = pd.DataFrame()
         
     @property
     def trajectory(self):
@@ -141,7 +141,7 @@ class Trajectory:
 
     @property
     def data(self):
-        return self._master_df[self.spacecraft_name]
+        return self._primary_df[self.spacecraft_name]
     
     @data.setter
     def data(self, df):
@@ -150,12 +150,12 @@ class Trajectory:
         int_columns = list(set(df.columns).intersection(self.variables))
         df = df[int_columns]
         
-        if self._master_df.empty:
+        if self._primary_df.empty:
             df.columns = pd.MultiIndex.from_product([[self.spacecraft_name], df.columns])
-            self._master_df = df
+            self._primary_df = df
         else:
-            new_keys = [self._master_df.columns.levels[0], self.spacecraft_name]
-            self._master_df = pd.concat([self._master_df, df], axis=1,
+            new_keys = [self._primary_df.columns.levels[0], self.spacecraft_name]
+            self._primary_df = pd.concat([self._primary_df, df], axis=1,
                                         keys=new_keys)
     
     def addData(self, spacecraft_name, spacecraft_df):
@@ -164,21 +164,21 @@ class Trajectory:
     
     @property
     def models(self):
-        return self._master_df[self.model_names]
+        return self._primary_df[self.model_names]
     
     @models.setter
     def models(self, df):
         int_columns = list(set(df.columns).intersection(self.variables))
         df = df[int_columns]
         
-        if self._master_df.empty:
+        if self._primary_df.empty:
             new_keys = [self.model_names[-1]]
         else:
 
-            new_keys = [*self._master_df.columns.levels[0], self.model_names[-1]]
+            new_keys = [*self._primary_df.columns.levels[0], self.model_names[-1]]
             df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
 
-        self._master_df = pd.concat([self._master_df, df], axis=1)
+        self._primary_df = pd.concat([self._primary_df, df], axis=1)
     
     def addModel(self, model_name, model_df):
         self.model_names.append(model_name)
@@ -217,6 +217,23 @@ class Trajectory:
         
         return (models_stats)
     
+    def binarize(self, parameter, smooth = 1, sigma = 3):
+        from SWData_Analysis import find_Jumps
+        
+        if type(smooth) != dict:
+            smoothing_kernels = dict.fromkeys([self.spacecraft_name, *self.model_names], smooth)
+        else:
+            smoothing_kernels = smooth
+        
+        df = find_Jumps(self.data, parameter, sigma, smoothing_kernels[self.spacecraft_name])
+        self._primary_df[self.spacecraft_name, 'jumps'] = df['jumps']
+        
+        for model_name in self.model_names:
+            df = find_Jumps(self.models[model_name], parameter, sigma, smoothing_kernels[model_name])
+            self._primary_df[model_name, 'jumps'] = df['jumps']
+        
+        self._primary_df.sort_index(axis=1, inplace=True)
+    
     def shift(self, basis_tag, metric_tag, shifts=[0]):
         
         return
@@ -236,22 +253,22 @@ class Trajectory:
         resolution_width_spacecraft = 0.0  #  Input?
         resolution_width_model = 0.0  #  Input?
         
-        self.spacecraft_df = swda.find_Jumps(self.spacecraft_df, 'u_mag', 
-                                             sigma_cutoff, 
-                                             smoothing_time_spacecraft, 
-                                             resolution_width=resolution_width_spacecraft)
+        # self.spacecraft_df = swda.find_Jumps(self.spacecraft_df, 'u_mag', 
+        #                                      sigma_cutoff, 
+        #                                      smoothing_time_spacecraft, 
+        #                                      resolution_width=resolution_width_spacecraft)
         
-        for model_name, model_df in self.model_dfs.items():
+        for model_name in self.model_names:
             
-            model_df = swda.find_Jumps(model_df, 'u_mag', 
-                                       sigma_cutoff, 
-                                       smoothing_time_model, 
-                                       resolution_width=resolution_width_model)
+        #     model_df = swda.find_Jumps(model_df, 'u_mag', 
+        #                                sigma_cutoff, 
+        #                                smoothing_time_model, 
+        #                                resolution_width=resolution_width_model)
             
             stats = []
             time_deltas = []
             for shift in shifts:
-                stat, time_delta = dtwa.find_SolarWindDTW(self.spacecraft_df, model_df, shift, 
+                stat, time_delta = dtwa.find_SolarWindDTW(self.data, self.models[model_name], shift, 
                                                           basis_tag, metric_tag, 
                                                           total_slope_limit=96.0,
                                                           intermediate_plots=True,
