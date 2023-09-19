@@ -266,7 +266,7 @@ class SpacecraftData:
             #   Jovian Magnetopause (Joy+ 2002 Model)
 
             
-            
+            return
             
             
             
