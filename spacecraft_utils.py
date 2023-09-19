@@ -513,8 +513,19 @@ def plot_FullSpacecraftTrajectory(spacecraft_spans):
             xyz_in_RJ = np.array([np.array(row[['x_pos', 'y_pos', 'z_pos']]).astype('float64')
                                   for indx, row in sc.data.iterrows()]) / 71492.
             
+            #sc.find_subset(coord1_range=np.array(r_range)*sc.au_to_km,
+                           #coord3_range=np.array(lat_range)*np.pi/180., 
+            #                  transform='reclat')
+            sc.find_subset(coord1_range=np.array([120, np.inf])*71492.,
+                              transform='reclat')
+            
+            xyz_sw = sc.data[['x_pos', 'y_pos', 'z_pos']].to_numpy(dtype='float64') / 71492.
+            
             axs[1].plot(xyz_in_RJ[:,0], xyz_in_RJ[:,1], 
-                      label=sc.name, linewidth=1, color=pc.spacecraft_colors[sc.name])  
+                      label=sc.name, linewidth=1, color='gray', alpha=0.5, zorder=0)  
+            
+            axs[1].scatter(xyz_sw[:,0], xyz_sw[:,1], 
+                      label=sc.name, linewidth=1, color=pc.spacecraft_colors[sc.name], s=0.5, marker='o', zorder=1)
         
         axs[0].set(xlim=[-6,6], xlabel='JSS X [AU]',
                    ylim=[-6,6], ylabel='JSS Y [AU]',
