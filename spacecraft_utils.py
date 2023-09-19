@@ -451,6 +451,8 @@ def plot_FullSpacecraftTrajectory(spacecraft_spans):
     
     spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
     
+    sr = 5 #sr == sample rate for scatter plots
+    
     #  Get positions for spacecraft relative to observer1/frame1
     spacecraft_list = []
     for name in spacecraft_names:
@@ -477,11 +479,16 @@ def plot_FullSpacecraftTrajectory(spacecraft_spans):
             
             xyz_in_AU = np.array([np.array(row[['x_pos', 'y_pos', 'z_pos']]).astype('float64')
                                   for indx, row in sc.data.iterrows()]) / sc.au_to_km 
-            print(lat_range)
-            sc.find_subset(coord1_range=np.array(r_range)*sc.au_to_km,
-                           coord3_range=np.array(lat_range)*np.pi/180., 
-                              transform='reclat')
-            xyz_sw = sc.data[['x_pos', 'y_pos', 'z_pos']].to_numpy(dtype='float64') / sc.au_to_km
+            
+            #  Limit plotted points based on position w.r.t. solar latitude
+            sc_sun_frame = copy.deepcopy(sc)
+            sc_sun_frame.find_state('SUN_INERTIAL', 'SOLAR SYSTEM BARYCENTER', keep_kernels=True)
+            sc_sun_frame.find_subset(coord1_range=np.array(r_range)*sc.au_to_km,
+                                     coord3_range=np.array(lat_range)*np.pi/180., 
+                                     transform='reclat')
+            
+            sc_in_sw = sc.data.reindex(sc_sun_frame.data.index)
+            xyz_sw = sc_in_sw[['x_pos', 'y_pos', 'z_pos']].to_numpy(dtype='float64') / sc.au_to_km
             
             axs[0].plot(ert_pos[:,0], ert_pos[:,1], label='Earth', 
                         color='xkcd:kelly green', marker='o', markersize=0.25, linestyle='None', zorder=-1)
@@ -493,8 +500,10 @@ def plot_FullSpacecraftTrajectory(spacecraft_spans):
                       label=sc.name, linewidth=1, color='gray', alpha=0.5, zorder=0)
             # axs[0].plot(xyz_sw[:,0], xyz_sw[:,1], 
             #           label=sc.name, linewidth=1, color=pc.spacecraft_colors[sc.name])
-            axs[0].scatter(xyz_sw[:,0], xyz_sw[:,1], 
-                      label=sc.name, c=pc.spacecraft_colors[sc.name], s=0.5, marker='o', zorder=1)
+            axs[0].plot(xyz_sw[::sr*4,0], xyz_sw[::sr*4,1], 
+                      label=sc.name, color=pc.spacecraft_colors[sc.name], 
+                      markersize=3, linewidth=9, linestyle='None',
+                      marker=pc.spacecraft_markers[sc.name], zorder=1)
     
     #  Get positions for spacecraft relative to observer2/frame2
     spacecraft_list = []
@@ -522,10 +531,12 @@ def plot_FullSpacecraftTrajectory(spacecraft_spans):
             xyz_sw = sc.data[['x_pos', 'y_pos', 'z_pos']].to_numpy(dtype='float64') / 71492.
             
             axs[1].plot(xyz_in_RJ[:,0], xyz_in_RJ[:,1], 
-                      label=sc.name, linewidth=1, color='gray', alpha=0.5, zorder=0)  
+                      linewidth=1, color='gray', alpha=0.5, zorder=0)  
             
-            axs[1].scatter(xyz_sw[:,0], xyz_sw[:,1], 
-                      label=sc.name, linewidth=1, color=pc.spacecraft_colors[sc.name], s=0.5, marker='o', zorder=1)
+            axs[1].plot(xyz_sw[::sr,0], xyz_sw[::sr,1], 
+                      label=sc.name, color=pc.spacecraft_colors[sc.name], 
+                      markersize=3, linewidth=9, linestyle='None',
+                      marker=pc.spacecraft_markers[sc.name], zorder=1)
         
         axs[0].set(xlim=[-6,6], xlabel='JSS X [AU]',
                    ylim=[-6,6], ylabel='JSS Y [AU]',
@@ -543,6 +554,11 @@ def plot_FullSpacecraftTrajectory(spacecraft_spans):
                     horizontalalignment='center',
                     verticalalignment='center',
                     transform = axs[1].transAxes)
+        
+        handles, labels = axs[1].get_legend_handles_labels()
+        fig.legend(handles, labels, ncols=3, markerscale=2,
+                   bbox_to_anchor=[0.15, 0.92, 0.7, .08], loc='lower left',
+                   mode="expand", borderaxespad=0.)
         
     spice.kclear()
     
