@@ -87,6 +87,8 @@ def find_Jumps(dataframe, tag, sigma_cutoff, smoothing_width, resolution_width=0
     
     output_tag = 'jumps'
     
+    outdf = dataframe.copy()
+    
     rolling_dataframe = dataframe.rolling(2*halftimedelta, min_periods=1, 
                                           center=True, closed='left')  
     smooth = rolling_dataframe[tag].mean()
@@ -101,7 +103,7 @@ def find_Jumps(dataframe, tag, sigma_cutoff, smoothing_width, resolution_width=0
     if (rough_jumps == 0.).all():
         print('No jumps in this time series! Must be quiescent solar wind conditions...')
         plt.plot(smooth_derivative_zscore)
-        dataframe[output_tag] = rough_jumps
+        outdf[output_tag] = rough_jumps
         return(dataframe)
     
     #  Separate out each jump into a list of indices
@@ -117,8 +119,8 @@ def find_Jumps(dataframe, tag, sigma_cutoff, smoothing_width, resolution_width=0
                                    (dataframe.index <= center + half_rw))
         jumps[span_width_indx] = 1
     
-    dataframe[output_tag] = jumps
-    return(dataframe)
+    outdf[output_tag] = jumps
+    return(outdf)
 
 # =============================================================================
 # Time Series plotting stuff
@@ -2373,7 +2375,7 @@ def run_SolarWindEMF():
     import SolarWindEMF as swemf
     
     spacecraft_name = 'Juno'
-    model_names = ['Tao', 'ENLIL', 'HUXt']
+    model_names = ['Tao', 'HUXt', 'ENLIL']
     
     starttime = dt.datetime(2016, 5, 1)
     stoptime = dt.datetime(2016, 7, 1)
@@ -2397,10 +2399,22 @@ def run_SolarWindEMF():
         model = read_SWModel.choose(model_name, spacecraft_name, 
                                     starttime, stoptime, resolution='60Min')
         traj0.addModel(model_name, model)
-
-
+     
+    #   Binarize the data and models
+    smoothing_widths = {'Tao':      4,
+                        'HUXt':     2,
+                        'ENLIL':    2,
+                        'Juno':     6}  #  hours
+    traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3)
     
-    baseline_test = traj0.baseline()
+    traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
+    traj0.plot_SingleTimeseries('jumps', starttime, stoptime)
+    
+    
+    
+    #return traj0
+
+    #baseline_test = traj0.baseline()
     
     #temp = test.ensemble()
     
