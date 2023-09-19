@@ -9,6 +9,24 @@ Created on Wed Aug 30 16:38:04 2023
 import datetime as dt
 import logging
 
+
+spacecraft_colors = {'Pioneer 10': '#F6E680',
+                     'Pioneer 11': '#FFD485',
+                     'Voyager 1' : '#FEC286',
+                     'Voyager 2' : '#FEAC86',
+                     'Ulysses'   : '#E6877E',
+                     'Juno'      : '#D8696D'}
+model_colors = {'Tao'    : '#C59FE5',
+                'HUXt'   : '#A0A5E4',
+                'SWMF-OH': '#98DBEB',
+                'MSWIM2D': '#A9DBCA',
+                'ENLIL'  : '#DCED96'}
+model_symbols = {'Tao'    : 'v',
+                'HUXt'   : '*',
+                'SWMF-OH': '^',
+                'MSWIM2D': 'd',
+                'ENLIL'  : 'h'}
+
 """
 How I imagine this framework to work:
     
@@ -86,6 +104,8 @@ class SolarWindEM:
 
     
 #  There should be a model_output class, which has methods to warp it
+import pandas as pd
+
 class Trajectory:
     """
     The Trajectory class is designed to hold trajectory information in 4D
@@ -96,7 +116,7 @@ class Trajectory:
     def __init__(self):
         
         self.metric_tags = ['u_mag', 'p_dyn', 'n_tot', 'B_mag']
-        self.em_parameters = ['u_mag', 'n_tot', 'p_dyn', 'B_mag']
+        self.variables =  ['u_mag', 'n_tot', 'p_dyn', 'B_mag']
         
         self.spacecraft_name = ''
         self.spacecraft_df = ''
@@ -106,17 +126,63 @@ class Trajectory:
         self.model_dtw_stats = {}
         self.model_dtw_times = {}
         
-        self.trajectory = ''
+        #self.trajectory = pd.Dataframe(index=index)
         
+        self._data = None
+        self._master_df = pd.DataFrame()
+        
+    @property
+    def trajectory(self):
+        return self._trajectory
+    
+    @trajectory.setter
+    def trajectory(self, df):
+        self._trajectory = df.upper()
+
+    @property
+    def data(self):
+        return self._master_df[self.spacecraft_name]
+    
+    @data.setter
+    def data(self, df):
+        
+        #  Find common columns between the supplied DataFrame and internals
+        int_columns = list(set(df.columns).intersection(self.variables))
+        df = df[int_columns]
+        
+        if self._master_df.empty:
+            df.columns = pd.MultiIndex.from_product([[self.spacecraft_name], df.columns])
+            self._master_df = df
+        else:
+            new_keys = [self._master_df.columns.levels[0], self.spacecraft_name]
+            self._master_df = pd.concat([self._master_df, df], axis=1,
+                                        keys=new_keys)
+    
     def addData(self, spacecraft_name, spacecraft_df):
-        
         self.spacecraft_name = spacecraft_name
-        self.spacecraft_df = spacecraft_df
+        self.data = spacecraft_df
+    
+    @property
+    def models(self):
+        return self._master_df[self.model_names]
+    
+    @models.setter
+    def models(self, df):
+        int_columns = list(set(df.columns).intersection(self.variables))
+        df = df[int_columns]
         
+        if self._master_df.empty:
+            new_keys = [self.model_names[-1]]
+        else:
+
+            new_keys = [*self._master_df.columns.levels[0], self.model_names[-1]]
+            df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
+
+        self._master_df = pd.concat([self._master_df, df], axis=1)
+    
     def addModel(self, model_name, model_df):
-        
         self.model_names.append(model_name)
-        self.model_dfs[model_name] = model_df
+        self.models = model_df
 
     def baseline(self):
         import scipy
@@ -229,3 +295,122 @@ class Trajectory:
                 self.ensemble[tag] = weights_df[tag][model] * model_df[tag]
         
         print(weights_df.div(weights_df.sum()))
+        
+        
+    # =============================================================================
+    #   Plotting stuff
+    # =============================================================================
+    def _plot_parameters(self, parameter):
+        import numpy as np
+        
+        #  Check which parameter was specified and set up some plotting keywords
+        match parameter:
+            case ('u_mag' | 'flow speed'):
+                tag = 'u_mag'
+                ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
+                plot_kw = {'ylabel': ylabel,
+                           'yscale': 'linear', 'ylim': (250, 600),
+                           'yticks': np.arange(350,600+50,100)}
+            case ('p_dyn' | 'pressure'):
+                tag = 'p_dyn'
+                ylabel = r'Solar Wind Dynamic Pressure $p_{dyn}$ [nPa]'
+                plot_kw = {'ylabel': ylabel,
+                           'yscale': 'log', 'ylim': (1e-3, 2e0),
+                           'yticks': 10.**np.arange(-3,0+1,1)}
+            case ('n_tot' | 'density'):
+                tag = 'n_tot'
+                ylabel = r'Solar Wind Ion Density $n_{tot}$ [cm$^{-3}$]'
+                plot_kw = {'ylabel': ylabel,
+                           'yscale': 'log', 'ylim': (5e-3, 5e0),
+                           'yticks': 10.**np.arange(-2, 0+1, 1)}
+            case ('B_mag' | 'magnetic field'):
+                tag = 'B_mag'
+                ylabel = r'Solar Wind Magnetic Field Magnitude $B_{mag}$ [nT]'
+                plot_kw = {'ylabel': ylabel,
+                           'yscale': 'linear', 'ylim': (0, 5),
+                           'yticks': np.arange(0, 5+1, 2)}
+            case ('jumps'):
+                tag = 'jumps'
+                ylabel = r'$\sigma$-normalized derivative of $u_{mag}$, binarized at 3'
+                plot_kw =  {'ylabel': ylabel,
+                            'yscale': 'linear',
+                            'ylim': (-0.25, 1.25)}
+                
+        return tag, plot_kw
+        
+    def plot_SingleTimeseries(self, parameter, starttime, stoptime, filename=''):
+        """
+        Plot the time series of a single parameter from a single spacecraft,
+        separated into 4/5 panels to show the comparison to each model.
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        
+        import PlottingConstants
+        
+        tag, plot_kw = self._plot_parameters(parameter)
+        
+        # save_filestem = 'Timeseries_{}_{}_{}-{}'.format(spacecraft_name.replace(' ', ''),
+        #                                                 tag,
+        #                                                 starttime.strftime('%Y%m%d'),
+        #                                                 stoptime.strftime('%Y%m%d'))
+        
+        with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+            fig, axs = plt.subplots(figsize=(8,6), nrows=len(self.model_names), sharex=True, squeeze=False)
+            plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.0)
+            
+            for indx, ax in enumerate(axs.flatten()):
+                
+                ax.plot(self.data.index, 
+                        self.data[tag],
+                        color='xkcd:blue grey', alpha=0.6, linewidth=1.5,
+                        label='Juno/JADE (Wilson+ 2018)')
+                
+                ax.set(**plot_kw)
+                ax.set_ylabel('')
+                #  get_yticks() for log scale doesn't work as expected; workaround:
+                yticks = ax.get_yticks()
+                yticks = [yt for yt in yticks if ax.get_ylim()[0] <= yt <= ax.get_ylim()[1]]
+                if indx != len(axs)-1: 
+                    if (yticks[0] in ax.get_ylim()) and yticks[-1] in ax.get_ylim():
+                        ax.set(yticks=yticks[1:])
+                #ax.grid(linestyle='-', linewidth=2, alpha=0.1, color='xkcd:black')
+            print('Plotting models...')  
+            for ax, model_name in zip(axs.flatten(), self.model_names):
+                if tag in self.models[model_name].columns:
+                    ax.plot(self.models[model_name].index, self.models[model_name][tag], 
+                            color=model_colors[model_name], label=model_name, linewidth=2)
+                
+                model_label_box = dict(facecolor=model_colors[model_name], 
+                                       edgecolor=model_colors[model_name], 
+                                       pad=0.1, boxstyle='round')
+               
+                ax.text(0.01, 0.95, model_name, color='black',
+                        horizontalalignment='left', verticalalignment='top',
+                        bbox = model_label_box,
+                        transform = ax.transAxes)
+            
+            fig.text(0.5, 0.025, 'Day of Year {:.0f}'.format(starttime.year), ha='center', va='center')
+            fig.text(0.025, 0.5, plot_kw['ylabel'], ha='center', va='center', rotation='vertical')
+            
+            tick_interval = int((stoptime - starttime).days/10.)
+            subtick_interval = int(tick_interval/5.)
+            
+            axs[0,0].set_xlim((starttime, stoptime))
+            axs[0,0].xaxis.set_major_locator(mdates.DayLocator(interval=tick_interval))
+            if subtick_interval > 0:
+                axs[0,0].xaxis.set_minor_locator(mdates.DayLocator(interval=subtick_interval))
+            axs[0,0].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
+            
+            # #  Trying to set up year labels, showing the year once at the start
+            # #  and again every time it changes
+            # ax_year = axs[-1].secondary_xaxis(-0.15)
+            # ax_year.set_xticks([axs[-1].get_xticks()[0]])
+            # ax_year.visible=False
+            # ax_year.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+            
+            fig.align_ylabels()
+            # for suffix in ['.png', '.pdf']:
+            #     plt.savefig('figures/' + save_filestem, dpi=300, bbox_inches='tight')
+            plt.show()
+            #return models
