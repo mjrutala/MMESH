@@ -2373,12 +2373,15 @@ def run_SolarWindEMF():
     import sys
     sys.path.append('/Users/mrutala/projects/SolarWindEM/')
     import SolarWindEMF as swemf
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import plot_TaylorDiagram as TD
     
-    spacecraft_name = 'Juno'
+    spacecraft_name = 'Ulysses' # 'Juno'
     model_names = ['Tao', 'HUXt', 'ENLIL']
     
-    starttime = dt.datetime(2016, 5, 1)
-    stoptime = dt.datetime(2016, 7, 1)
+    starttime = dt.datetime(1997,8,14) # dt.datetime(1991,12,8) # dt.datetime(2016, 5, 1)
+    stoptime = dt.datetime(1998,1,1) # dt.datetime(1992,2,2) # dt.datetime(2016, 7, 1)
     
     reference_frame = 'SUN_INERTIAL'
     observer = 'SUN'
@@ -2404,7 +2407,7 @@ def run_SolarWindEMF():
     smoothing_widths = {'Tao':      4,
                         'HUXt':     2,
                         'ENLIL':    2,
-                        'Juno':     6}  #  hours
+                        'Ulysses':  12} #'Juno':     6}  #  hours
     traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3)
     
     traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
@@ -2418,7 +2421,53 @@ def run_SolarWindEMF():
     
     #temp = test.ensemble()
     
+    #  Shifts should be a dict, only apply to models
     traj0.warp('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6))
+    
+    ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
+    plot_kw = {'yscale': 'linear', 'ylim': (0, 60),
+                'yticks': np.arange(350,550+50,100)}
+    
+    ref_std = np.nanstd(traj0.data['u_mag'])
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, ax = TD.plot_TaylorDiagram_fromstats(ref_std)
+    
+    x_max = ref_std
+    for model_name in traj0.model_names:
+        max_indx = np.argmax(traj0.model_dtw_stats[model_name]['r'])
+        
+        (r, std), rmse = TD.find_TaylorStatistics(traj0.models[model_name]['u_mag'].to_numpy('float64'), 
+                                                  traj0.data['u_mag'].to_numpy('float64'))
+        if std > x_max: x_max = std
+        print(model_name, r, std)
+        baseline_plot = ax.scatter(np.arccos(r), std, 
+                                   marker=model_symbols[model_name], s=36, c='black',
+                                   zorder=1)
+        
+        warped_stat_plot = ax.scatter(np.arccos(traj0.model_dtw_stats[model_name]['r'].iloc[max_indx]), 
+                                      traj0.model_dtw_stats[model_name]['stddev'].iloc[max_indx], 
+                                      marker=model_symbols[model_name], s=36, c=model_colors[model_name],
+                                      zorder=1,
+                                      label=model_name)
+              
+    ax.set_ylim([0, 1.25*x_max])
+        
+    ax.text(0.5, 0.9, ylabel,
+            horizontalalignment='center', verticalalignment='top',
+            transform = ax.transAxes)
+    ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.5)
+    ax.set_axisbelow(True)
+        
+    extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+    extent = extent.expanded(1.0, 1.0)
+    extent.intervalx = extent.intervalx + 0.4
+
+    savefile_stem = 'TD_Combined_Baseline_Warp_u_mag'
+    for suffix in ['.png']:
+        plt.savefig('figures/' + savefile_stem, dpi=300, bbox_inches=extent)
+    plt.show()            
+        
+        
     return traj0
     
     
