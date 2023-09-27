@@ -434,10 +434,12 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
         plt.show()
         spice.kclear()
         
-def plot_FullSpacecraftTrajectory(spacecraft_spans):
+def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
     import copy
     import spiceypy as spice
     import spacecraftdata as SpacecraftData
+    from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
+
     
     # =========================================================================
     #   Would-be inputs
@@ -466,16 +468,51 @@ def plot_FullSpacecraftTrajectory(spacecraft_spans):
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig, axs = plt.subplots(ncols=2, figsize=(8,4)) # subplot_kw={'projection': 'polar'}
         plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, wspace=0.3, hspace=0.05)
-            
+        
+        delta_r_TS = []
+        delta_r_TE = []
+        delta_lon_TSE = []
+        delta_lat_TSE = []
+        delta_lon_TSJ = []
+        delta_lat_TSJ = []
         for sc in spacecraft_list:
-            #  For each spacecraft, get the positions of Earth and Jupiter
-            times = [spice.datetime2et(t) for t in sc.data.index]
+            #   Convert full data range to ets
+            times_total = [spice.datetime2et(t) for t in sc.data.index]
             
-            ert_pos, ear_lt = spice.spkpos('EARTH BARYCENTER', times, frame1, 'NONE', observer1)
-            ert_pos /= sc.au_to_km
+            #  Limit plotted points based on position w.r.t. solar latitude
+            #   and Jovian radius (this *should* be a magnetopause/bow shock model at some point)
+            sc_sun_frame = copy.deepcopy(sc)
+            sc_sun_frame.find_state('SUN_INERTIAL', 'SOLAR SYSTEM BARYCENTER', keep_kernels=True)
+            sc_sun_frame.find_subset(coord1_range=np.array(r_range)*sc.au_to_km,
+                                     coord3_range=np.array(lat_range)*np.pi/180., 
+                                     transform='reclat')
             
-            jup_pos, jup_lt = spice.spkpos('JUPITER BARYCENTER', times, frame1, 'NONE', observer1)
-            jup_pos /= sc.au_to_km
+            sc_jup_frame = copy.deepcopy(sc_sun_frame)
+            sc_jup_frame.find_state(frame2, observer2, keep_kernels=True)
+            sc_jup_frame.find_subset(coord1_range=np.array([120, np.inf])*71492.,
+                              transform='reclat')
+            
+            sc_in_sw = sc.data.reindex(sc_jup_frame.data.index)
+            times_in_sw = [spice.datetime2et(t) for t in sc_in_sw.index]
+            
+            # =============================================================================
+            #   Get the delta longitude and delta latitude for target-sun-[Earth/Jupiter]
+            # =============================================================================
+            eth_pos, eth_lt = spice.spkpos('EARTH BARYCENTER', times_in_sw, 'SUN_INERTIAL', 'NONE', 'SUN')
+            eth_pos_rlonlat = np.array([spice.reclat(pos) for pos in eth_pos])
+            
+            jup_pos, jup_lt = spice.spkpos('JUPITER BARYCENTER', times_in_sw, 'SUN_INERTIAL', 'NONE', 'SUN')
+            jup_pos_rlonlat = np.array([spice.reclat(pos) for pos in jup_pos])
+            
+            trg_pos, trg_lt = spice.spkpos(str(sc.SPICE_ID), times_in_sw, 'SUN_INERTIAL', 'NONE', 'SUN')
+            trg_pos_rlonlat = np.array([spice.reclat(pos) for pos in trg_pos])
+            
+            delta_r_TS.append(trg_pos_rlonlat[:,0]/sc.au_to_km)
+            delta_lon_TSE.append(np.abs(trg_pos_rlonlat[:,1] - eth_pos_rlonlat[:,1])*180/np.pi)
+            delta_lat_TSE.append(np.abs(trg_pos_rlonlat[:,2] - eth_pos_rlonlat[:,2])*180/np.pi)
+            delta_lon_TSJ.append(np.abs(trg_pos_rlonlat[:,1] - jup_pos_rlonlat[:,1])*180/np.pi)
+            delta_lat_TSJ.append(np.abs(trg_pos_rlonlat[:,2] - jup_pos_rlonlat[:,2])*180/np.pi)
+                
             
             xyz_in_AU = np.array([np.array(row[['x_pos', 'y_pos', 'z_pos']]).astype('float64')
                                   for indx, row in sc.data.iterrows()]) / sc.au_to_km 
@@ -487,14 +524,21 @@ def plot_FullSpacecraftTrajectory(spacecraft_spans):
                                      coord3_range=np.array(lat_range)*np.pi/180., 
                                      transform='reclat')
             
-            sc_in_sw = sc.data.reindex(sc_sun_frame.data.index)
+            sc_jup_frame = copy.deepcopy(sc_sun_frame)
+            sc_jup_frame.find_state(frame2, observer2, keep_kernels=True)
+            sc_jup_frame.find_subset(coord1_range=np.array([120, np.inf])*71492.,
+                              transform='reclat')
+            
+            sc_in_sw = sc.data.reindex(sc_jup_frame.data.index)
             xyz_sw = sc_in_sw[['x_pos', 'y_pos', 'z_pos']].to_numpy(dtype='float64') / sc.au_to_km
             
-            axs[0].plot(ert_pos[:,0], ert_pos[:,1], label='Earth', 
-                        color='xkcd:kelly green', marker='o', markersize=0.25, linestyle='None', zorder=-1)
+            # #   Plot the Earth's orbit
+            # axs[0].plot(ert_pos[:,0], ert_pos[:,1], label='Earth', 
+            #             color='xkcd:kelly green', marker='o', markersize=0.25, linestyle='None', zorder=-1)
             
-            axs[0].plot(jup_pos[:,0], jup_pos[:,1], label='Jupiter', 
-                        color='xkcd:peach', marker='o', markersize=0.25, linestyle='None', zorder=-1)
+            # #   Plot Jupiter's orbit
+            # axs[0].plot(jup_pos[:,0], jup_pos[:,1], label='Jupiter', 
+            #             color='xkcd:peach', marker='o', markersize=0.25, linestyle='None', zorder=-1)
             
             axs[0].plot(xyz_in_AU[:,0], xyz_in_AU[:,1], 
                       label=sc.name, linewidth=1, color='gray', alpha=0.5, zorder=0)
@@ -504,6 +548,7 @@ def plot_FullSpacecraftTrajectory(spacecraft_spans):
                       label=sc.name, color=pc.spacecraft_colors[sc.name], 
                       markersize=3, linewidth=9, linestyle='None',
                       marker=pc.spacecraft_markers[sc.name], zorder=1)
+            
     
     #  Get positions for spacecraft relative to observer2/frame2
     spacecraft_list = []
@@ -567,8 +612,195 @@ def plot_FullSpacecraftTrajectory(spacecraft_spans):
         plt.savefig('figures/' + figurename + suffix, bbox_inches='tight', dpi=300)
     plt.show()
     
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, axs = plt.subplots(ncols=2, nrows=3, figsize=(8,8))
+        
+        axs[0,0].hist(delta_r_TS, bins=12, range=r_range, histtype='bar', stacked=True,
+                      label=spacecraft_names)
+        axs[1,0].set(xlim=r_range, xlabel='Target-Sun-Jupiter Lon. [deg.]',
+                   ylabel='Spacecraft Measurements [hours]')
+        axs[1,0].xaxis.set_minor_locator(MultipleLocator(0.2))
+        
+        axs[1,0].hist(delta_lon_TSJ, bins=18, range=[0,180], histtype='bar', stacked=True,
+                    label=spacecraft_names)
+        axs[1,0].set(xlim=[0,180], xlabel='Target-Sun-Jupiter Lon. [deg.]', 
+                   xticks=[0, 60, 120, 180],
+                   ylabel='Spacecraft Measurements [hours]')
+        axs[1,0].xaxis.set_minor_locator(MultipleLocator(10))
+        
+        axs[1,1].hist(delta_lat_TSJ, bins=30, range=[0,15], histtype='bar', stacked=True,
+                    label=spacecraft_names)
+        axs[1,1].set(xlim=[0,15], xlabel='Target-Sun-Jupiter Lat. [deg.]', 
+                   xticks=[0, 5, 10, 15])
+        axs[1,1].xaxis.set_minor_locator(MultipleLocator(0.5))
+        
+        axs[2,0].hist(delta_lon_TSE, bins=18, range=[0,180], histtype='bar', stacked=True,
+                    label=spacecraft_names)
+        axs[2,0].set(xlim=[0,180], xlabel='Target-Sun-Earth Lon. [deg.]',
+                   xticks=[0, 60, 120, 180],
+                   ylabel='Spacecraft Measurements [hours]')
+        axs[2,0].xaxis.set_minor_locator(MultipleLocator(10))
+        
+        axs[2,1].hist(delta_lat_TSE, bins=30, range=[0,15], histtype='bar', stacked=True,
+                    label=spacecraft_names)
+        axs[2,1].set(xlim=[0,15], xlabel='Target-Sun-Earth Lat. [deg.]',
+                   xticks=[0, 5, 10, 15])
+        axs[2,1].xaxis.set_minor_locator(MultipleLocator(0.5))
+        
+        handles, labels = axs[0,0].get_legend_handles_labels()
+        fig.legend(handles, labels, ncols=3,
+                   bbox_to_anchor=[0.15, 0.92, 0.7, .08], loc='lower left',
+                  mode="expand", borderaxespad=0.)
+        
+    figurename = 'Used_Spacecraft_Trajectory_Histogram'
+    for suffix in ['.png']:
+        plt.savefig('figures/' + figurename + suffix, bbox_inches='tight', dpi=300)
+    plt.show()
+    plt.show()
+    
     return
     
+def plot_FullSpacecraftTrajectory_Stationary(spacecraft_spans):
+    import copy
+    import spiceypy as spice
+    import spacecraftdata as SpacecraftData
+    
+    # =========================================================================
+    #   Would-be inputs
+    # =========================================================================
+    spacecraft_names = list(spacecraft_spans.keys())
+    
+    observer1 = 'Solar System Barycenter'
+    frame1 = 'ECLIPJ2000'
+    observer2 = 'JUPITER BARYCENTER'
+    frame2 = 'JUPITER_JSS' 
+    
+    spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
+    
+    sr = 5 #sr == sample rate for scatter plots
+    
+    #  Get positions for spacecraft relative to observer1/frame1
+    spacecraft_list = []
+    for name in spacecraft_names:
+        sc = SpacecraftData.SpacecraftData(name)
+        sc.make_timeseries(*spacecraft_spans[sc.name])
+        sc.find_state(frame1, observer1, keep_kernels=True)
+        
+        spacecraft_list.append(sc)
+    spice.furnsh(spacecraft_list[0].SPICE_METAKERNEL_PLANETARY)
+    
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, axs = plt.subplots(ncols=2, figsize=(8,4)) # subplot_kw={'projection': 'polar'}
+        plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, wspace=0.3, hspace=0.05)
+            
+        for sc in spacecraft_list:
+            #  For each spacecraft, get the positions of Earth and Jupiter
+            times = [spice.datetime2et(t) for t in sc.data.index]
+            
+            xyz_in_AU = np.array([np.array(row[['x_pos', 'y_pos', 'z_pos']]).astype('float64')
+                                  for indx, row in sc.data.iterrows()]) / sc.au_to_km 
+            
+            #  Limit plotted points based on position w.r.t. solar latitude
+            sc_sun_frame = copy.deepcopy(sc)
+            sc_sun_frame.find_state('SUN_INERTIAL', 'SOLAR SYSTEM BARYCENTER', keep_kernels=True)
+            sc_sun_frame.find_subset(coord1_range=np.array(r_range)*sc.au_to_km,
+                                     coord3_range=np.array(lat_range)*np.pi/180., 
+                                     transform='reclat')
+            
+            sc_jup_frame = copy.deepcopy(sc_sun_frame)
+            sc_jup_frame.find_state(frame2, observer2, keep_kernels=True)
+            sc_jup_frame.find_subset(coord1_range=np.array([120, np.inf])*71492.,
+                              transform='reclat')
+            
+            sc_in_sw = sc.data.reindex(sc_jup_frame.data.index)
+            xyz_sw = sc_in_sw[['x_pos', 'y_pos', 'z_pos']].to_numpy(dtype='float64') / sc.au_to_km
+            
+            planet_pos_times = [spice.datetime2et(t) for t in sc_in_sw.index]
+            
+            ert_pos, ear_lt = spice.spkpos('EARTH BARYCENTER', planet_pos_times, frame1, 'NONE', observer1)
+            ert_pos /= sc.au_to_km
+            
+            jup_pos, jup_lt = spice.spkpos('JUPITER BARYCENTER', planet_pos_times, frame1, 'NONE', observer1)
+            jup_pos /= sc.au_to_km
+            
+            # axs[0].plot(ert_pos[:,0], ert_pos[:,1], label='Earth', 
+            #             color='xkcd:kelly green', marker='o', markersize=0.25, linestyle='None', zorder=-1)
+            
+            # axs[0].plot(jup_pos[:,0], jup_pos[:,1], label='Jupiter', 
+            #             color='xkcd:peach', marker='o', markersize=0.25, linestyle='None', zorder=-1)
+            
+            axs[0].plot(xyz_in_AU[:,0], xyz_in_AU[:,1], 
+                      label=sc.name, linewidth=1, color='gray', alpha=0.2, zorder=0)
+            # axs[0].plot(xyz_sw[:,0], xyz_sw[:,1], 
+            #           label=sc.name, linewidth=1, color=pc.spacecraft_colors[sc.name])
+            axs[0].plot(xyz_sw[::sr*4,0], xyz_sw[::sr*4,1], 
+                      label=sc.name, color=pc.spacecraft_colors[sc.name], 
+                      markersize=3, linewidth=9, linestyle='None',
+                      marker=pc.spacecraft_markers[sc.name], zorder=1)
+    
+    #  Get positions for spacecraft relative to observer2/frame2
+    spacecraft_list = []
+    for name in spacecraft_names:
+        sc = SpacecraftData.SpacecraftData(name)
+        sc.make_timeseries(*spacecraft_spans[sc.name], dt.timedelta(hours=12))
+        sc.find_state(frame2, observer2, keep_kernels=True)
+        
+        spacecraft_list.append(sc)
+        
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        for sc in spacecraft_list:
+            #  For each spacecraft, get the positions of Earth and Jupiter
+            times = [spice.datetime2et(t) for t in sc.data.index]
+            
+            xyz_in_RJ = np.array([np.array(row[['x_pos', 'y_pos', 'z_pos']]).astype('float64')
+                                  for indx, row in sc.data.iterrows()]) / 71492.
+            
+            #sc.find_subset(coord1_range=np.array(r_range)*sc.au_to_km,
+                           #coord3_range=np.array(lat_range)*np.pi/180., 
+            #                  transform='reclat')
+            sc.find_subset(coord1_range=np.array([120, np.inf])*71492.,
+                              transform='reclat')
+            
+            xyz_sw = sc.data[['x_pos', 'y_pos', 'z_pos']].to_numpy(dtype='float64') / 71492.
+            
+            axs[1].plot(xyz_in_RJ[:,0], xyz_in_RJ[:,1], 
+                      linewidth=1, color='gray', alpha=0.2, zorder=0)  
+            
+            axs[1].plot(xyz_sw[::sr,0], xyz_sw[::sr,1], 
+                      label=sc.name, color=pc.spacecraft_colors[sc.name], 
+                      markersize=3, linewidth=9, linestyle='None',
+                      marker=pc.spacecraft_markers[sc.name], zorder=1)
+        
+        axs[0].set(xlim=[-6,6], xlabel='JSS X [AU]',
+                   ylim=[-6,6], ylabel='JSS Y [AU]',
+                   aspect=1)
+        axs[0].text(0.05, 0.95, '(a)', 
+                    horizontalalignment='center',
+                    verticalalignment='center',
+                    transform = axs[0].transAxes)
+
+        
+        axs[1].set(xlim=[-600,600], xlabel=r'JSS X [R$_\mathrm{J}$]',
+                   ylim=[-600,600], ylabel=r'JSS Y [R$_\mathrm{J}$]',
+                   aspect=1)
+        axs[1].text(0.05, 0.95, '(b)', 
+                    horizontalalignment='center',
+                    verticalalignment='center',
+                    transform = axs[1].transAxes)
+        
+        handles, labels = axs[1].get_legend_handles_labels()
+        fig.legend(handles, labels, ncols=3, markerscale=2,
+                   bbox_to_anchor=[0.15, 0.92, 0.7, .08], loc='lower left',
+                   mode="expand", borderaxespad=0.)
+        
+    spice.kclear()
+    
+    figurename = 'Full_Spacecraft_Trajectory'
+    for suffix in ['.png', '.pdf']:
+        plt.savefig('figures/' + figurename + suffix, bbox_inches='tight', dpi=300)
+    plt.show()
+    
+    return
     
 def plot_spacecraft_spatial_coverage():
     import matplotlib.pyplot as plt
