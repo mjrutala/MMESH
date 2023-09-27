@@ -127,6 +127,7 @@ def make_DerezzedData(*dfs, resolution=None):
         case str():
             #  As long as the input is a string, use resample
             for df in dfs:
+                print(type(df.index))
                 resample = df.resample(resolution).mean()
                 result_list.append(resample)
             
