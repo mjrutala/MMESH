@@ -23,12 +23,14 @@ model_colors = {'Tao'    : '#C59FE5',
                 'HUXt'   : '#A0A5E4',
                 'SWMF-OH': '#98DBEB',
                 'MSWIM2D': '#A9DBCA',
-                'ENLIL'  : '#DCED96'}
+                'ENLIL'  : '#DCED96',
+                'ensemble': '#55FFFF'}
 model_symbols = {'Tao'    : 'v',
                 'HUXt'   : '*',
                 'SWMF-OH': '^',
                 'MSWIM2D': 'd',
-                'ENLIL'  : 'h'}
+                'ENLIL'  : 'h',
+                'ensemble': 'o'}
 
 r_range = np.array((4.9, 5.5))  #  [4.0, 6.4]
 lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
@@ -2377,11 +2379,11 @@ def run_SolarWindEMF():
     import matplotlib.pyplot as plt
     import plot_TaylorDiagram as TD
     
-    spacecraft_name = 'Ulysses' # 'Juno'
+    spacecraft_name = 'Juno' # 'Ulysses'
     model_names = ['Tao', 'HUXt', 'ENLIL']
     
-    starttime = dt.datetime(1997,8,14) # dt.datetime(1991,12,8) # dt.datetime(2016, 5, 1)
-    stoptime = dt.datetime(1998,1,1) # dt.datetime(1992,2,2) # dt.datetime(2016, 7, 1)
+    starttime = dt.datetime(2016, 5, 1) # dt.datetime(1997,8,14) # dt.datetime(1991,12,8) # 
+    stoptime = dt.datetime(2016, 7, 1) # dt.datetime(1998,1,1) # dt.datetime(1992,2,2) # 
     
     reference_frame = 'SUN_INERTIAL'
     observer = 'SUN'
@@ -2407,15 +2409,54 @@ def run_SolarWindEMF():
     smoothing_widths = {'Tao':      4,
                         'HUXt':     2,
                         'ENLIL':    2,
-                        'Ulysses':  12} #'Juno':     6}  #  hours
+                        'Juno':     6} # 'Ulysses':  12}   #  hours
     traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3)
     
     traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
     traj0.plot_SingleTimeseries('jumps', starttime, stoptime)
     
+    # traj0.ensemble()
+    # traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
+    # traj0.plot_SingleTimeseries('jumps', starttime, stoptime)
     
+    # stats = traj0.baseline()
     
-    #return traj0
+    # ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
+    # plot_kw = {'yscale': 'linear', 'ylim': (0, 60),
+    #             'yticks': np.arange(350,550+50,100)}
+    # ref_std = stats['Tao']['u_mag'][0]
+    # with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+    #     fig, ax = TD.plot_TaylorDiagram_fromstats(ref_std)
+    
+    # x_max = ref_std
+    # for model_name in traj0.model_names:
+        
+    #     r = stats[model_name]['u_mag'][2]
+    #     std = stats[model_name]['u_mag'][1]
+    #     if std > x_max: x_max = std
+    #     print(model_name, r, std)
+    #     baseline_plot = ax.scatter(np.arccos(r), std, 
+    #                                 marker=model_symbols[model_name], s=36, c=model_colors[model_name],
+    #                                 zorder=10, label=model_name)
+              
+    # ax.set_ylim([0, 1.25*x_max])
+        
+    # ax.text(0.5, 0.9, ylabel,
+    #         horizontalalignment='center', verticalalignment='top',
+    #         transform = ax.transAxes)
+    # ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.5)
+    # ax.set_axisbelow(True)
+        
+    # extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+    # extent = extent.expanded(1.0, 1.0)
+    # extent.intervalx = extent.intervalx + 0.4
+
+    # savefile_stem = 'TD_Combined_Baseline_u_mag_Ulysses'
+    # for suffix in ['.png']:
+    #     plt.savefig('figures/' + savefile_stem, dpi=300, bbox_inches=extent)
+    # plt.show()            
+    
+    # return stats
 
     #baseline_test = traj0.baseline()
     
@@ -2462,15 +2503,44 @@ def run_SolarWindEMF():
     extent = extent.expanded(1.0, 1.0)
     extent.intervalx = extent.intervalx + 0.4
 
-    savefile_stem = 'TD_Combined_Baseline_Warp_u_mag'
+    savefile_stem = 'TD_Combined_Baseline_Warp_u_mag_Ulysses'
     for suffix in ['.png']:
         plt.savefig('figures/' + savefile_stem, dpi=300, bbox_inches=extent)
     plt.show()            
+    
+    nmodels = len(traj0.model_names)
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, axs = plt.subplots(figsize=(12,6), ncols=2*nmodels, width_ratios=[3,1]*nmodels, sharey=True)
         
+    for ax_no, model_name in enumerate(traj0.model_names):
+        cols = traj0.model_dtw_times[model_name].columns
         
+        for counter, col in enumerate(reversed(cols)):
+            histo = np.histogram(traj0.model_dtw_times[model_name][col]/3600., range=[-96,96], bins=int(192*0.5))
+            total = float(len(traj0.model_dtw_times[model_name][col]))  #  normalization 
+            
+            #  Offset y based on the shift value of the column
+            #  Normalize histogram area to 1 (i.e. density), then enlarge so its visible
+            y_offset = float(col)
+            norm_factor = (1./float(len(traj0.model_dtw_times[model_name][col]))) * 200.
+            
+            axs[ax_no*2].plot(histo[1][:-1]+3, histo[0]*norm_factor + y_offset)
+            axs[ax_no*2].fill_between(histo[1][:-1]+3, histo[0]*norm_factor + y_offset, y_offset, alpha=0.6)
+            
+        axs[ax_no*2+1].plot(traj0.model_dtw_stats[model_name]['r'], np.array(cols, dtype='float64'),
+                            marker='o')
+        
+        axs[ax_no*2].set_ylim([-96-2, 96+6+2])
+        axs[ax_no*2].set_yticks(np.linspace(-96, 96, 9))
+        axs[ax_no*2+1].set_ylim([-96-2, 96+6+2])
+        axs[ax_no*2+1].set_yticklabels([])
+        
+    axs[0].set_yticklabels(np.linspace(-96, 96, 9))
+    plt.show()
+    
     return traj0
     
-    
+    plt.show()
 #     #==========================
 #     #  Load spacecraft data
 #     starttime = dt.datetime(1991, 12, 8)
