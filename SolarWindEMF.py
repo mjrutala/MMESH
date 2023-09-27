@@ -20,12 +20,14 @@ model_colors = {'Tao'    : '#C59FE5',
                 'HUXt'   : '#A0A5E4',
                 'SWMF-OH': '#98DBEB',
                 'MSWIM2D': '#A9DBCA',
-                'ENLIL'  : '#DCED96'}
+                'ENLIL'  : '#DCED96',
+                'ensemble': '#55FFFF'}
 model_symbols = {'Tao'    : 'v',
                 'HUXt'   : '*',
                 'SWMF-OH': '^',
                 'MSWIM2D': 'd',
-                'ENLIL'  : 'h'}
+                'ENLIL'  : 'h',
+                'ensemble': 'o'}
 
 """
 How I imagine this framework to work:
@@ -190,22 +192,22 @@ class Trajectory:
         import pandas as pd
         
         models_stats = {}
-        for model_name, model_df in self.model_dfs.items():
+        for model_name in self.model_names:
             
             model_stats = {}
             for m_tag in self.metric_tags:
                 
                 #  Find overlap between data and this model, ignoring NaNs
-                i1 = self.spacecraft_df.dropna(subset=[m_tag]).index
-                i2 = model_df.dropna(subset=[m_tag]).index
+                i1 = self.data.dropna(subset=[m_tag]).index
+                i2 = self.models[model_name].dropna(subset=[m_tag]).index
                 intersection_indx = i1.intersection(i2) 
                 
                 if len(intersection_indx) > 2:
                     #  Calculate r (corr. coeff.) and both standard deviations
-                    r, pvalue = scipy.stats.pearsonr(self.spacecraft_df[m_tag].loc[intersection_indx],
-                                             model_df[m_tag].loc[intersection_indx])
-                    model_stddev = np.std(model_df[m_tag].loc[intersection_indx])
-                    spacecraft_stddev = np.std(self.spacecraft_df[m_tag].loc[intersection_indx])
+                    r, pvalue = scipy.stats.pearsonr(self.data[m_tag].loc[intersection_indx],
+                                                     self.models[model_name][m_tag].loc[intersection_indx])
+                    model_stddev = np.std(self.models[model_name][m_tag].loc[intersection_indx])
+                    spacecraft_stddev = np.std(self.data[m_tag].loc[intersection_indx])
                 else:
                     r = 0
                     model_stddev = 0
@@ -215,7 +217,7 @@ class Trajectory:
                 
             models_stats[model_name] = model_stats
         
-        return (models_stats)
+        return models_stats
     
     def binarize(self, parameter, smooth = 1, sigma = 3):
         from SWData_Analysis import find_Jumps
@@ -287,31 +289,64 @@ class Trajectory:
         return
     
     def ensemble(self, weights = None):
+        """
+        Produces an ensemble model from inputs.
+        
+        The stickiest part of this is considering the weights:
+            Potentially, each model, parameters, and timestep could have a unique weight
+            Model Weights: account for general relative performance of models
+            Parameters Weights: account for better performance of individual parameters within a model
+                i.e., Model 1 velocity may outperform Model 2, but Model 2 pressure may outperform Model 1
+            Timestep Weights: Certain models may relatively outperform others at specific times. 
+                Also allows inclusion of partial models, i.e., HUXt velocity but with 0 weight in pressure
+
+        Parameters
+        ----------
+        weights : TYPE, optional
+            DESCRIPTION. The default is None.
+
+        Returns
+        -------
+        None.
+
+        """
         import pandas as pd
+        from functools import reduce
         
-        weights_df = pd.DataFrame(columns = self.em_parameters)
+        #weights_df = pd.DataFrame(columns = self.em_parameters)
+        weights = dict.fromkeys(self.variables, 1.0/len(self.model_names))
         
-        if weights == None:
-            for model in self.model_names:
-                all_nans = ~self.model_dfs[model].isna().all()
-                overlap_col = list(set(all_nans.index) & set(weights_df.columns))
-                weights_df.loc[model] = all_nans[overlap_col].astype(int)
-                weights_df = weights_df.div(weights_df.sum())
+        # if weights == None:
+        #     for model in self.model_names:
+        #         all_nans = ~self.model_dfs[model].isna().all()
+        #         overlap_col = list(set(all_nans.index) & set(weights_df.columns))
+        #         weights_df.loc[model] = all_nans[overlap_col].astype(int)
+        #         weights_df = weights_df.div(weights_df.sum())
         
         # if dict, use dict
         # if list/array, assign to dict in order
         # if none, make dict with even weights
         
-        self.ensemble = pd.DataFrame(columns = self.em_parameters)
+        partials_list = []
+        for model_name in self.model_names:
+            df = self.models[model_name][self.variables].mul(weights, fill_value=0.)
+            partials_list.append(df)
         
-        for model, model_df in self.model_dfs.items(): print(len(model_df))
+        ensemble = reduce(lambda a,b: a.add(b, fill_value=0.), partials_list)
         
-        for tag in self.em_parameters:
-            for model, model_df in self.model_dfs.items():
+        self.addModel('ensemble', ensemble)
+        #return ensemble 
+    
+        # self.ensemble = pd.DataFrame(columns = self.em_parameters)
+        
+        # for model, model_df in self.model_dfs.items(): print(len(model_df))
+        
+        # for tag in self.em_parameters:
+        #     for model, model_df in self.model_dfs.items():
                 
-                self.ensemble[tag] = weights_df[tag][model] * model_df[tag]
+        #         self.ensemble[tag] = weights_df[tag][model] * model_df[tag]
         
-        print(weights_df.div(weights_df.sum()))
+        # print(weights_df.div(weights_df.sum()))
         
         
     # =============================================================================
