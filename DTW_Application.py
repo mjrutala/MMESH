@@ -395,9 +395,15 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
                 if (pos == 0):
                     tick_str += '\n' + tick.strftime('%d %b')
                     tick_str += '\n' + tick.strftime('%Y')
-                    
-                if (tick.month > ticks[pos-1].month):
-                    tick_str += '\n' + tick.strftime('%d %b')
+                 
+                try:
+                    if (tick.month > ticks[pos-1].month):
+                        tick_str += '\n' + tick.strftime('%d %b')
+                except:
+                    print('FAILED')
+                    print(tick.month)
+                    print(pos-1)
+                    print(ticks[pos-1])
                     
                 if (tick.year > ticks[pos-1].year):
                     tick_str += '\n' + tick.strftime('%Y')
