@@ -125,6 +125,7 @@ class Trajectory:
         
         self.model_names = []
         self.model_dfs = {}
+        self.model_shift_stats = {}
         self.model_dtw_stats = {}
         self.model_dtw_times = {}
         
@@ -219,6 +220,37 @@ class Trajectory:
         
         return models_stats
     
+    def plot_TaylorDiagram(self, tag_name='', ax=None, **plt_kwargs):
+        import numpy as np
+        
+        import plot_TaylorDiagram as TD
+
+        #  If only _primary_df, then:
+        #    plot models with shapes and colors
+        #  If _primary_df and _secondary_df, then:
+        #    plot _primary_df with shapes in black
+        #    plot _seconday_df with shapts and colors
+        
+        if tag_name == '': tag_name = self._primary_df.columns[0][1]
+        
+        ref_data = self.data[tag_name].to_numpy(dtype='float64')
+        ref_std = np.nanstd(ref_data)
+        
+        fig, ax = TD.plot_TaylorDiagram_fromstats(ref_std, ax=ax, **plt_kwargs)
+        
+        #  Plot non-reference data
+        for model_name in self.model_names:
+            
+            model_nonan, ref_nonan = TD.make_NaNFree(self.models[model_name][tag_name].to_numpy(dtype='float64'), ref_data)
+
+            (r, std), rmsd = TD.find_TaylorStatistics(model_nonan, ref_nonan)
+            
+            ax.scatter(np.arccos(r), std, label=model_name,
+                       marker=model_symbols[model_name], s=72, c=model_colors[model_name],
+                       zorder=10)
+        
+        return (fig, ax)
+    
     def binarize(self, parameter, smooth = 1, sigma = 3):
         from SWData_Analysis import find_Jumps
         
@@ -237,9 +269,50 @@ class Trajectory:
         self._primary_df.sort_index(axis=1, inplace=True)
     
     def shift(self, basis_tag, metric_tag, shifts=[0]):
+        import plot_TaylorDiagram as TD
         
+        for model_name in self.model_names:
+            
+            stats = []
+            time_deltas = []
+            for shift in shifts:
+                
+                shift_model_df = self.models[model_name].copy(deep=True)
+                
+                shift_model_df.index += dt.timedelta(hours=int(shift))
+                
+                print(self.data, shift_model_df)
+                
+                shift_model_df = pd.concat([self.data, shift_model_df], axis=1,
+                                            keys=[self.spacecraft_name, model_name])
+                print(shift_model_df)
+                
+                model_nonan, ref_nonan = TD.make_NaNFree(shift_model_df[model_name][metric_tag].to_numpy(dtype='float64'), 
+                                                         shift_model_df[self.spacecraft_name][metric_tag].to_numpy(dtype='float64'))
+
+                (r, sig), rmsd = TD.find_TaylorStatistics(model_nonan, ref_nonan)
+                
+                stat = {'shift': [shift],
+                        'r': [r],
+                        'stddev': [sig],
+                        'rmsd': [rmsd]}
+                        # 'true_negative': cm[0,0],
+                        # 'true_positive': cm[1,1],
+                        # 'false_negative': cm[1,0],
+                        # 'false_positive': cm[0,1],
+                        # 'accuracy': accuracy,
+                        # 'precision': precision,
+                        # 'recall': recall,
+                        # 'f1_score': f1_score}
+                
+                
+                stats.append(pd.DataFrame.from_dict(stat))
+            
+            stats_df = pd.concat(stats, axis='index', ignore_index=True)
+            self.model_shift_stats[model_name] = stats_df
+            
         return
-        
+    
     def warp(self, basis_tag, metric_tag, shifts=[0]):
         import sys
         import DTW_Application as dtwa
