@@ -17,6 +17,8 @@ import matplotlib.pyplot as plt
 #!!!! This should be made to take as many arrays as you want
 def make_NaNFree(test_data, ref_data):
     
+    test_data = np.array(test_data)
+    ref_data = np.array(ref_data)
 
     nans_test = np.isnan(test_data)
     
@@ -149,12 +151,13 @@ def plot_TaylorDiagram_fromstats(ref_std, ax=None, **plt_kwargs):
             x2 = x + (ref_std)
             y2 = y #  Reference point is on y=0 by definition
             ax.plot(np.arctan2(y2,x2), np.sqrt(x2**2 + y2**2), color='gray', linestyle=':')
+        ax.set_rlim([0, 2.0*ref_std])
         
         #plt.autoscale(True)
         #ax.set_position([0.5, -6.5, 14, 14])
         # Show plot
         #plt.show()
-    
+        
     return(fig, ax)
 
 def example_TaylorDiagram():
