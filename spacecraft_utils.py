@@ -507,13 +507,18 @@ def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
             trg_pos, trg_lt = spice.spkpos(str(sc.SPICE_ID), times_in_sw, 'SUN_INERTIAL', 'NONE', 'SUN')
             trg_pos_rlonlat = np.array([spice.reclat(pos) for pos in trg_pos])
             
-            delta_r_TS.append(trg_pos_rlonlat[:,0]/sc.au_to_km)
-            delta_lon_TSE.append(np.abs(trg_pos_rlonlat[:,1] - eth_pos_rlonlat[:,1])*180/np.pi)
-            delta_lat_TSE.append(np.abs(trg_pos_rlonlat[:,2] - eth_pos_rlonlat[:,2])*180/np.pi)
-            delta_lon_TSJ.append(np.abs(trg_pos_rlonlat[:,1] - jup_pos_rlonlat[:,1])*180/np.pi)
-            delta_lat_TSJ.append(np.abs(trg_pos_rlonlat[:,2] - jup_pos_rlonlat[:,2])*180/np.pi)
-                
+            del_lon_TSE = np.abs(trg_pos_rlonlat[:,1] - eth_pos_rlonlat[:,1])*180/np.pi
+            del_lat_TSE = np.abs(trg_pos_rlonlat[:,2] - eth_pos_rlonlat[:,2])*180/np.pi
+            del_lon_TSJ = np.abs(trg_pos_rlonlat[:,1] - jup_pos_rlonlat[:,1])*180/np.pi
+            del_lat_TSJ = np.abs(trg_pos_rlonlat[:,2] - jup_pos_rlonlat[:,2])*180/np.pi
             
+            delta_r_TS.append(trg_pos_rlonlat[:,0]/sc.au_to_km)
+            delta_r_TE.append((trg_pos_rlonlat[:,0] - eth_pos_rlonlat[:,0])/sc.au_to_km)  #  Radial distance from Earth orbit to target (propagation distance)
+            delta_lon_TSE.append(np.abs((del_lon_TSE + 180) % 360 - 180))
+            delta_lat_TSE.append(np.abs((del_lat_TSE + 180) % 360 - 180))
+            delta_lon_TSJ.append(np.abs((del_lon_TSJ + 180) % 360 - 180))
+            delta_lat_TSJ.append(np.abs((del_lat_TSJ + 180) % 360 - 180))
+        
             xyz_in_AU = np.array([np.array(row[['x_pos', 'y_pos', 'z_pos']]).astype('float64')
                                   for indx, row in sc.data.iterrows()]) / sc.au_to_km 
             
@@ -613,39 +618,52 @@ def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
     plt.show()
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-        fig, axs = plt.subplots(ncols=2, nrows=3, figsize=(8,8))
+        fig, axs = plt.subplots(ncols=3, nrows=2, figsize=(8,5))
+        plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.9, wspace=0.225, hspace=0.075)
         
         axs[0,0].hist(delta_r_TS, bins=12, range=r_range, histtype='bar', stacked=True,
                       label=spacecraft_names)
-        axs[1,0].set(xlim=r_range, xlabel='Target-Sun-Jupiter Lon. [deg.]',
-                   ylabel='Spacecraft Measurements [hours]')
-        axs[1,0].xaxis.set_minor_locator(MultipleLocator(0.2))
+        axs[0,0].set(xlim=[3.8,5.6], xlabel='', xticklabels='')
+        axs[0,0].xaxis.set_minor_locator(MultipleLocator(0.05))
         
-        axs[1,0].hist(delta_lon_TSJ, bins=18, range=[0,180], histtype='bar', stacked=True,
+        axs[0,1].hist(delta_lon_TSJ, bins=18, range=[0,180], histtype='bar', stacked=True,
                     label=spacecraft_names)
-        axs[1,0].set(xlim=[0,180], xlabel='Target-Sun-Jupiter Lon. [deg.]', 
-                   xticks=[0, 60, 120, 180],
-                   ylabel='Spacecraft Measurements [hours]')
-        axs[1,0].xaxis.set_minor_locator(MultipleLocator(10))
+        axs[0,1].set(xlim=[0,180], xlabel='', xticklabels='',  
+                   xticks=[0, 60, 120, 180])
+        axs[0,1].xaxis.set_minor_locator(MultipleLocator(10))
         
-        axs[1,1].hist(delta_lat_TSJ, bins=30, range=[0,15], histtype='bar', stacked=True,
+        axs[0,2].hist(delta_lat_TSJ, bins=30, range=[0,15], histtype='bar', stacked=True,
                     label=spacecraft_names)
-        axs[1,1].set(xlim=[0,15], xlabel='Target-Sun-Jupiter Lat. [deg.]', 
+        axs[0,2].set(xlim=[0,15], xlabel='', xticklabels='', 
                    xticks=[0, 5, 10, 15])
-        axs[1,1].xaxis.set_minor_locator(MultipleLocator(0.5))
+        axs[0,2].xaxis.set_minor_locator(MultipleLocator(0.5))
         
-        axs[2,0].hist(delta_lon_TSE, bins=18, range=[0,180], histtype='bar', stacked=True,
-                    label=spacecraft_names)
-        axs[2,0].set(xlim=[0,180], xlabel='Target-Sun-Earth Lon. [deg.]',
-                   xticks=[0, 60, 120, 180],
-                   ylabel='Spacecraft Measurements [hours]')
-        axs[2,0].xaxis.set_minor_locator(MultipleLocator(10))
+        axs[1,0].hist(delta_r_TE, bins=15, range=[3.5, 5], histtype='bar', stacked=True,
+                      label=spacecraft_names)
+        axs[1,0].set(xlim=[3.8,5.6], xlabel=r'$\Delta$Distance [AU]')
+        axs[1,0].xaxis.set_minor_locator(MultipleLocator(0.1))
         
-        axs[2,1].hist(delta_lat_TSE, bins=30, range=[0,15], histtype='bar', stacked=True,
+        axs[1,1].hist(delta_lon_TSE, bins=18, range=[0,180], histtype='bar', stacked=True,
                     label=spacecraft_names)
-        axs[2,1].set(xlim=[0,15], xlabel='Target-Sun-Earth Lat. [deg.]',
+        axs[1,1].set(xlim=[0,180], xlabel=r'$\Delta$Longitude [deg.]',
+                   xticks=[0, 60, 120, 180])
+        axs[1,1].xaxis.set_minor_locator(MultipleLocator(10))
+        
+        axs[1,2].hist(delta_lat_TSE, bins=30, range=[0,15], histtype='bar', stacked=True,
+                    label=spacecraft_names)
+        axs[1,2].set(xlim=[0,15], xlabel=r'$\Delta$Latitude [deg.]',
                    xticks=[0, 5, 10, 15])
-        axs[2,1].xaxis.set_minor_locator(MultipleLocator(0.5))
+        axs[1,2].xaxis.set_minor_locator(MultipleLocator(0.5))
+        
+        axs[0,0].text(0.05, 0.9, '(a) TS', ha='left', va='center', transform=axs[0,0].transAxes)
+        axs[0,1].text(0.05, 0.9, '(b) TSJ', ha='left', va='center', transform=axs[0,1].transAxes)
+        axs[0,2].text(0.05, 0.9, '(c) TSJ', ha='left', va='center', transform=axs[0,2].transAxes)
+        axs[1,0].text(0.05, 0.9, '(d) TE', ha='left', va='center', transform=axs[1,0].transAxes)
+        axs[1,1].text(0.05, 0.9, '(e) TSE', ha='left', va='center', transform=axs[1,1].transAxes)
+        axs[1,2].text(0.05, 0.9, '(f) TSE', ha='left', va='center', transform=axs[1,2].transAxes)
+        
+        fig.supylabel('Spacecraft Measurements [hours]')
+        
         
         handles, labels = axs[0,0].get_legend_handles_labels()
         fig.legend(handles, labels, ncols=3,
@@ -658,7 +676,7 @@ def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
     plt.show()
     plt.show()
     
-    return
+    return delta_lon_TSJ
     
 def plot_FullSpacecraftTrajectory_Stationary(spacecraft_spans):
     import copy
