@@ -2391,20 +2391,34 @@ def run_SolarWindEMF():
     #  Load spacecraft data
     spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
     spacecraft.read_processeddata(starttime, stoptime, resolution='60Min')
-    # spacecraft.find_state(reference_frame, observer)
-    # spacecraft.find_subset(coord1_range=np.array(r_range)*spacecraft.au_to_km, 
-    #                        coord3_range=np.array(lat_range)*np.pi/180., 
-    #                        transform='reclat')
-            
+    
+    #!!!!
+    #  NEED ROBUST in-SW-subset TOOL! ADD HERE!
+    
+    #  Change start and stop times to reflect spacecraft limits-- with options padding
+    padding = dt.timedelta(days=8)
+    starttime = spacecraft.data.index[0] - padding
+    stoptime = spacecraft.data.index[-1] + padding
+    
+    #  Initialize a trajectory class and add the spacecraft data
     traj0 = swemf.Trajectory()
     traj0.addData(spacecraft_name, spacecraft.data)
     
-    #  Read models
+    #  Read models and add to trajectory
     for model_name in model_names:
         model = read_SWModel.choose(model_name, spacecraft_name, 
                                     starttime, stoptime, resolution='60Min')
         traj0.addModel(model_name, model)
-     
+    
+    #  FIRST TAYLOR DIAGRAM
+    fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag')
+    plt.show()
+    
+    shifts = np.arange(-96, 96+6, 6)
+    traj0.shift('jumps', 'u_mag', shifts=shifts)
+    
+    return traj0
+    
     #   Binarize the data and models
     smoothing_widths = {'Tao':      4,
                         'HUXt':     2,
