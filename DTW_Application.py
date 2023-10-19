@@ -254,8 +254,9 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
     # shift_reference_df.index = query_df.index
     
     # !!!! ADD support for open_end here
+    # N.B. SHIFTS are ADDED-- they are not lags
     shift_reference_df = reference_df.copy()
-    shift_reference_df.index = shift_reference_df.index - dt.timedelta(hours=float(shift))
+    shift_reference_df.index = shift_reference_df.index + dt.timedelta(hours=float(shift))
     shift_reference_df = shift_reference_df.reindex(query_df.index, method='nearest')        
      
     reference = shift_reference_df[basis_tag].to_numpy('float64')
@@ -305,7 +306,7 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
     t2 = query_df[metric_tag].to_numpy('float64')
     
     
-    (r, sig), rmse = TD.find_TaylorStatistics(t1, t2)
+    (r, sig), rmsd = TD.find_TaylorStatistics(t1, t2)
     #r = scipy.stats.pearsonr(t1, t2)[0]
     #sig = np.std(t1)
     
@@ -313,25 +314,36 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
         plot_DTWViews(query_df, shift_reference_df, shift, alignment, basis_tag, metric_tag,
                       model_name = model_name, spacecraft_name = spacecraft_name)    
     
-    d = {'shift': [shift],
-          'distance': [alignment.distance],
-          'normalizeddistance': [alignment.normalizedDistance],
-          'r': [r],
-          'stddev': [sig],
-          'rmse': [rmse],
-          'true_negative': cm[0,0],
-          'true_positive': cm[1,1],
-          'false_negative': cm[1,0],
-          'false_positive': cm[0,1],
-          'accuracy': accuracy,
-          'precision': precision,
-          'recall': recall,
-          'f1_score': f1_score}
-    
+    #  20231019: Alright, I'm 99% sure these are reporting shifts correctly
+    #   That is, a positive delta_t means you add that number to the model
+    #   datetime index to best match the data. Vice versa for negatives
     zeropoint = shift_reference_df.index[0]
     delta_t = np.interp(test_arr, np.arange(0, len(test_arr)), (shift_reference_df.index - zeropoint).total_seconds()) - (shift_reference_df.index - zeropoint).total_seconds()
-    delta_t = pd.DataFrame(data=delta_t, index=shift_reference_df.index, columns=['time_lag'])
+    delta_t = pd.DataFrame(data=delta_t/3600., index=shift_reference_df.index, columns=['time_lag'])
     #delta_t = shift_reference_df.index - shift_reference_df.index[0]
+    
+    width_68 = np.percentile(delta_t, 84) - np.percentile(delta_t, 16)
+    width_95 = np.percentile(delta_t, 97.5) - np.percentile(delta_t, 2.5)
+    width_997 = np.percentile(delta_t, 99.85) - np.percentile(delta_t, 0.15)
+    d = {'shift': [shift],
+         'distance': [alignment.distance],
+         'normalizeddistance': [alignment.normalizedDistance],
+         'r': [r],
+         'stddev': [sig],
+         'rmsd': [rmsd],
+         'true_negative': cm[0,0],
+         'true_positive': cm[1,1],
+         'false_negative': cm[1,0],
+         'false_positive': cm[0,1],
+         'accuracy': accuracy,
+         'precision': precision,
+         'recall': recall,
+         'f1_score': f1_score,
+         'width_68': [width_68],
+         'width_95': [width_95],
+         'width_997': [width_997]}
+    
+   
     
     return d, delta_t
 
