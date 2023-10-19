@@ -2371,19 +2371,21 @@ def test_DynamicTimeWarping():
    
 
 def run_SolarWindEMF():
+    import string
     
     import sys
     sys.path.append('/Users/mrutala/projects/SolarWindEM/')
-    import SolarWindEMF as swemf
+    import SolarWindEMF as mmesh
     import numpy as np
+    import scipy.stats as scstats
     import matplotlib.pyplot as plt
     import plot_TaylorDiagram as TD
     
     spacecraft_name = 'Juno' # 'Ulysses'
     model_names = ['Tao', 'HUXt', 'ENLIL']
     
-    starttime = dt.datetime(2016, 5, 1) # dt.datetime(1997,8,14) # dt.datetime(1991,12,8) # 
-    stoptime = dt.datetime(2016, 7, 1) # dt.datetime(1998,1,1) # dt.datetime(1992,2,2) # 
+    starttime = dt.datetime(2016, 5, 16) # dt.datetime(1997,8,14) # dt.datetime(1991,12,8) # 
+    stoptime = dt.datetime(2016, 6, 26) # dt.datetime(1998,1,1) # dt.datetime(1992,2,2) # 
     
     reference_frame = 'SUN_INERTIAL'
     observer = 'SUN'
@@ -2391,18 +2393,22 @@ def run_SolarWindEMF():
     #  Load spacecraft data
     spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
     spacecraft.read_processeddata(starttime, stoptime, resolution='60Min')
-    
+    spacecraft.find_state('ECLIPJ2000', 'SUN', keep_kernels=False)
+    return(spacecraft)
     #!!!!
     #  NEED ROBUST in-SW-subset TOOL! ADD HERE!
     
-    #  Change start and stop times to reflect spacecraft limits-- with options padding
+    #  Change start and stop times to reflect spacecraft limits-- with optional padding
     padding = dt.timedelta(days=8)
     starttime = spacecraft.data.index[0] - padding
     stoptime = spacecraft.data.index[-1] + padding
     
     #  Initialize a trajectory class and add the spacecraft data
-    traj0 = swemf.Trajectory()
+    traj0 = mmesh.Trajectory()
     traj0.addData(spacecraft_name, spacecraft.data)
+    
+    
+    # traj0.addTrajectory(x)
     
     #  Read models and add to trajectory
     for model_name in model_names:
@@ -2410,15 +2416,79 @@ def run_SolarWindEMF():
                                     starttime, stoptime, resolution='60Min')
         traj0.addModel(model_name, model)
     
-    #  FIRST TAYLOR DIAGRAM
-    fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag')
+    # =============================================================================
+    #   Plot a Taylor Diagram of the unchanged models
+    # =============================================================================
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag')
+    ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
     plt.show()
     
-    shifts = np.arange(-96, 96+6, 6)
-    traj0.shift('jumps', 'u_mag', shifts=shifts)
+    # =============================================================================
+    #   Optimize the models via constant temporal shifting
+    #   Then plot:
+    #       - The changes in correlation cooefficient 
+    #         (more generically, whatever combination is being optimized)
+    #       - The changes on a Taylor Diagram
+    # =============================================================================
+    shifts = np.arange(-96, 96+6, 6)    #  in hours
+    shift_stats = traj0.optimize_shifts('u_mag', shifts=shifts)
     
-    return traj0
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig1, axs1 = plt.subplots(nrows=3, sharex=True, sharey=True)
+        plt.subplots_adjust(hspace=0.1)
+        
+    for i, (model_name, ax1) in enumerate(zip(traj0.model_names, axs1)):
+        ax1.plot(shift_stats[model_name]['shift'], shift_stats[model_name]['r'],
+                color=model_colors[model_name])
+        
+        best_shift_indx = np.argmax(shift_stats[model_name]['r'])
+        shift, r, sig, rmsd = shift_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'rmsd']]
+        
+        ax1.axvline(shift, color='red', linestyle='--')
+        ax1.annotate('({:.0f}, {:.3f})'.format(shift, r), 
+                    (shift, r), xytext=(0.5, 0.5),
+                    textcoords='offset fontsize')
+        
+        label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
+        ax1.annotate(label, (0,1), xytext=(0.5, -0.5),
+                    xycoords='axes fraction', textcoords='offset fontsize',
+                    ha='left', va='top')
+        
+        ax1.set_ylim(-0.4, 0.6)
+        ax1.set_xlim(-102, 102)
+        ax1.set_xticks(np.arange(-96, 96+24, 24))
+        
+    fig.supxlabel('Temporal Shift [hours]')
+    fig.supylabel('Correlation Coefficient (r)')
     
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, ax = TD.plot_TaylorDiagram_fromstats(np.nanstd(traj0.data['u_mag']))
+    for model_name in traj0.model_names:
+        
+        ref = traj0.data['u_mag'].to_numpy(dtype='float64')
+        tst = traj0.models[model_name]['u_mag'].to_numpy(dtype='float64')  
+        (r, sig), rmsd = TD.find_TaylorStatistics(tst, ref)
+        
+        ax.scatter(np.arccos(r), sig, zorder=9, 
+                   s=72, c='black', marker=model_symbols[model_name],
+                   label=model_name)
+        
+        best_shift_indx = np.argmax(shift_stats[model_name]['r'])
+        shift, r, sig, rmsd = shift_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'rmsd']]
+        
+        ax.scatter(np.arccos(r), sig, zorder=10, 
+                   s=72, c=model_colors[model_name], marker=model_symbols[model_name],
+                   label=model_name + ' ' + str(shift) + ' h')
+    ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
+    
+    # =============================================================================
+    #   Optimize the models via dynamic time warping
+    #   Then plot:
+    #       - The changes in correlation cooefficient 
+    #         (more generically, whatever combination is being optimized)
+    #       - The changes on a Taylor Diagram
+    # =============================================================================
     #   Binarize the data and models
     smoothing_widths = {'Tao':      4,
                         'HUXt':     2,
@@ -2428,6 +2498,175 @@ def run_SolarWindEMF():
     
     traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
     traj0.plot_SingleTimeseries('jumps', starttime, stoptime)
+    
+    dtw_stats = traj0.optimize_warp('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
+    
+    plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
+    #with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+    fig1, axs1 = plt.subplots(nrows=3, sharex=True, sharey=True)
+    plt.subplots_adjust(hspace=0.1)
+    
+    # fig2, axs2 = plt.subplots(nrows=3, sharex=True, sharey=True)
+    # plt.subplots_adjust(hspace=0.1)
+    
+    fig3, axs3 = plt.subplots(nrows=3, sharex=True, sharey=False)
+    plt.subplots_adjust(hspace=0.1)
+    
+    best_shifts = {}
+    for i, (model_name, ax1, ax3) in enumerate(zip(traj0.model_names, axs1, axs3)):
+        ax1.plot(dtw_stats[model_name]['shift'], dtw_stats[model_name]['r'],
+                 color='C1')
+        ax11 = ax1.twinx()
+        #  Plot half the 68% width, or the quasi-1-sigma value, in hours
+        # ax11.plot(dtw_stats[model_name]['shift'], 6./(dtw_stats[model_name]['width_68']),
+        #           color='C3')
+        ax11.plot(dtw_stats[model_name]['shift'], (dtw_stats[model_name]['width_68']/2.),
+                  color='C3')
+        
+        best_shift_indx = np.argmax(dtw_stats[model_name]['r'] * 6/(dtw_stats[model_name]['width_68']))
+        shift, r, sig, width = dtw_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'width_68']]
+        best_shifts[model_name] = shift
+        
+        ax1.axvline(shift, color='C0', linestyle='--')
+        ax1.annotate('({:.0f}, {:.3f}, {:.1f})'.format(shift, r, width/2.), 
+                    (shift, r), xytext=(0.5, 0.5),
+                    textcoords='offset fontsize')
+        
+        label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
+        ax1.annotate(label, (0,1), xytext=(0.5, -0.5),
+                    xycoords='axes fraction', textcoords='offset fontsize',
+                    ha='left', va='top')
+        
+        ax1.set_ylim(0.0, 1.0)
+        ax1.set_xlim(-102, 102)
+        ax1.set_xticks(np.arange(-96, 96+24, 24))
+        
+        # ax2.plot(traj0.model_dtw_times[model_name]['{:.0f}'.format(shift)].index, 
+        #          traj0.model_dtw_times[model_name]['{:.0f}'.format(shift)],
+        #          color=model_colors[model_name])
+        
+        histo = np.histogram(traj0.model_dtw_times[model_name]['{:.0f}'.format(shift)], 
+                                                               range=[-96,96], bins=int(192/6))
+        ax3.stairs(histo[0]/np.sum(histo[0]), histo[1],
+                 color=model_colors[model_name], linewidth=2)
+    
+    fig1.supxlabel('Constant Temporal Offset [hours]')
+    fig1.supylabel('Correlation Coefficient (r)', 
+                   bbox = dict(facecolor='C1', edgecolor='C1', pad=0.1, boxstyle='round'))
+    fig1.text(0.98, 0.5, 'Distribution Half-Width (34%)', 
+              ha='center', va='center', rotation='vertical', fontsize=plt.rcParams["figure.labelsize"],
+              bbox = dict(facecolor='C3', edgecolor='C3', pad=0.1, boxstyle='round'))
+    
+    fig3.supxlabel('Constant Temporal Offset [hours]')
+    fig3.supylabel('Fraction of Dynamic Temporal Shifts')
+
+    ref_std = np.nanstd(traj0.data['u_mag'])
+    plt.show()
+    
+    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        fig, ax = TD.plot_TaylorDiagram_fromstats(ref_std)
+
+    for model_name in traj0.model_names:
+        (r, std), rmse = TD.find_TaylorStatistics(traj0.models[model_name]['u_mag'].to_numpy('float64'), 
+                                                  traj0.data['u_mag'].to_numpy('float64'))
+        ax.scatter(np.arccos(r), std, 
+                   marker=model_symbols[model_name], s=36, c='black',
+                   zorder=9,
+                   label=model_name)
+        
+        #best_shift_indx = np.argmax(dtw_stats[model_name]['r'] * 6/(dtw_stats[model_name]['width_68']))
+        best_shift_indx = np.where(traj0.model_dtw_stats[model_name]['shift'] == best_shifts[model_name])[0]
+        r, sig = traj0.model_dtw_stats[model_name].iloc[best_shift_indx][['r', 'stddev']].values.flatten()
+        ax.scatter(np.arccos(r), sig, 
+                   marker=model_symbols[model_name], s=72, c=model_colors[model_name],
+                   zorder=10,
+                   label='{} + DTW'.format(model_name))
+        
+    ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.5)
+    ax.set_axisbelow(True)
+    
+    
+    # =============================================================================
+    #    Compare output list of temporal shifts (and, maybe, running standard deviation or similar)
+    #    to physical parameters: 
+    #       -  T-S-E angle
+    #       -  Solar cycle phase
+    #       -  Running Mean SW Speed
+    #   This should **ALL** ultimately go into the "Ensemble" class 
+    # =============================================================================
+    
+    
+    fig1, axs1 = plt.subplots(nrows=3, sharex=True, sharey=True)
+    
+    fig3, axs3 = plt.subplots(nrows=3, sharex=True, sharey=True)
+    for model_name, ax1, ax3 in zip(traj0.model_names, axs1, axs3):
+        
+        print('For model: {} ----------'.format(model_name))
+        
+        offset = best_shifts[model_name]
+        dtimes = traj0.model_dtw_times[model_name][str(int(best_shifts[model_name]))]
+        total_dtimes_inh = (offset + dtimes)
+        
+        #u_mag = traj0.data['u_mag'].to_numpy('float64')
+        u_mag = traj0.models[model_name]['u_mag'] - traj0.data['u_mag'].to_numpy('float64')
+        a, b = TD.make_NaNFree(total_dtimes_inh, u_mag)
+        
+        ax1.scatter(a, b)
+        ax1.set(xlim=[-120,120], xticks=np.arange(-120, 120+24, 24))
+        r_stat = scstats.pearsonr(a, b)
+        print(r_stat)
+        
+        # =============================================================================
+        # F10.4 Radio flux from the sun
+        # =============================================================================
+        column_headers = ('date', 'observed_flux', 'adjusted_flux',)
+        solar_radio_flux = pd.read_csv('/Users/mrutala/Data/Sun/DRAO/penticton_radio_flux.csv',
+                                       header = 0, names = column_headers)
+        solar_radio_flux['date'] = [dt.datetime.strptime(d, '%Y-%m-%dT%H:%M:%S')
+                                    for d in solar_radio_flux['date']]
+        solar_radio_flux = solar_radio_flux.set_index('date')
+        solar_radio_flux = solar_radio_flux.resample("60Min", origin='start_day').mean()
+        solar_radio_flux = solar_radio_flux.reindex(index=total_dtimes_inh.index)
+        
+        
+        a, b = TD.make_NaNFree(total_dtimes_inh, solar_radio_flux['adjusted_flux'].to_numpy('float64'))
+        ax3.scatter(a, b)
+        ax3.set(xlim=[-120,120], xticks=np.arange(-120, 120+24, 24))
+        r_stat = scstats.pearsonr(a, b)
+        print(r_stat)
+        
+        
+        # =============================================================================
+        # TSE Angle
+        # =============================================================================
+        
+        
+        print('------------------------------')
+    
+    #  Figure 1: Shift times vs. Speed
+    fig1.supxlabel('Total Temporal Shifts [h]')
+    fig1.supylabel(r'$\Delta u_{mag}$ (model - data) [km s$^{-1}$]')
+    axs1[-1].annotate(r'Model Leads Data $\rightarrow$', (1,0), (0,-2), 
+                      xycoords='axes fraction', textcoords='offset fontsize', 
+                      annotation_clip=False, ha='right', va='top')
+    axs1[-1].annotate(r'$\leftarrow$ Model Lags Data', (0,0), (0,-2), 
+                      xycoords='axes fraction', textcoords='offset fontsize', 
+                      annotation_clip=False, ha='left', va='top')
+
+    
+    #  Figure 3: Shift times vs. Solar Cycle
+    fig3.supxlabel('Total Temporal Shifts [h]')
+    fig3.supylabel('Adjusted Solar F10.7 Flux [SFU]')
+    axs3[-1].annotate(r'Model Leads Data $\rightarrow$', (1,0), (0,-2), 
+                      xycoords='axes fraction', textcoords='offset fontsize', 
+                      annotation_clip=False, ha='right', va='top')
+    axs3[-1].annotate(r'$\leftarrow$ Model Lags Data', (0,0), (0,-2), 
+                      xycoords='axes fraction', textcoords='offset fontsize', 
+                      annotation_clip=False, ha='left', va='top')
+    
+    plt.show()
+    
+    return traj0
     
     # traj0.ensemble()
     # traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
@@ -2477,41 +2716,7 @@ def run_SolarWindEMF():
     #temp = test.ensemble()
     
     #  Shifts should be a dict, only apply to models
-    traj0.warp('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6))
-    
-    ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
-    plot_kw = {'yscale': 'linear', 'ylim': (0, 60),
-                'yticks': np.arange(350,550+50,100)}
-    
-    ref_std = np.nanstd(traj0.data['u_mag'])
-    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-        fig, ax = TD.plot_TaylorDiagram_fromstats(ref_std)
-    
-    x_max = ref_std
-    for model_name in traj0.model_names:
-        max_indx = np.argmax(traj0.model_dtw_stats[model_name]['r'])
-        
-        (r, std), rmse = TD.find_TaylorStatistics(traj0.models[model_name]['u_mag'].to_numpy('float64'), 
-                                                  traj0.data['u_mag'].to_numpy('float64'))
-        if std > x_max: x_max = std
-        print(model_name, r, std)
-        baseline_plot = ax.scatter(np.arccos(r), std, 
-                                   marker=model_symbols[model_name], s=36, c='black',
-                                   zorder=1)
-        
-        warped_stat_plot = ax.scatter(np.arccos(traj0.model_dtw_stats[model_name]['r'].iloc[max_indx]), 
-                                      traj0.model_dtw_stats[model_name]['stddev'].iloc[max_indx], 
-                                      marker=model_symbols[model_name], s=36, c=model_colors[model_name],
-                                      zorder=1,
-                                      label=model_name)
-              
-    ax.set_ylim([0, 1.25*x_max])
-        
-    ax.text(0.5, 0.9, ylabel,
-            horizontalalignment='center', verticalalignment='top',
-            transform = ax.transAxes)
-    ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.5)
-    ax.set_axisbelow(True)
+
         
     extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
     extent = extent.expanded(1.0, 1.0)
@@ -2530,7 +2735,7 @@ def run_SolarWindEMF():
         cols = traj0.model_dtw_times[model_name].columns
         
         for counter, col in enumerate(reversed(cols)):
-            histo = np.histogram(traj0.model_dtw_times[model_name][col]/3600., range=[-96,96], bins=int(192*0.5))
+            histo = np.histogram(traj0.model_dtw_times[model_name][col], range=[-96,96], bins=int(192*0.5))
             total = float(len(traj0.model_dtw_times[model_name][col]))  #  normalization 
             
             #  Offset y based on the shift value of the column
@@ -2568,7 +2773,7 @@ def run_SolarWindEMF():
 #     #                        coord3_range=np.array(lat_range)*np.pi/180., 
 #     #                        transform='reclat')
     
-#     test2 = swemf.Trajectory()
+#     test2 = mmesh.Trajectory()
 #     test2.addData(spacecraft_name, spacecraft.data)
     
 #     #  Read models
@@ -2592,7 +2797,7 @@ def run_SolarWindEMF():
 #     #                        coord3_range=np.array(lat_range)*np.pi/180., 
 #     #                        transform='reclat')
     
-#     test3 = swemf.Trajectory()
+#     test3 = mmesh.Trajectory()
 #     test3.addData(spacecraft_name, spacecraft.data)
     
 #     #  Read models
