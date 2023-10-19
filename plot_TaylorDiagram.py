@@ -30,7 +30,7 @@ def make_NaNFree(test_data, ref_data):
     test_data = test_data[~nans_ref]
     ref_data = ref_data[~nans_ref]
 
-    return(test_data, ref_data)
+    return test_data, ref_data
 
 def find_TaylorStatistics(test_data, ref_data):
     
@@ -40,9 +40,10 @@ def find_TaylorStatistics(test_data, ref_data):
         return
     
     
-    test_data = np.array(test_data)
-    ref_data = np.array(ref_data)
+    test_data = np.array(test_data, dtype='float64')
+    ref_data = np.array(ref_data, dtype='float64')
     test_data, ref_data = make_NaNFree(test_data, ref_data)
+    N = float(len(test_data))
     if (len(test_data) == 0.) or (len(ref_data) == 0.):
         print('One array is all NaNs. Returning...')
         return (0., 0.), 0.
@@ -159,6 +160,14 @@ def plot_TaylorDiagram_fromstats(ref_std, ax=None, **plt_kwargs):
         #plt.show()
         
     return(fig, ax)
+
+# def init_TaylorDiagram(ref_std, ax=None, **plt_kwargs):
+    
+#     return
+    
+# def plot_onTaylorDiagram(coord_pairs, colors, symbols, **plt_kwargs):
+    
+#     return
 
 def example_TaylorDiagram():
     
