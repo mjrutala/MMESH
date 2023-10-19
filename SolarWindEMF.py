@@ -241,9 +241,9 @@ class Trajectory:
         #  Plot non-reference data
         for model_name in self.model_names:
             
-            model_nonan, ref_nonan = TD.make_NaNFree(self.models[model_name][tag_name].to_numpy(dtype='float64'), ref_data)
+            #model_nonan, ref_nonan = TD.make_NaNFree(self.models[model_name][tag_name].to_numpy(dtype='float64'), ref_data)
 
-            (r, std), rmsd = TD.find_TaylorStatistics(model_nonan, ref_nonan)
+            (r, std), rmsd = TD.find_TaylorStatistics(self.models[model_name][tag_name].to_numpy(dtype='float64'), ref_data)
             
             ax.scatter(np.arccos(r), std, label=model_name,
                        marker=model_symbols[model_name], s=72, c=model_colors[model_name],
@@ -268,7 +268,26 @@ class Trajectory:
         
         self._primary_df.sort_index(axis=1, inplace=True)
     
-    def shift(self, basis_tag, metric_tag, shifts=[0]):
+    def optimize_shifts(self, metric_tag, shifts=[0]):
+        """
+        Trajectory.optimize_shifts tests various constant temporal shifts of 
+        modeled solar wind values to measured data and calculates various 
+        statistics to be used in determining the optimal constant shift
+
+        Parameters
+        ----------
+        basis_tag : TYPE
+            DESCRIPTION.
+        metric_tag : TYPE
+            DESCRIPTION.
+        shifts : TYPE, optional
+            DESCRIPTION. The default is [0].
+
+        Returns
+        -------
+        A pandas DataFrame of statistics (columns) vs shifts (rows)
+
+        """
         import plot_TaylorDiagram as TD
         
         for model_name in self.model_names:
@@ -281,11 +300,8 @@ class Trajectory:
                 
                 shift_model_df.index += dt.timedelta(hours=int(shift))
                 
-                print(self.data, shift_model_df)
-                
                 shift_model_df = pd.concat([self.data, shift_model_df], axis=1,
                                             keys=[self.spacecraft_name, model_name])
-                print(shift_model_df)
                 
                 model_nonan, ref_nonan = TD.make_NaNFree(shift_model_df[model_name][metric_tag].to_numpy(dtype='float64'), 
                                                          shift_model_df[self.spacecraft_name][metric_tag].to_numpy(dtype='float64'))
@@ -311,9 +327,9 @@ class Trajectory:
             stats_df = pd.concat(stats, axis='index', ignore_index=True)
             self.model_shift_stats[model_name] = stats_df
             
-        return
+        return self.model_shift_stats
     
-    def warp(self, basis_tag, metric_tag, shifts=[0]):
+    def optimize_warp(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
         import sys
         import DTW_Application as dtwa
         import SWData_Analysis as swda
@@ -346,7 +362,7 @@ class Trajectory:
                 stat, time_delta = dtwa.find_SolarWindDTW(self.data, self.models[model_name], shift, 
                                                           basis_tag, metric_tag, 
                                                           total_slope_limit=96.0,
-                                                          intermediate_plots=True,
+                                                          intermediate_plots=intermediate_plots,
                                                           model_name = model_name,
                                                           spacecraft_name = self.spacecraft_name)
                 time_delta = time_delta.rename(columns={'time_lag': str(shift)})
@@ -359,7 +375,7 @@ class Trajectory:
             self.model_dtw_stats[model_name] = stats_df
             self.model_dtw_times[model_name] = times_df
             
-        return
+        return self.model_dtw_stats
     
     def ensemble(self, weights = None):
         """
