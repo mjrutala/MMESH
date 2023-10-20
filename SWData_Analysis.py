@@ -2393,8 +2393,8 @@ def run_SolarWindEMF():
     #  Load spacecraft data
     spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
     spacecraft.read_processeddata(starttime, stoptime, resolution='60Min')
-    spacecraft.find_state('ECLIPJ2000', 'SUN', keep_kernels=False)
-    return(spacecraft)
+    pos_TSE = spacecraft.find_StateToEarth()
+    
     #!!!!
     #  NEED ROBUST in-SW-subset TOOL! ADD HERE!
     
@@ -2549,6 +2549,9 @@ def run_SolarWindEMF():
                                                                range=[-96,96], bins=int(192/6))
         ax3.stairs(histo[0]/np.sum(histo[0]), histo[1],
                  color=model_colors[model_name], linewidth=2)
+        ax3.annotate(label, (0,1), (0.5, -0.5), 
+                     xycoords='axes fraction', textcoords='offset fontsize',
+                     ha='left', va='top')
     
     fig1.supxlabel('Constant Temporal Offset [hours]')
     fig1.supylabel('Correlation Coefficient (r)', 
@@ -2599,7 +2602,9 @@ def run_SolarWindEMF():
     fig1, axs1 = plt.subplots(nrows=3, sharex=True, sharey=True)
     
     fig3, axs3 = plt.subplots(nrows=3, sharex=True, sharey=True)
-    for model_name, ax1, ax3 in zip(traj0.model_names, axs1, axs3):
+    
+    fig5, axs5 = plt.subplots(nrows=3, sharex=True, sharey=True)
+    for model_name, ax1, ax3, ax5 in zip(traj0.model_names, axs1, axs3, axs5):
         
         print('For model: {} ----------'.format(model_name))
         
@@ -2636,10 +2641,20 @@ def run_SolarWindEMF():
         print(r_stat)
         
         
+        
+        
+        
+        
         # =============================================================================
         # TSE Angle
         # =============================================================================
+        TSE_lon = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lon']
         
+        a, b = TD.make_NaNFree(total_dtimes_inh, TSE_lon.to_numpy('float64'))
+        ax5.scatter(a,b)
+        ax5.set(xlim=[-120,120], xticks=np.arange(-120, 120+24, 24))
+        r_stat = scstats.pearsonr(a, b)
+        print(r_stat)
         
         print('------------------------------')
     
