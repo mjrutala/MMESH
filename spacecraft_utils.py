@@ -514,10 +514,10 @@ def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
             
             delta_r_TS.append(trg_pos_rlonlat[:,0]/sc.au_to_km)
             delta_r_TE.append((trg_pos_rlonlat[:,0] - eth_pos_rlonlat[:,0])/sc.au_to_km)  #  Radial distance from Earth orbit to target (propagation distance)
-            delta_lon_TSE.append(np.abs((del_lon_TSE + 180) % 360 - 180))
-            delta_lat_TSE.append(np.abs((del_lat_TSE + 180) % 360 - 180))
-            delta_lon_TSJ.append(np.abs((del_lon_TSJ + 180) % 360 - 180))
-            delta_lat_TSJ.append(np.abs((del_lat_TSJ + 180) % 360 - 180))
+            delta_lon_TSE.append(np.abs(np.abs(del_lon_TSE + 180) % 360 - 180))
+            delta_lat_TSE.append(np.abs(np.abs(del_lat_TSE + 180) % 360 - 180))
+            delta_lon_TSJ.append(np.abs(np.abs(del_lon_TSJ + 180) % 360 - 180))
+            delta_lat_TSJ.append(np.abs(np.abs(del_lat_TSJ + 180) % 360 - 180))
         
             xyz_in_AU = np.array([np.array(row[['x_pos', 'y_pos', 'z_pos']]).astype('float64')
                                   for indx, row in sc.data.iterrows()]) / sc.au_to_km 
