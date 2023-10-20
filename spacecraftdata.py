@@ -167,6 +167,45 @@ class SpacecraftData:
             self.data.update(sc_state_dataframe)
             #self.data = pd.concat([self.data, sc_state_dataframe.reindex(columns=self.data.columns)], 
             #                      axis=0)
+            
+    def find_StateToEarth(self, keep_kernels=False):
+        #import datetime as dt
+        import numpy as np
+        import spiceypy as spice
+        import pandas as pd
+        
+        #  Essential solar system and timekeeping kernels
+        spice.furnsh(self.SPICE_METAKERNEL_PLANETARY)
+        
+        #  Custom helio frames
+        spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
+        
+        spice.furnsh(self.SPICE_METAKERNEL)
+        
+        datetimes_str = [time.strftime('%Y-%m-%dT%H:%M:%S.%f') for time in self.data.index]
+        if len(datetimes_str) > 0:
+            ets = spice.str2et(datetimes_str)
+            
+            sc_pos, sc_lt = spice.spkpos(str(self.SPICE_ID), ets, 'SUN_INERTIAL', 'NONE', 'SUN')
+            sc_pos_rlonlat = np.array([spice.reclat(pos) for pos in sc_pos])
+            
+            eth_pos, eth_lt = spice.spkpos('EARTH BARYCENTER', ets, 'SUN_INERTIAL', 'NONE', 'SUN')
+            eth_pos_rlonlat = np.array([spice.reclat(pos) for pos in eth_pos])
+            
+            del_r_TSE = sc_pos_rlonlat[:,0] - eth_pos_rlonlat[:,0]
+            del_lon_TSE = (sc_pos_rlonlat[:,1] - eth_pos_rlonlat[:,1])*180/np.pi
+            del_lat_TSE = (sc_pos_rlonlat[:,2] - eth_pos_rlonlat[:,2])*180/np.pi
+            
+            if not keep_kernels: spice.kclear()
+            
+            df = pd.DataFrame.from_dict({'del_r'  : del_r_TSE,
+                                         'del_lon': np.abs(np.abs(del_lon_TSE + 180) % 360 - 180),
+                                         'del_lat': np.abs(np.abs(del_lat_TSE + 180) % 360 - 180)})
+            
+            
+            df.index = self.data.index
+            
+            return df
         
     def read_processeddata(self, starttime=None, stoptime=None, 
                            everything=False, strict=True, resolution=None, combined=False):
