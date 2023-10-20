@@ -305,7 +305,6 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
     t1 = interp_ref_metric
     t2 = query_df[metric_tag].to_numpy('float64')
     
-    
     (r, sig), rmsd = TD.find_TaylorStatistics(t1, t2)
     #r = scipy.stats.pearsonr(t1, t2)[0]
     #sig = np.std(t1)
