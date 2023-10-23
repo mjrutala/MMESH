@@ -2612,8 +2612,8 @@ def run_SolarWindEMF():
         dtimes = traj0.model_dtw_times[model_name][str(int(best_shifts[model_name]))]
         total_dtimes_inh = (offset + dtimes)
         
-        #u_mag = traj0.data['u_mag'].to_numpy('float64')
-        u_mag = traj0.models[model_name]['u_mag'] - traj0.data['u_mag'].to_numpy('float64')
+        u_mag = traj0.models[model_name]['u_mag'].to_numpy('float64')
+        #u_mag = traj0.models[model_name]['u_mag'] - traj0.data['u_mag'].to_numpy('float64')
         a, b = TD.make_NaNFree(total_dtimes_inh, u_mag)
         
         ax1.scatter(a, b)
@@ -2660,7 +2660,8 @@ def run_SolarWindEMF():
     
     #  Figure 1: Shift times vs. Speed
     fig1.supxlabel('Total Temporal Shifts [h]')
-    fig1.supylabel(r'$\Delta u_{mag}$ (model - data) [km s$^{-1}$]')
+    #fig1.supylabel(r'$\Delta u_{mag}$ (model - data) [km s$^{-1}$]')
+    fig1.supylabel(r'Model $u_{mag}$ [km s$^{-1}$]')
     axs1[-1].annotate(r'Model Leads Data $\rightarrow$', (1,0), (0,-2), 
                       xycoords='axes fraction', textcoords='offset fontsize', 
                       annotation_clip=False, ha='right', va='top')
