@@ -2378,8 +2378,11 @@ def run_SolarWindEMF():
     import SolarWindEMF as mmesh
     import numpy as np
     import scipy.stats as scstats
+    import scipy.optimize as optimize
     import matplotlib.pyplot as plt
     import plot_TaylorDiagram as TD
+    
+    from numpy.polynomial import Polynomial
     
     spacecraft_name = 'Juno' # 'Ulysses'
     model_names = ['Tao', 'HUXt', 'ENLIL']
@@ -2459,8 +2462,8 @@ def run_SolarWindEMF():
         ax1.set_xlim(-102, 102)
         ax1.set_xticks(np.arange(-96, 96+24, 24))
         
-    fig.supxlabel('Temporal Shift [hours]')
-    fig.supylabel('Correlation Coefficient (r)')
+    fig1.supxlabel('Temporal Shift [hours]')
+    fig1.supylabel('Correlation Coefficient (r)')
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig, ax = TD.plot_TaylorDiagram_fromstats(np.nanstd(traj0.data['u_mag']))
@@ -2600,13 +2603,14 @@ def run_SolarWindEMF():
     
     
     fig1, axs1 = plt.subplots(nrows=3, sharex=True, sharey=True)
-    
+    fig2, axs2 = plt.subplots(nrows=3, sharex=True, sharey=True)
     fig3, axs3 = plt.subplots(nrows=3, sharex=True, sharey=True)
     
     fig5, axs5 = plt.subplots(nrows=3, sharex=True, sharey=True)
-    for model_name, ax1, ax3, ax5 in zip(traj0.model_names, axs1, axs3, axs5):
+    for i, (model_name, ax1, ax2, ax3, ax5) in enumerate(zip(traj0.model_names, axs1, axs2, axs3, axs5)):
         
         print('For model: {} ----------'.format(model_name))
+        label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
         
         offset = best_shifts[model_name]
         dtimes = traj0.model_dtw_times[model_name][str(int(best_shifts[model_name]))]
@@ -2620,6 +2624,27 @@ def run_SolarWindEMF():
         ax1.set(xlim=[-120,120], xticks=np.arange(-120, 120+24, 24))
         r_stat = scstats.pearsonr(a, b)
         print(r_stat)
+        ax1.annotate(label, (0,1), xytext=(0.5, -0.5),
+                    xycoords='axes fraction', textcoords='offset fontsize',
+                    ha='left', va='top')
+        ax1.annotate('r={:.3f}'.format(r_stat[0]), (1,1), (-1.5, -1.5),
+                     xycoords='axes fraction', textcoords='offset fontsize',
+                     ha='right', va='top')
+        
+        u_mag = traj0.models[model_name]['u_mag'] - traj0.data['u_mag'].to_numpy('float64')
+        a, b = TD.make_NaNFree(total_dtimes_inh, u_mag)
+        ax2.scatter(a, b)
+        r_stat = scstats.pearsonr(a, b)
+        ax2.set(xlim=[-120,120], xticks=np.arange(-120, 120+24, 24))
+        ax2.annotate('Not suitable for forecasting', (1,1), (-0.5,-0.5), 
+                     xycoords='axes fraction', textcoords='offset fontsize', 
+                     annotation_clip=False, ha='right', va='top')
+        ax2.annotate(label, (0,1), xytext=(0.5, -0.5),
+                    xycoords='axes fraction', textcoords='offset fontsize',
+                    ha='left', va='top')
+        ax2.annotate('r={:.3f}'.format(r_stat[0]), (1,1), (-1.5, -1.5),
+                     xycoords='axes fraction', textcoords='offset fontsize',
+                     ha='right', va='top')
         
         # =============================================================================
         # F10.4 Radio flux from the sun
@@ -2638,13 +2663,19 @@ def run_SolarWindEMF():
         ax3.scatter(a, b)
         ax3.set(xlim=[-120,120], xticks=np.arange(-120, 120+24, 24))
         r_stat = scstats.pearsonr(a, b)
+        def linear_func(x, a, b):
+            return a*x + b
+        p_fit, p_cov = optimize.curve_fit(linear_func, a, b)
+        p_err = np.sqrt(np.diag(p_cov))
+        
+        #return p_fit, p_err
         print(r_stat)
-        
-        
-        
-        
-        
-        
+        ax3.annotate(label, (0,1), xytext=(0.5, -0.5),
+                    xycoords='axes fraction', textcoords='offset fontsize',
+                    ha='left', va='top')
+        ax3.annotate('r={:.3f}'.format(r_stat[0]), (1,1), (-1.5, -1.5),
+                     xycoords='axes fraction', textcoords='offset fontsize',
+                     ha='right', va='top')
         # =============================================================================
         # TSE Angle
         # =============================================================================
@@ -2655,6 +2686,12 @@ def run_SolarWindEMF():
         ax5.set(xlim=[-120,120], xticks=np.arange(-120, 120+24, 24))
         r_stat = scstats.pearsonr(a, b)
         print(r_stat)
+        ax5.annotate(label, (0,1), xytext=(0.5, -0.5),
+                    xycoords='axes fraction', textcoords='offset fontsize',
+                    ha='left', va='top')
+        ax5.annotate('r={:.3f}'.format(r_stat[0]), (1,1), (-1.5, -1.5),
+                     xycoords='axes fraction', textcoords='offset fontsize',
+                     ha='right', va='top')
         
         print('------------------------------')
     
@@ -2668,7 +2705,15 @@ def run_SolarWindEMF():
     axs1[-1].annotate(r'$\leftarrow$ Model Lags Data', (0,0), (0,-2), 
                       xycoords='axes fraction', textcoords='offset fontsize', 
                       annotation_clip=False, ha='left', va='top')
-
+    
+    fig2.supxlabel('Total Temporal Shifts [h]')
+    fig2.supylabel(r'$\Delta u_{mag}$ (model - data) [km s$^{-1}$]')
+    axs2[-1].annotate(r'Model Leads Data $\rightarrow$', (1,0), (0,-2), 
+                      xycoords='axes fraction', textcoords='offset fontsize', 
+                      annotation_clip=False, ha='right', va='top')
+    axs2[-1].annotate(r'$\leftarrow$ Model Lags Data', (0,0), (0,-2), 
+                      xycoords='axes fraction', textcoords='offset fontsize', 
+                      annotation_clip=False, ha='left', va='top')
     
     #  Figure 3: Shift times vs. Solar Cycle
     fig3.supxlabel('Total Temporal Shifts [h]')
@@ -2677,6 +2722,15 @@ def run_SolarWindEMF():
                       xycoords='axes fraction', textcoords='offset fontsize', 
                       annotation_clip=False, ha='right', va='top')
     axs3[-1].annotate(r'$\leftarrow$ Model Lags Data', (0,0), (0,-2), 
+                      xycoords='axes fraction', textcoords='offset fontsize', 
+                      annotation_clip=False, ha='left', va='top')
+    
+    fig5.supxlabel('Total Temporal Shifts [h]')
+    fig5.supylabel('TSE Angle [degrees]')
+    axs5[-1].annotate(r'Model Leads Data $\rightarrow$', (1,0), (0,-2), 
+                      xycoords='axes fraction', textcoords='offset fontsize', 
+                      annotation_clip=False, ha='right', va='top')
+    axs5[-1].annotate(r'$\leftarrow$ Model Lags Data', (0,0), (0,-2), 
                       xycoords='axes fraction', textcoords='offset fontsize', 
                       annotation_clip=False, ha='left', va='top')
     
