@@ -178,7 +178,7 @@ class SpacecraftData:
         spice.furnsh(self.SPICE_METAKERNEL_PLANETARY)
         
         #  Custom helio frames
-        spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
+        spice.furnsh('/Users/mrutala/SPICE/generic/kernels/fk/SolarFrames.tf')
         
         spice.furnsh(self.SPICE_METAKERNEL)
         
