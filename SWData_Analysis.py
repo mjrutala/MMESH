@@ -2382,6 +2382,8 @@ def run_SolarWindEMF():
     import matplotlib.pyplot as plt
     import plot_TaylorDiagram as TD
     
+    from sklearn.linear_model import LinearRegression
+    
     from numpy.polynomial import Polynomial
     
     spacecraft_name = 'Juno' # 'Ulysses'
@@ -2504,71 +2506,119 @@ def run_SolarWindEMF():
     
     dtw_stats = traj0.optimize_warp('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
     
+    best_shifts = {}
+    for i, model_name in enumerate(traj0.model_names):
+        #  Optimize
+        best_shift_indx = np.argmax(dtw_stats[model_name]['r'] * 6/(dtw_stats[model_name]['width_68']))
+        #shift = dtw_stats[model_name].iloc[best_shift_indx][['shift']]
+        best_shifts[model_name] = dtw_stats[model_name].iloc[best_shift_indx]
+    
     plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
     #with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-    fig1, axs1 = plt.subplots(nrows=3, sharex=True, sharey=True)
-    plt.subplots_adjust(hspace=0.1)
-    
-    # fig2, axs2 = plt.subplots(nrows=3, sharex=True, sharey=True)
-    # plt.subplots_adjust(hspace=0.1)
-    
-    fig3, axs3 = plt.subplots(nrows=3, sharex=True, sharey=False)
-    plt.subplots_adjust(hspace=0.1)
-    
-    best_shifts = {}
-    for i, (model_name, ax1, ax3) in enumerate(zip(traj0.model_names, axs1, axs3)):
-        ax1.plot(dtw_stats[model_name]['shift'], dtw_stats[model_name]['r'],
-                 color='C1')
-        ax11 = ax1.twinx()
-        #  Plot half the 68% width, or the quasi-1-sigma value, in hours
-        # ax11.plot(dtw_stats[model_name]['shift'], 6./(dtw_stats[model_name]['width_68']),
-        #           color='C3')
-        ax11.plot(dtw_stats[model_name]['shift'], (dtw_stats[model_name]['width_68']/2.),
-                  color='C3')
         
-        best_shift_indx = np.argmax(dtw_stats[model_name]['r'] * 6/(dtw_stats[model_name]['width_68']))
-        shift, r, sig, width = dtw_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'width_68']]
-        best_shifts[model_name] = shift
+    def plot_DTWOptimization():
+        fig = plt.figure(figsize=[6,4.5])
+        gs = fig.add_gridspec(nrows=3, ncols=3, width_ratios=[1,1,1],
+                              left=0.1, bottom=0.1, right=0.95, top=0.95,
+                              wspace=0.0, hspace=0.1)
+        axs0 = [fig.add_subplot(gs[y,0]) for y in range(3)]
+        axs1 = [fig.add_subplot(gs[y,2]) for y in range(3)]
         
-        ax1.axvline(shift, color='C0', linestyle='--')
-        ax1.annotate('({:.0f}, {:.3f}, {:.1f})'.format(shift, r, width/2.), 
-                    (shift, r), xytext=(0.5, 0.5),
-                    textcoords='offset fontsize')
-        
-        label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
-        ax1.annotate(label, (0,1), xytext=(0.5, -0.5),
-                    xycoords='axes fraction', textcoords='offset fontsize',
-                    ha='left', va='top')
-        
-        ax1.set_ylim(0.0, 1.0)
-        ax1.set_xlim(-102, 102)
-        ax1.set_xticks(np.arange(-96, 96+24, 24))
-        
-        # ax2.plot(traj0.model_dtw_times[model_name]['{:.0f}'.format(shift)].index, 
-        #          traj0.model_dtw_times[model_name]['{:.0f}'.format(shift)],
-        #          color=model_colors[model_name])
-        
-        histo = np.histogram(traj0.model_dtw_times[model_name]['{:.0f}'.format(shift)], 
-                                                               range=[-96,96], bins=int(192/6))
-        ax3.stairs(histo[0]/np.sum(histo[0]), histo[1],
-                 color=model_colors[model_name], linewidth=2)
-        ax3.annotate(label, (0,1), (0.5, -0.5), 
-                     xycoords='axes fraction', textcoords='offset fontsize',
-                     ha='left', va='top')
-    
-    fig1.supxlabel('Constant Temporal Offset [hours]')
-    fig1.supylabel('Correlation Coefficient (r)', 
-                   bbox = dict(facecolor='C1', edgecolor='C1', pad=0.1, boxstyle='round'))
-    fig1.text(0.98, 0.5, 'Distribution Half-Width (34%)', 
-              ha='center', va='center', rotation='vertical', fontsize=plt.rcParams["figure.labelsize"],
-              bbox = dict(facecolor='C3', edgecolor='C3', pad=0.1, boxstyle='round'))
-    
-    fig3.supxlabel('Constant Temporal Offset [hours]')
-    fig3.supylabel('Fraction of Dynamic Temporal Shifts')
+        for i, (model_name, ax0, ax1) in enumerate(zip(traj0.model_names, axs0, axs1)):
+            
+            #   Get some statistics for easier plotting
+            shift, r, sig, width = best_shifts[model_name][['shift', 'r', 'stddev', 'width_68']]
+            label1 = '({}) {}'.format(string.ascii_lowercase[2*i], model_name)
+            label2 = '({}) {}'.format(string.ascii_lowercase[2*i+1], model_name)
+            
+            #   Get copies of first ax1 for plotting 3 different parameters
+            ax0_correl = ax0.twinx()
+            ax0_width = ax0.twinx()
+            ax0_width.spines.right.set_position(("axes", 1.35))
+            
+            #   Plot the optimization function, and its components (shift and dist. width)
+            #   Plot half the 68% width, or the quasi-1-sigma value, in hours
+            ax0.plot(dtw_stats[model_name]['shift'], dtw_stats[model_name]['r'] * 6/(dtw_stats[model_name]['width_68']),
+                     color=model_colors[model_name])
+            ax0_correl.plot(dtw_stats[model_name]['shift'], dtw_stats[model_name]['r'],
+                            color='C1')
+            ax0_width.plot(dtw_stats[model_name]['shift'], (dtw_stats[model_name]['width_68']/2.),
+                           color='C3')
 
+            #   Mark the maximum of the optimization function
+            ax0.axvline(shift, color='C0', linestyle='--', linewidth=1)
+            ax0.annotate('({:.0f}, {:.3f}, {:.1f})'.format(shift, r, width/2.), 
+                        (shift, r), xytext=(0.5, 0.5),
+                        textcoords='offset fontsize')
+            
+            ax0.annotate(label1, (0,1), xytext=(0.5, -0.5),
+                               xycoords='axes fraction', textcoords='offset fontsize',
+                               ha='left', va='top')
+            
+            dtw_opt_shifts = traj0.model_dtw_times[model_name]['{:.0f}'.format(shift)]
+            histo = np.histogram(dtw_opt_shifts, range=[-96,96], bins=int(192/6))
+            
+            ax1.stairs(histo[0]/np.sum(histo[0]), histo[1],
+                          color=model_colors[model_name], linewidth=2)
+            ax1.axvline(np.median(dtw_opt_shifts), linewidth=1, alpha=0.5, label=r'P_{50}')
+            ax1.axvline(np.percentile(dtw_opt_shifts, 16), linestyle=':', linewidth=1, alpha=0.5, label=r'P_{16}')
+            ax1.axvline(np.percentile(dtw_opt_shifts, 84), linestyle=':', linewidth=1, alpha=0.5, label=r'P_{84}')
+            ax1.annotate(label2, (0,1), (0.5, -0.5), 
+                            xycoords='axes fraction', textcoords='offset fontsize',
+                            ha='left', va='top')
+        
+            ax0.set_ylim(0.0, 0.2)
+            ax0_correl.set_ylim(0.0, 1.0)
+            ax0_width.set_ylim(0.0, 72)
+            ax0.set_xlim(-102, 102)
+            
+            ax1.set_ylim(0.0, 0.5)
+            ax1.set_xlim(-102, 102)
+            
+            if i < len(traj0.model_names)-1:
+                ax0.set_xticks(np.arange(-96, 96+24, 24), labels=['']*9)
+                ax1.set_xticks(np.arange(-96, 96+24, 24), labels=['']*9)
+            else:
+                ax0.set_xticks(np.arange(-96, 96+24, 24))
+                ax1.set_xticks(np.arange(-96, 96+24, 24))
+
+        #   Plotting coordinates
+        ymid = 0.50*(axs0[0].get_position().y1 - axs0[-1].get_position().y0) + axs0[-1].get_position().y0
+        ybot = 0.25*axs0[-1].get_position().y0
+        
+        xleft = 0.25*axs0[0].get_position().x0
+        xmid1 = axs0[0].get_position().x1 + 0.25*axs0[0].get_position().size[0]
+        xmid2 = axs0[0].get_position().x1 + 0.55*axs0[0].get_position().size[0]
+        xmid3 = axs1[0].get_position().x0 - 0.2*axs1[0].get_position().size[0]
+        xbot1 = axs0[0].get_position().x0 + 0.5*axs0[0].get_position().size[0]
+        xbot2 = axs1[0].get_position().x0 + 0.5*axs1[0].get_position().size[0]
+        
+        fig.text(xbot1, ybot, 'Constant Temporal Offset [hours]',
+                 ha='center', va='center', 
+                 fontsize=plt.rcParams["figure.labelsize"])
+        fig.text(xleft, ymid, 'Optimization Function [arb.]',
+                 ha='center', va='center', rotation='vertical',
+                 fontsize=plt.rcParams["figure.labelsize"])
+        
+        fig.text(xmid1, ymid, 'Correlation Coefficient (r)', 
+                 ha='center', va='center', rotation='vertical', fontsize=plt.rcParams["figure.labelsize"],
+                 bbox = dict(facecolor='C1', edgecolor='C1', pad=0.1, boxstyle='round'))
+        fig.text(xmid2, ymid, 'Distribution Half-Width (34%) [hours]', 
+                 ha='center', va='center', rotation='vertical', fontsize=plt.rcParams["figure.labelsize"],
+                 bbox = dict(facecolor='C3', edgecolor='C3', pad=0.1, boxstyle='round'))
+
+        fig.text(xbot2, ybot, 'Dynamic Temporal Offset [hours]',
+                 ha='center', va='center', 
+                 fontsize=plt.rcParams["figure.labelsize"])
+        fig.text(xmid3, ymid, 'Fractional Numbers',
+                 ha='center', va='center', rotation='vertical', 
+                 fontsize=plt.rcParams["figure.labelsize"])
+
+        plt.show()
+        
+    plot_DTWOptimization()
+            
     ref_std = np.nanstd(traj0.data['u_mag'])
-    plt.show()
-    
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig, ax = TD.plot_TaylorDiagram_fromstats(ref_std)
 
@@ -2581,8 +2631,9 @@ def run_SolarWindEMF():
                    label=model_name)
         
         #best_shift_indx = np.argmax(dtw_stats[model_name]['r'] * 6/(dtw_stats[model_name]['width_68']))
-        best_shift_indx = np.where(traj0.model_dtw_stats[model_name]['shift'] == best_shifts[model_name])[0]
-        r, sig = traj0.model_dtw_stats[model_name].iloc[best_shift_indx][['r', 'stddev']].values.flatten()
+        # best_shift_indx = np.where(traj0.model_dtw_stats[model_name]['shift'] == best_shifts[model_name])[0]
+        # r, sig = traj0.model_dtw_stats[model_name].iloc[best_shift_indx][['r', 'stddev']].values.flatten()
+        r, sig = best_shifts[model_name][['r', 'stddev']].values.flatten()
         ax.scatter(np.arccos(r), sig, 
                    marker=model_symbols[model_name], s=72, c=model_colors[model_name],
                    zorder=10,
@@ -2602,6 +2653,7 @@ def run_SolarWindEMF():
     # =============================================================================
     
     
+    
     fig1, axs1 = plt.subplots(nrows=3, sharex=True, sharey=True)
     fig2, axs2 = plt.subplots(nrows=3, sharex=True, sharey=True)
     fig3, axs3 = plt.subplots(nrows=3, sharex=True, sharey=True)
@@ -2612,8 +2664,8 @@ def run_SolarWindEMF():
         print('For model: {} ----------'.format(model_name))
         label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
         
-        offset = best_shifts[model_name]
-        dtimes = traj0.model_dtw_times[model_name][str(int(best_shifts[model_name]))]
+        offset = best_shifts[model_name]['shift']
+        dtimes = traj0.model_dtw_times[model_name][str(int(offset))]
         total_dtimes_inh = (offset + dtimes)
         
         u_mag = traj0.models[model_name]['u_mag'].to_numpy('float64')
@@ -2647,7 +2699,7 @@ def run_SolarWindEMF():
                      ha='right', va='top')
         
         # =============================================================================
-        # F10.4 Radio flux from the sun
+        # F10.7 Radio flux from the sun
         # =============================================================================
         column_headers = ('date', 'observed_flux', 'adjusted_flux',)
         solar_radio_flux = pd.read_csv('/Users/mrutala/Data/Sun/DRAO/penticton_radio_flux.csv',
@@ -2663,6 +2715,13 @@ def run_SolarWindEMF():
         ax3.scatter(a, b)
         ax3.set(xlim=[-120,120], xticks=np.arange(-120, 120+24, 24))
         r_stat = scstats.pearsonr(a, b)
+        
+        reg = LinearRegression().fit(a.reshape(-1, 1), b.reshape(-1, 1))
+        print(reg.score(a.reshape(-1, 1), b.reshape(-1, 1)))
+        print(reg.coef_)
+        print(reg.intercept_)
+        
+        
         def linear_func(x, a, b):
             return a*x + b
         p_fit, p_cov = optimize.curve_fit(linear_func, a, b)
