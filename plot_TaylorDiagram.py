@@ -14,23 +14,37 @@ Options:
 import numpy as np
 import matplotlib.pyplot as plt
 
-#!!!! This should be made to take as many arrays as you want
-def make_NaNFree(test_data, ref_data):
-    
-    test_data = np.array(test_data)
-    ref_data = np.array(ref_data)
+def make_NaNFree(*arrays):
 
-    nans_test = np.isnan(test_data)
+    nans_arr = np.zeros(len(arrays[0]))
+    for arr in arrays:
+        nans_arr += np.isnan(arr)
     
-    test_data = test_data[~nans_test]
-    ref_data = ref_data[~nans_test]
+    nans_arr[nans_arr > 1] = 1
+    nans_arr = nans_arr.astype(bool)
     
-    nans_ref = np.isnan(ref_data)
+    output_arrs = []
+    for arr in arrays:
+        arr = np.array(arr)
+        output_arrs.append(arr[~nans_arr])
     
-    test_data = test_data[~nans_ref]
-    ref_data = ref_data[~nans_ref]
+    return tuple(output_arrs)
+        
+        
+    # test_data = np.array(test_data)
+    # ref_data = np.array(ref_data)
 
-    return test_data, ref_data
+    # nans_test = np.isnan(test_data)
+    
+    # test_data = test_data[~nans_test]
+    # ref_data = ref_data[~nans_test]
+    
+    # nans_ref = np.isnan(ref_data)
+    
+    # test_data = test_data[~nans_ref]
+    # ref_data = ref_data[~nans_ref]
+
+    # return test_data, ref_data
 
 def find_TaylorStatistics(test_data, ref_data):
     
