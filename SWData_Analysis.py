@@ -2652,8 +2652,67 @@ def run_SolarWindEMF():
     #   This should **ALL** ultimately go into the "Ensemble" class 
     # =============================================================================
     
+    #   Do the work first, plot second
+    #   We want to characterize linear relationships independently and together
+    #   Via single-target (for now) multiple linear regression
     
+    #   For now: single-target MLR within each model-- treat models fully independently
+    for model_name in traj0.model_names:
+        print('For model: {} ----------'.format(model_name))
+        label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
+        
+        offset = best_shifts[model_name]['shift']
+        dtimes = traj0.model_dtw_times[model_name][str(int(offset))]
+        total_dtimes_inh = (offset + dtimes)
+        
+        # =============================================================================
+        # F10.7 Radio flux from the sun
+        # This needs a reader so this can be one line
+        # =============================================================================
+        column_headers = ('date', 'observed_flux', 'adjusted_flux',)
+        solar_radio_flux = pd.read_csv('/Users/mrutala/Data/Sun/DRAO/penticton_radio_flux.csv',
+                                       header = 0, names = column_headers)
+        solar_radio_flux['date'] = [dt.datetime.strptime(d, '%Y-%m-%dT%H:%M:%S')
+                                    for d in solar_radio_flux['date']]
+        solar_radio_flux = solar_radio_flux.set_index('date')
+        solar_radio_flux = solar_radio_flux.resample("60Min", origin='start_day').mean()
+        
+        #   Reindex the radio data to the cadence of the model
+        solar_radio_flux = solar_radio_flux.reindex(index=total_dtimes_inh.index)['adjusted_flux']
+        
+        training_values, target_values = TD.make_NaNFree(solar_radio_flux.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
+        training_values = training_values.reshape(-1, 1)
+        target_values = target_values.reshape(-1, 1)
+        reg = LinearRegression().fit(training_values, target_values)
+        print(reg.score(training_values, target_values))
+        print(reg.coef_)
+        print(reg.intercept_)
+        print('----------')
+        
+        TSE_lon = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lon']
+        
+        training_values, target_values = TD.make_NaNFree(TSE_lon.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
+        training_values = training_values.reshape(-1, 1)
+        target_values = target_values.reshape(-1, 1)
+        reg = LinearRegression().fit(training_values, target_values)
+        print(reg.score(training_values, target_values))
+        print(reg.coef_)
+        print(reg.intercept_)
+        print('----------')
+        
+        training1, training2, target = TD.make_NaNFree(solar_radio_flux, TSE_lon, total_dtimes_inh.to_numpy('float64'))
+        training = np.array([training1, training2]).T
+        target = target.reshape(-1, 1)
+        print(np.shape(training), np.shape(target))
+        reg = LinearRegression().fit(training, target)
+        print(reg.score(training, target))
+        print(reg.coef_)
+        print(reg.intercept_)
+        print('----------')
+        
+    return
     
+    #   Encapsulated Plotting
     fig1, axs1 = plt.subplots(nrows=3, sharex=True, sharey=True)
     fig2, axs2 = plt.subplots(nrows=3, sharex=True, sharey=True)
     fig3, axs3 = plt.subplots(nrows=3, sharex=True, sharey=True)
@@ -2715,12 +2774,6 @@ def run_SolarWindEMF():
         ax3.scatter(a, b)
         ax3.set(xlim=[-120,120], xticks=np.arange(-120, 120+24, 24))
         r_stat = scstats.pearsonr(a, b)
-        
-        reg = LinearRegression().fit(a.reshape(-1, 1), b.reshape(-1, 1))
-        print(reg.score(a.reshape(-1, 1), b.reshape(-1, 1)))
-        print(reg.coef_)
-        print(reg.intercept_)
-        
         
         def linear_func(x, a, b):
             return a*x + b
