@@ -2657,7 +2657,8 @@ def run_SolarWindEMF():
     #   Via single-target (for now) multiple linear regression
     
     #   For now: single-target MLR within each model-- treat models fully independently
-    for model_name in traj0.model_names:
+    lr_dict = {}
+    for i, model_name in enumerate(traj0.model_names):
         print('For model: {} ----------'.format(model_name))
         label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
         
@@ -2675,7 +2676,7 @@ def run_SolarWindEMF():
         solar_radio_flux['date'] = [dt.datetime.strptime(d, '%Y-%m-%dT%H:%M:%S')
                                     for d in solar_radio_flux['date']]
         solar_radio_flux = solar_radio_flux.set_index('date')
-        solar_radio_flux = solar_radio_flux.resample("60Min", origin='start_day').mean()
+        solar_radio_flux = solar_radio_flux.resample("60Min", origin='start_day').mean().interpolate(method='linear')
         
         #   Reindex the radio data to the cadence of the model
         solar_radio_flux = solar_radio_flux.reindex(index=total_dtimes_inh.index)['adjusted_flux']
@@ -2700,19 +2701,204 @@ def run_SolarWindEMF():
         print(reg.intercept_)
         print('----------')
         
-        training1, training2, target = TD.make_NaNFree(solar_radio_flux, TSE_lon, total_dtimes_inh.to_numpy('float64'))
-        training = np.array([training1, training2]).T
-        target = target.reshape(-1, 1)
-        print(np.shape(training), np.shape(target))
-        reg = LinearRegression().fit(training, target)
-        print(reg.score(training, target))
+        TSE_lat = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lat']
+        
+        training_values, target_values = TD.make_NaNFree(TSE_lat.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
+        training_values = training_values.reshape(-1, 1)
+        target_values = target_values.reshape(-1, 1)
+        reg = LinearRegression().fit(training_values, target_values)
+        print(reg.score(training_values, target_values))
         print(reg.coef_)
         print(reg.intercept_)
         print('----------')
         
-    return
+        
+        training1, training2, training3, target = TD.make_NaNFree(solar_radio_flux, TSE_lon, TSE_lat, total_dtimes_inh.to_numpy('float64'))
+        training = np.array([training1, training2, training3]).T
+        target = target.reshape(-1, 1)
+        
+        n = int(1e4)
+        mlr_arr = np.zeros((n, 5))
+        for sample in range(n):
+            rand_indx = np.random.randint(0, len(target), len(target))
+            reg = LinearRegression().fit(training[rand_indx,:], target[rand_indx])
+            mlr_arr[sample,:] = np.array([reg.score(training, target), 
+                                          reg.intercept_[0], 
+                                          reg.coef_[0,0], 
+                                          reg.coef_[0,1],
+                                          reg.coef_[0,2]])
+            
+        fig, axs = plt.subplots(nrows = 5)
+        axs[0].hist(mlr_arr[:,0], bins=np.arange(0, 1+0.01, 0.01))
+        axs[1].hist(mlr_arr[:,1])
+        axs[2].hist(mlr_arr[:,2])
+        axs[3].hist(mlr_arr[:,3])
+        axs[4].hist(mlr_arr[:,4])
+        
+        lr_dict[model_name] = [np.mean(mlr_arr[:,0]), np.std(mlr_arr[:,0]),
+                               np.mean(mlr_arr[:,1]), np.std(mlr_arr[:,1]),
+                               np.mean(mlr_arr[:,2]), np.std(mlr_arr[:,2]),
+                               np.mean(mlr_arr[:,3]), np.std(mlr_arr[:,3]),
+                               np.mean(mlr_arr[:,4]), np.std(mlr_arr[:,4])]
+        print(lr_dict[model_name])
+        print('------------------------------------------')
+        
+        import statsmodels.api as sm
+        sm_training = sm.add_constant(training)
+        print('Training data is shape: {}'.format(np.shape(sm_training)))
+        ols = sm.OLS(target, sm_training)
+        ols_result = ols.fit()
+        summ = ols_result.summary()
+        print(summ)
+        
+        mlr_df = pd.DataFrame.from_dict(lr_dict, orient='index',
+                                        columns=['r2', 'r2_sigma', 
+                                                 'c0', 'c0_sigma',
+                                                 'c1', 'c1_sigma', 
+                                                 'c2', 'c2_sigma',
+                                                 'c3', 'c3_sigma'])
+    #return mlr_arr
     
     #   Encapsulated Plotting
+    def plot_LinearRegressions():
+        fig = plt.figure(figsize=[6,8])
+        gs = fig.add_gridspec(nrows=5, ncols=3, width_ratios=[1,1,1],
+                              left=0.1, bottom=0.1, right=0.95, top=0.95,
+                              wspace=0.05, hspace=0.05)
+        axs = {}
+        for i, model_name in enumerate(traj0.model_names):
+            if i == 0:
+                axs[model_name] = [fig.add_subplot(gs[y,i]) for y in range(5)]
+            else:
+                axs[model_name] = [fig.add_subplot(gs[y,i], sharey=axs[traj0.model_names[0]][y]) for y in range(5)]
+
+        
+        for i, model_name in enumerate(traj0.model_names):
+            print('For model: {} ------------------------------'.format(model_name))
+            label = '({})'.format(string.ascii_lowercase[i])
+            
+            constant_offset = best_shifts[model_name]['shift']
+            delta_times = traj0.model_dtw_times[model_name][str(int(constant_offset))]
+            total_dtimes_inh = (constant_offset + delta_times)
+            
+            ax = axs[model_name]
+            
+            # =============================================================================
+            #   Total delta times vs. Model SW Flow Speed
+            # =============================================================================
+            u_mag = traj0.models[model_name]['u_mag'].to_numpy('float64')
+            a, b = TD.make_NaNFree(total_dtimes_inh, u_mag)
+            
+            ax[0].scatter(a, b)
+            
+            r_stat = scstats.pearsonr(a, b)
+            print(r_stat)
+            
+            ax[0].annotate('({})'.format(string.ascii_lowercase[3*0]), (0,1), xytext=(0.5, -0.5),
+                           xycoords='axes fraction', textcoords='offset fontsize',
+                           ha='left', va='top')
+            ax[0].annotate('r={:.3f}'.format(r_stat[0]), (1,1), (-1.5, -1.5),
+                           xycoords='axes fraction', textcoords='offset fontsize',
+                           ha='right', va='top')
+            
+            # =============================================================================
+            #   Total delta times vs. Model SW Flow Speed - Data
+            #   **WARNING** This can't be used for prediction, as we wouldn't have data for
+            #   comparison
+            # =============================================================================
+            u_mag = traj0.models[model_name]['u_mag'] - traj0.data['u_mag'].to_numpy('float64')
+            a, b = TD.make_NaNFree(total_dtimes_inh, u_mag)
+            ax[1].scatter(a, b)
+            r_stat = scstats.pearsonr(a, b)
+            
+            ax[1].annotate('Not suitable for forecasting', (1,1), (-0.5,-0.5), 
+                           xycoords='axes fraction', textcoords='offset fontsize', 
+                           annotation_clip=False, ha='right', va='top')
+            ax[1].annotate('({})'.format(string.ascii_lowercase[3*1+i]), (0,1), xytext=(0.5, -0.5),
+                           xycoords='axes fraction', textcoords='offset fontsize',
+                           ha='left', va='top')
+            ax[1].annotate('r={:.3f}'.format(r_stat[0]), (1,1), (-1.5, -1.5),
+                           xycoords='axes fraction', textcoords='offset fontsize',
+                           ha='right', va='top')
+                
+            # =============================================================================
+            #   F10.7 Radio flux from the sun
+            # =============================================================================
+            column_headers = ('date', 'observed_flux', 'adjusted_flux',)
+            solar_radio_flux = pd.read_csv('/Users/mrutala/Data/Sun/DRAO/penticton_radio_flux.csv',
+                                           header = 0, names = column_headers)
+            solar_radio_flux['date'] = [dt.datetime.strptime(d, '%Y-%m-%dT%H:%M:%S')
+                                        for d in solar_radio_flux['date']]
+            solar_radio_flux = solar_radio_flux.set_index('date')
+            solar_radio_flux = solar_radio_flux.resample("60Min", origin='start_day').mean().interpolate(method='linear')
+            solar_radio_flux = solar_radio_flux.reindex(index=total_dtimes_inh.index)
+
+            a, b = TD.make_NaNFree(total_dtimes_inh, solar_radio_flux['adjusted_flux'].to_numpy('float64'))
+            ax[2].scatter(a, b)
+            b_F107 = b
+            
+            
+            r_stat = scstats.pearsonr(a, b)
+            print(r_stat)
+            
+            ax[2].annotate('({})'.format(string.ascii_lowercase[3*2+i]), (0,1), xytext=(0.5, -0.5),
+                           xycoords='axes fraction', textcoords='offset fontsize',
+                           ha='left', va='top')
+            ax[2].annotate('r={:.3f}'.format(r_stat[0]), (1,1), (-1.5, -1.5),
+                           xycoords='axes fraction', textcoords='offset fontsize',
+                           ha='right', va='top')
+            # =============================================================================
+            # TSE Angle
+            # =============================================================================
+            TSE_lon = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lon']
+            
+            a, b = TD.make_NaNFree(total_dtimes_inh, TSE_lon.to_numpy('float64'))
+            r_stat = scstats.pearsonr(a, b)
+            print(r_stat)
+            
+            ax[3].scatter(a,b)
+            
+            ax[3].annotate('({})'.format(string.ascii_lowercase[3*3+i]), (0,1), xytext=(0.5, -0.5),
+                           xycoords='axes fraction', textcoords='offset fontsize',
+                           ha='left', va='top')
+            ax[3].annotate('r={:.3f}'.format(r_stat[0]), (1,1), (-1.5, -1.5),
+                           xycoords='axes fraction', textcoords='offset fontsize',
+                           ha='right', va='top')
+            
+            TSE_lat = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lat']
+            
+            a, b = TD.make_NaNFree(total_dtimes_inh, TSE_lat.to_numpy('float64'))
+            r_stat = scstats.pearsonr(a, b)
+            print(r_stat)
+            
+            ax[4].scatter(a,b)
+            
+            x, b, c, d = TD.make_NaNFree(total_dtimes_inh, solar_radio_flux['adjusted_flux'].to_numpy('float64'), TSE_lon.to_numpy('float64'), TSE_lat.to_numpy('float64'))
+            x_prediction = mlr_df['c0'][model_name] + mlr_df['c1'][model_name]*b + mlr_df['c2'][model_name]*c + mlr_df['c3'][model_name]*d
+            x_prediction_err = mlr_df['c0_sigma'][model_name] + mlr_df['c1_sigma'][model_name]*b + mlr_df['c2_sigma'][model_name]*c + mlr_df['c3_sigma'][model_name]*d
+            
+            ax[2].scatter(x_prediction, b, color='C3', s=2)
+            ax[3].scatter(x_prediction, c, color='C3', s=2)
+            ax[4].scatter(x_prediction, d, color='C3', s=2)
+            ax[4].errorbar(x_prediction, d, xerr=x_prediction_err)
+            
+            ax[4].annotate('({})'.format(string.ascii_lowercase[3*4+i]), (0,1), xytext=(0.5, -0.5),
+                           xycoords='axes fraction', textcoords='offset fontsize',
+                           ha='left', va='top')
+            ax[4].annotate('r={:.3f}'.format(r_stat[0]), (1,1), (-1.5, -1.5),
+                           xycoords='axes fraction', textcoords='offset fontsize',
+                           ha='right', va='top')
+            
+            print('------------------------------')
+            
+            for i in range(5): ax[i].set(xlim=[-120,120], xticks=np.arange(-120, 120+24, 24))
+            
+            return x_prediction, x_prediction_err
+     
+    x = plot_LinearRegressions()
+    
+    return mlr_df, x
+
     fig1, axs1 = plt.subplots(nrows=3, sharex=True, sharey=True)
     fig2, axs2 = plt.subplots(nrows=3, sharex=True, sharey=True)
     fig3, axs3 = plt.subplots(nrows=3, sharex=True, sharey=True)
