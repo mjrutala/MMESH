@@ -2651,6 +2651,11 @@ def run_SolarWindEMF():
     #       -  Running Mean SW Speed
     #   This should **ALL** ultimately go into the "Ensemble" class 
     # =============================================================================
+    import statsmodels.api as sm
+    import statsmodels.formula.api as smf
+    
+    #formula = "total_dtimes ~ f10p7_flux + TSE_lat"  #  This can be input
+    formula = "total_dtimes ~ f10p7_flux + TSE_lat + TSE_lon" 
     
     #   Do the work first, plot second
     #   We want to characterize linear relationships independently and together
@@ -2671,7 +2676,7 @@ def run_SolarWindEMF():
         
         # =============================================================================
         # F10.7 Radio flux from the sun
-        # This needs a reader so this can be one line
+        # !!!! This needs a reader so this can be one line
         # =============================================================================
         column_headers = ('date', 'observed_flux', 'adjusted_flux',)
         solar_radio_flux = pd.read_csv('/Users/mrutala/Data/Sun/DRAO/penticton_radio_flux.csv',
@@ -2684,79 +2689,90 @@ def run_SolarWindEMF():
         #   Reindex the radio data to the cadence of the model
         solar_radio_flux = solar_radio_flux.reindex(index=total_dtimes_inh.index)['adjusted_flux']
         
-        training_values, target_values = TD.make_NaNFree(solar_radio_flux.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
-        training_values = training_values.reshape(-1, 1)
-        target_values = target_values.reshape(-1, 1)
-        reg = LinearRegression().fit(training_values, target_values)
-        print(reg.score(training_values, target_values))
-        print(reg.coef_)
-        print(reg.intercept_)
-        print('----------')
+        # training_values, target_values = TD.make_NaNFree(solar_radio_flux.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
+        # training_values = training_values.reshape(-1, 1)
+        # target_values = target_values.reshape(-1, 1)
+        # reg = LinearRegression().fit(training_values, target_values)
+        # print(reg.score(training_values, target_values))
+        # print(reg.coef_)
+        # print(reg.intercept_)
+        # print('----------')
         
         TSE_lon = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lon']
         
-        training_values, target_values = TD.make_NaNFree(TSE_lon.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
-        training_values = training_values.reshape(-1, 1)
-        target_values = target_values.reshape(-1, 1)
-        reg = LinearRegression().fit(training_values, target_values)
-        print(reg.score(training_values, target_values))
-        print(reg.coef_)
-        print(reg.intercept_)
-        print('----------')
+        # training_values, target_values = TD.make_NaNFree(TSE_lon.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
+        # training_values = training_values.reshape(-1, 1)
+        # target_values = target_values.reshape(-1, 1)
+        # reg = LinearRegression().fit(training_values, target_values)
+        # print(reg.score(training_values, target_values))
+        # print(reg.coef_)
+        # print(reg.intercept_)
+        # print('----------')
         
         TSE_lat = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lat']
         
-        training_values, target_values = TD.make_NaNFree(TSE_lat.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
-        training_values = training_values.reshape(-1, 1)
-        target_values = target_values.reshape(-1, 1)
-        reg = LinearRegression().fit(training_values, target_values)
-        print(reg.score(training_values, target_values))
-        print(reg.coef_)
-        print(reg.intercept_)
-        print('----------')
+        # training_values, target_values = TD.make_NaNFree(TSE_lat.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
+        # training_values = training_values.reshape(-1, 1)
+        # target_values = target_values.reshape(-1, 1)
+        # reg = LinearRegression().fit(training_values, target_values)
+        # print(reg.score(training_values, target_values))
+        # print(reg.coef_)
+        # print(reg.intercept_)
+        # print('----------')
         
-        #training2 = TSE_lom
-        training1, training3, target = TD.make_NaNFree(solar_radio_flux, TSE_lat, total_dtimes_inh.to_numpy('float64'))
-        training = np.array([training1, training3]).T
-        target = target.reshape(-1, 1)
+        training_df = pd.DataFrame({'total_dtimes': total_dtimes_inh,
+                                    'f10p7_flux': solar_radio_flux,
+                                    'TSE_lon': TSE_lon,
+                                    'TSE_lat': TSE_lat}, index=total_dtimes_inh.index)
         
-        n = int(1e4)
-        mlr_arr = np.zeros((n, 4))
-        for sample in range(n):
-            rand_indx = np.random.Generator.integers(0, len(target), len(target))
-            reg = LinearRegression().fit(training[rand_indx,:], target[rand_indx])
-            mlr_arr[sample,:] = np.array([reg.score(training, target), 
-                                          reg.intercept_[0], 
-                                          reg.coef_[0,0], 
-                                          reg.coef_[0,1]])
+        training_df.dropna(axis='index')
+        #training1, training3, target = TD.make_NaNFree(solar_radio_flux, TSE_lat, total_dtimes_inh.to_numpy('float64'))
+        #training = np.array([training1, training3]).T
+        #target = target.reshape(-1, 1)
+        
+        # n = int(1e4)
+        # mlr_arr = np.zeros((n, 4))
+        # for sample in range(n):
+        #     rand_indx = np.random.Generator.integers(0, len(target), len(target))
+        #     reg = LinearRegression().fit(training[rand_indx,:], target[rand_indx])
+        #     mlr_arr[sample,:] = np.array([reg.score(training, target), 
+        #                                   reg.intercept_[0], 
+        #                                   reg.coef_[0,0], 
+        #                                   reg.coef_[0,1]])
             
-        fig, axs = plt.subplots(nrows = 4)
-        axs[0].hist(mlr_arr[:,0], bins=np.arange(0, 1+0.01, 0.01))
-        axs[1].hist(mlr_arr[:,1])
-        axs[2].hist(mlr_arr[:,2])
-        axs[3].hist(mlr_arr[:,3])
+        # fig, axs = plt.subplots(nrows = 4)
+        # axs[0].hist(mlr_arr[:,0], bins=np.arange(0, 1+0.01, 0.01))
+        # axs[1].hist(mlr_arr[:,1])
+        # axs[2].hist(mlr_arr[:,2])
+        # axs[3].hist(mlr_arr[:,3])
         
-        lr_dict[model_name] = [np.mean(mlr_arr[:,0]), np.std(mlr_arr[:,0]),
-                               np.mean(mlr_arr[:,1]), np.std(mlr_arr[:,1]),
-                               np.mean(mlr_arr[:,2]), np.std(mlr_arr[:,2]),
-                               np.mean(mlr_arr[:,3]), np.std(mlr_arr[:,3])]
-        print(lr_dict[model_name])
-        print('------------------------------------------')
+        # lr_dict[model_name] = [np.mean(mlr_arr[:,0]), np.std(mlr_arr[:,0]),
+        #                        np.mean(mlr_arr[:,1]), np.std(mlr_arr[:,1]),
+        #                        np.mean(mlr_arr[:,2]), np.std(mlr_arr[:,2]),
+        #                        np.mean(mlr_arr[:,3]), np.std(mlr_arr[:,3])]
+        # print(lr_dict[model_name])
+        # print('------------------------------------------')
         
-        import statsmodels.api as sm
-        sm_training = sm.add_constant(training)
-        print('Training data is shape: {}'.format(np.shape(sm_training)))
-        ols = sm.OLS(target, sm_training)
-        ols_result = ols.fit()
-        summ = ols_result.summary()
-        print(summ)
         
-        mlr_df = pd.DataFrame.from_dict(lr_dict, orient='index',
-                                        columns=['r2', 'r2_sigma', 
-                                                 'c0', 'c0_sigma',
-                                                 'c1', 'c1_sigma', 
-                                                 'c2', 'c2_sigma'])
-    #return mlr_arr
+        reg = smf.ols(formula = formula, data=training_df).fit()
+        print(reg.summary())
+        
+        prediction_test = reg.get_prediction(exog=training_df, transform=True)
+        print(prediction_test)
+        #print(reg.predict({trai}))
+        
+        # print('Training data is shape: {}'.format(np.shape(sm_training)))
+        # ols = sm.OLS(target, sm_training)
+        # ols_result = ols.fit()
+        # summ = ols_result.summary()
+        # print(summ)
+        
+        # mlr_df = pd.DataFrame.from_dict(lr_dict, orient='index',
+        #                                 columns=['r2', 'r2_sigma', 
+        #                                          'c0', 'c0_sigma',
+        #                                          'c1', 'c1_sigma', 
+        #                                          'c2', 'c2_sigma'])
+    return prediction_test
     
     #   Encapsulated Plotting
     def plot_LinearRegressions():
