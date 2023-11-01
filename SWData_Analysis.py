@@ -2662,6 +2662,9 @@ def run_SolarWindEMF():
         print('For model: {} ----------'.format(model_name))
         label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
         
+        #   For each model, loop over each dataset (i.e. each Trajectory class)
+        #   for j, trajectory in self.trajectories...
+        
         offset = best_shifts[model_name]['shift']
         dtimes = traj0.model_dtw_times[model_name][str(int(offset))]
         total_dtimes_inh = (offset + dtimes)
@@ -2712,34 +2715,31 @@ def run_SolarWindEMF():
         print(reg.intercept_)
         print('----------')
         
-        
-        training1, training2, training3, target = TD.make_NaNFree(solar_radio_flux, TSE_lon, TSE_lat, total_dtimes_inh.to_numpy('float64'))
-        training = np.array([training1, training2, training3]).T
+        #training2 = TSE_lom
+        training1, training3, target = TD.make_NaNFree(solar_radio_flux, TSE_lat, total_dtimes_inh.to_numpy('float64'))
+        training = np.array([training1, training3]).T
         target = target.reshape(-1, 1)
         
         n = int(1e4)
-        mlr_arr = np.zeros((n, 5))
+        mlr_arr = np.zeros((n, 4))
         for sample in range(n):
-            rand_indx = np.random.randint(0, len(target), len(target))
+            rand_indx = np.random.Generator.integers(0, len(target), len(target))
             reg = LinearRegression().fit(training[rand_indx,:], target[rand_indx])
             mlr_arr[sample,:] = np.array([reg.score(training, target), 
                                           reg.intercept_[0], 
                                           reg.coef_[0,0], 
-                                          reg.coef_[0,1],
-                                          reg.coef_[0,2]])
+                                          reg.coef_[0,1]])
             
-        fig, axs = plt.subplots(nrows = 5)
+        fig, axs = plt.subplots(nrows = 4)
         axs[0].hist(mlr_arr[:,0], bins=np.arange(0, 1+0.01, 0.01))
         axs[1].hist(mlr_arr[:,1])
         axs[2].hist(mlr_arr[:,2])
         axs[3].hist(mlr_arr[:,3])
-        axs[4].hist(mlr_arr[:,4])
         
         lr_dict[model_name] = [np.mean(mlr_arr[:,0]), np.std(mlr_arr[:,0]),
                                np.mean(mlr_arr[:,1]), np.std(mlr_arr[:,1]),
                                np.mean(mlr_arr[:,2]), np.std(mlr_arr[:,2]),
-                               np.mean(mlr_arr[:,3]), np.std(mlr_arr[:,3]),
-                               np.mean(mlr_arr[:,4]), np.std(mlr_arr[:,4])]
+                               np.mean(mlr_arr[:,3]), np.std(mlr_arr[:,3])]
         print(lr_dict[model_name])
         print('------------------------------------------')
         
@@ -2755,8 +2755,7 @@ def run_SolarWindEMF():
                                         columns=['r2', 'r2_sigma', 
                                                  'c0', 'c0_sigma',
                                                  'c1', 'c1_sigma', 
-                                                 'c2', 'c2_sigma',
-                                                 'c3', 'c3_sigma'])
+                                                 'c2', 'c2_sigma'])
     #return mlr_arr
     
     #   Encapsulated Plotting
