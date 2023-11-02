@@ -29,22 +29,6 @@ def make_NaNFree(*arrays):
         output_arrs.append(arr[~nans_arr])
     
     return tuple(output_arrs)
-        
-        
-    # test_data = np.array(test_data)
-    # ref_data = np.array(ref_data)
-
-    # nans_test = np.isnan(test_data)
-    
-    # test_data = test_data[~nans_test]
-    # ref_data = ref_data[~nans_test]
-    
-    # nans_ref = np.isnan(ref_data)
-    
-    # test_data = test_data[~nans_ref]
-    # ref_data = ref_data[~nans_ref]
-
-    # return test_data, ref_data
 
 def find_TaylorStatistics(test_data, ref_data):
     
@@ -83,10 +67,10 @@ def plot_TaylorDiagram(test_data, ref_data, fig=None, ax=None, **plt_kwargs):
     test_data, ref_data = make_NaNFree(test_data, ref_data)
     
     #   Get the figure and axis
-    fig, ax = init_TaylorDiagram(np.stddev(ref_data), fig=fig, ax=ax)
+    fig, ax = init_TaylorDiagram(np.std(ref_data), fig=fig, ax=ax)
     
     #   Calculate r, stddev, and RMS of the test relative to the reference
-    r, sig, RMS = find_TaylorStatistics(test_data, ref_data)
+    (r, sig), RMS = find_TaylorStatistics(test_data, ref_data)
         
     # Plot model point
     ax.scatter(np.arccos(r), sig, **plt_kwargs)
