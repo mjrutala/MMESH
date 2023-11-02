@@ -385,6 +385,7 @@ class Trajectory:
             best_shifts[model_name] = self.model_dtw_stats[model_name].iloc[best_shift_indx]
             
         self.best_shifts = best_shifts
+        self._dtw_optimization_equation = eqn
     
     def ensemble(self, weights = None):
         """
@@ -636,4 +637,107 @@ class Trajectory:
         
         ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
         
-    
+    def plot_DynamicTimeWarping_Optimization(self, fig=None):
+        import matplotlib.pyplot as plt
+        import string
+        
+        if fig == None:
+            fig = plt.figure(figsize=[6,4.5])
+            
+        gs = fig.add_gridspec(nrows=3, ncols=3, width_ratios=[1,1,1],
+                              left=0.1, bottom=0.1, right=0.95, top=0.95,
+                              wspace=0.0, hspace=0.1)
+        
+        axs0 = [fig.add_subplot(gs[y,0]) for y in range(3)]
+        axs1 = [fig.add_subplot(gs[y,2]) for y in range(3)]
+        
+        for i, (model_name, ax0, ax1) in enumerate(zip(self.model_names, axs0, axs1)):
+            
+            #   Get some statistics for easier plotting
+            shift, r, sig, width = self.best_shifts[model_name][['shift', 'r', 'stddev', 'width_68']]
+            label1 = '({}) {}'.format(string.ascii_lowercase[2*i], model_name)
+            label2 = '({}) {}'.format(string.ascii_lowercase[2*i+1], model_name)
+            
+            #   Get copies of first ax1 for plotting 3 different parameters
+            ax0_correl = ax0.twinx()
+            ax0_width = ax0.twinx()
+            ax0_width.spines.right.set_position(("axes", 1.35))
+            
+            #   Plot the optimization function, and its components (shift and dist. width)
+            #   Plot half the 68% width, or the quasi-1-sigma value, in hours
+            ax0.plot(self.model_dtw_stats[model_name]['shift'], self._dtw_optimization_equation(self.model_dtw_stats[model_name]),
+                     color=model_colors[model_name], zorder=10)
+            ax0_correl.plot(self.model_dtw_stats[model_name]['shift'], self.model_dtw_stats[model_name]['r'],
+                            color='C1', zorder=1)
+            ax0_width.plot(self.model_dtw_stats[model_name]['shift'], (self.model_dtw_stats[model_name]['width_68']/2.),
+                           color='C3', zorder=1)
+
+            #   Mark the maximum of the optimization function
+            ax0.axvline(shift, color='black', linestyle='--', linewidth=1, alpha=0.8)
+            ax0.annotate('({:.0f}, {:.3f}, {:.1f})'.format(shift, r, width/2.), 
+                        (shift, r), xytext=(0.5, 0.5),
+                        textcoords='offset fontsize', zorder=10)
+            
+            ax0.annotate(label1, (0,1), xytext=(0.5, -0.5),
+                               xycoords='axes fraction', textcoords='offset fontsize',
+                               ha='left', va='top')
+            
+            dtw_opt_shifts = self.model_dtw_times[model_name]['{:.0f}'.format(shift)]
+            histo = np.histogram(dtw_opt_shifts, range=[-96,96], bins=int(192/6))
+            
+            ax1.stairs(histo[0]/np.sum(histo[0]), histo[1],
+                          color=model_colors[model_name], linewidth=2)
+            ax1.axvline(np.median(dtw_opt_shifts), linewidth=1, alpha=0.8, label=r'P_{50}', color='black')
+            ax1.axvline(np.percentile(dtw_opt_shifts, 16), linestyle=':', linewidth=1, alpha=0.8, label=r'P_{16}', color='black')
+            ax1.axvline(np.percentile(dtw_opt_shifts, 84), linestyle=':', linewidth=1, alpha=0.8, label=r'P_{84}', color='black')
+            ax1.annotate(label2, (0,1), (0.5, -0.5), 
+                            xycoords='axes fraction', textcoords='offset fontsize',
+                            ha='left', va='top')
+        
+            ax0.set(ylim = (0.0, 1.1), yticks=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+            ax0_correl.set_ylim(0.0, 1.0)
+            ax0_width.set_ylim(0.0, 72)
+            ax0.set_xlim(-102, 102)
+            
+            ax1.set_ylim(0.0, 0.5)
+            ax1.set_xlim(-102, 102)
+            
+            if i < len(self.model_names)-1:
+                ax0.set_xticks(np.arange(-96, 96+24, 24), labels=['']*9)
+                ax1.set_xticks(np.arange(-96, 96+24, 24), labels=['']*9)
+            else:
+                ax0.set_xticks(np.arange(-96, 96+24, 24))
+                ax1.set_xticks(np.arange(-96, 96+24, 24))
+
+        #   Plotting coordinates
+        ymid = 0.50*(axs0[0].get_position().y1 - axs0[-1].get_position().y0) + axs0[-1].get_position().y0
+        ybot = 0.25*axs0[-1].get_position().y0
+        
+        xleft = 0.25*axs0[0].get_position().x0
+        xmid1 = axs0[0].get_position().x1 + 0.25*axs0[0].get_position().size[0]
+        xmid2 = axs0[0].get_position().x1 + 0.55*axs0[0].get_position().size[0]
+        xmid3 = axs1[0].get_position().x0 - 0.2*axs1[0].get_position().size[0]
+        xbot1 = axs0[0].get_position().x0 + 0.5*axs0[0].get_position().size[0]
+        xbot2 = axs1[0].get_position().x0 + 0.5*axs1[0].get_position().size[0]
+        
+        fig.text(xbot1, ybot, 'Constant Temporal Offset [hours]',
+                 ha='center', va='center', 
+                 fontsize=plt.rcParams["figure.labelsize"])
+        fig.text(xleft, ymid, 'Optimization Function [arb.]',
+                 ha='center', va='center', rotation='vertical',
+                 fontsize=plt.rcParams["figure.labelsize"])
+        
+        fig.text(xmid1, ymid, 'Correlation Coefficient (r)', 
+                 ha='center', va='center', rotation='vertical', fontsize=plt.rcParams["figure.labelsize"],
+                 bbox = dict(facecolor='C1', edgecolor='C1', pad=0.1, boxstyle='round'))
+        fig.text(xmid2, ymid, 'Distribution Half-Width (34%) [hours]', 
+                 ha='center', va='center', rotation='vertical', fontsize=plt.rcParams["figure.labelsize"],
+                 bbox = dict(facecolor='C3', edgecolor='C3', pad=0.1, boxstyle='round'))
+
+        fig.text(xbot2, ybot, 'Dynamic Temporal Offset [hours]',
+                 ha='center', va='center', 
+                 fontsize=plt.rcParams["figure.labelsize"])
+        fig.text(xmid3, ymid, 'Fractional Numbers',
+                 ha='center', va='center', rotation='vertical', 
+                 fontsize=plt.rcParams["figure.labelsize"])
+        
