@@ -555,3 +555,78 @@ class Trajectory:
             #     plt.savefig('figures/' + save_filestem, dpi=300, bbox_inches='tight')
             plt.show()
             #return models
+            
+    def plot_ConstantTimeShifting_Optimization(self):
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import string
+        
+        fig, axs = plt.subplots(nrows=3, sharex=True, sharey=True, figsize=(6, 4.5))
+        plt.subplots_adjust(hspace=0.1)
+            
+        for i, (model_name, ax) in enumerate(zip(self.model_names, axs)):
+            
+            ax.plot(self.model_shift_stats[model_name]['shift'], 
+                    self.model_shift_stats[model_name]['r'],
+                    color=model_colors[model_name])
+            
+            #!!!!  Need to allow custom optimization formulae
+            best_shift_indx = np.argmax(self.model_shift_stats[model_name]['r'])
+            
+            
+            shift, r, sig, rmsd = self.model_shift_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'rmsd']]
+            
+            ax.axvline(shift, color='black', linestyle='--', linewidth=1)
+            
+            ax.annotate('({:.0f}, {:.3f})'.format(shift, r), 
+                        (shift, r), xytext=(0.5, 0.5),
+                        textcoords='offset fontsize')
+            
+            label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
+            
+            ax.annotate(label, (0,1), xytext=(0.5, -0.5),
+                        xycoords='axes fraction', textcoords='offset fontsize',
+                        ha='left', va='top')
+            
+            ax.set_ylim(-0.4, 0.6)
+            ax.set_xlim(-102, 102)
+            ax.set_xticks(np.arange(-96, 96+24, 24))
+            
+        fig.supxlabel('Temporal Shift [hours]')
+        fig.supylabel('Correlation Coefficient (r)')
+        
+        return fig, axs
+    
+    def plot_ConstantTimeShifting_TD(self, fig=None):
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import plot_TaylorDiagram as TD
+        
+        fig, ax = TD.init_TaylorDiagram(np.nanstd(self.data['u_mag']), fig=fig)
+        
+        for model_name in self.model_names:
+            
+            ref = self.data['u_mag'].to_numpy(dtype='float64')
+            tst = self.models[model_name]['u_mag'].to_numpy(dtype='float64')  
+            
+            fig, ax = TD.plot_TaylorDiagram(tst, ref, fig=fig, ax=ax, zorder=9, 
+                                            s=36, c='black', marker=model_symbols[model_name],
+                                            label=model_name)
+            
+            # fig, ax = TD.plot_TaylorDiagram(tst, ref, fig=fig, ax=ax, zorder=10, 
+            #                                 s=36, c=model_colors[model_name], marker=model_symbols[model_name],
+            #                                 label=model_name + ' ' + str(shift) + ' h')
+            # (r, sig), rmsd = TD.find_TaylorStatistics(tst, ref)
+            # ax.scatter(np.arccos(r), sig, zorder=9, 
+            #            s=36, c='black', marker=model_symbols[model_name],
+            #            label=model_name)
+            
+            best_shift_indx = np.argmax(self.model_shift_stats[model_name]['r'])
+            shift, r, sig, rmsd = self.model_shift_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'rmsd']]
+            
+            ax.scatter(np.arccos(r), sig, zorder=10, 
+                        s=36, c=model_colors[model_name], marker=model_symbols[model_name],
+                        label=model_name + ' ' + str(shift) + ' h')
+        
+        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
+        
