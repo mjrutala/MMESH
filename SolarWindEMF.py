@@ -220,7 +220,7 @@ class Trajectory:
         
         return models_stats
     
-    def plot_TaylorDiagram(self, tag_name='', ax=None, **plt_kwargs):
+    def plot_TaylorDiagram(self, tag_name='', fig=None, ax=None, **plt_kwargs):
         import numpy as np
         
         import plot_TaylorDiagram as TD
@@ -236,7 +236,7 @@ class Trajectory:
         ref_data = self.data[tag_name].to_numpy(dtype='float64')
         ref_std = np.nanstd(ref_data)
         
-        fig, ax = TD.plot_TaylorDiagram_fromstats(ref_std, ax=ax, **plt_kwargs)
+        fig, ax = TD.init_TaylorDiagram(ref_std, fig=fig, ax=ax, **plt_kwargs)
         
         #  Plot non-reference data
         for model_name in self.model_names:
