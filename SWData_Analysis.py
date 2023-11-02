@@ -2425,8 +2425,10 @@ def run_SolarWindEMF():
     #   Plot a Taylor Diagram of the unchanged models
     # =============================================================================
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-        fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag')
-    ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
+        fig = plt.figure(figsize=(6,4.5))
+        fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
+    ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
+    
     plt.show()
     
     # =============================================================================
@@ -2468,7 +2470,9 @@ def run_SolarWindEMF():
     fig1.supylabel('Correlation Coefficient (r)')
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-        fig, ax = TD.plot_TaylorDiagram_fromstats(np.nanstd(traj0.data['u_mag']))
+        fig = plt.figure(figsize=[6,4.5])
+        fig, ax = TD.init_TaylorDiagram(np.nanstd(traj0.data['u_mag']), fig=fig)
+        
     for model_name in traj0.model_names:
         
         ref = traj0.data['u_mag'].to_numpy(dtype='float64')
@@ -2485,7 +2489,13 @@ def run_SolarWindEMF():
         ax.scatter(np.arccos(r), sig, zorder=10, 
                    s=72, c=model_colors[model_name], marker=model_symbols[model_name],
                    label=model_name + ' ' + str(shift) + ' h')
+    
     ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
+    
+    extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+    
+    for suffix in ['.png']:
+        plt.savefig('figures/' + 'test_TD', dpi=300, bbox_inches=extent)
     
     # =============================================================================
     #   Optimize the models via dynamic time warping
@@ -2620,7 +2630,7 @@ def run_SolarWindEMF():
             
     ref_std = np.nanstd(traj0.data['u_mag'])
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-        fig, ax = TD.plot_TaylorDiagram_fromstats(ref_std)
+        fig, ax = TD.init_TaylorDiagram(ref_std)
 
     for model_name in traj0.model_names:
         (r, std), rmse = TD.find_TaylorStatistics(traj0.models[model_name]['u_mag'].to_numpy('float64'), 
@@ -2758,7 +2768,11 @@ def run_SolarWindEMF():
         print(reg.summary())
         
         prediction_test = reg.get_prediction(exog=training_df, transform=True)
-        print(prediction_test)
+        alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
+                            #  alpha = 0.05 gives 2sigma or 95%
+                            #  alpha = 0.32 gives 1sigma or 68%
+        pred = prediction_test.summary_frame(alpha_level)
+        
         #print(reg.predict({trai}))
         
         # print('Training data is shape: {}'.format(np.shape(sm_training)))
@@ -2772,7 +2786,7 @@ def run_SolarWindEMF():
         #                                          'c0', 'c0_sigma',
         #                                          'c1', 'c1_sigma', 
         #                                          'c2', 'c2_sigma'])
-    return prediction_test
+    return pred
     
     #   Encapsulated Plotting
     def plot_LinearRegressions():
