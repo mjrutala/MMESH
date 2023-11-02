@@ -6,6 +6,36 @@ Created on Thu Nov  2 15:56:40 2023
 @author: mrutala
 """
 
+import datetime as dt
+import pandas as pd
+import numpy as np
+
+import spacecraftdata
+import read_SWModel
+import matplotlib.pyplot as plt
+
+spacecraft_colors = {'Pioneer 10': '#F6E680',
+                     'Pioneer 11': '#FFD485',
+                     'Voyager 1' : '#FEC286',
+                     'Voyager 2' : '#FEAC86',
+                     'Ulysses'   : '#E6877E',
+                     'Juno'      : '#D8696D'}
+model_colors = {'Tao'    : '#C59FE5',
+                'HUXt'   : '#A0A5E4',
+                'SWMF-OH': '#98DBEB',
+                'MSWIM2D': '#A9DBCA',
+                'ENLIL'  : '#DCED96',
+                'ensemble': '#55FFFF'}
+model_symbols = {'Tao'    : 'v',
+                'HUXt'   : '*',
+                'SWMF-OH': '^',
+                'MSWIM2D': 'd',
+                'ENLIL'  : 'h',
+                'ensemble': 'o'}
+
+r_range = np.array((4.9, 5.5))  #  [4.0, 6.4]
+lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
+
 
 def MMESH_run():
     import string
@@ -64,14 +94,14 @@ def MMESH_run():
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig = plt.figure(figsize=(6,4.5))
         fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
-    ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
-    
-    plt.show()
+        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
+                  loc='lower left', mode='expand', markerscale=1.0)
+        plt.show()
     
     # =============================================================================
     #   Optimize the models via constant temporal shifting
     #   Then plot:
-    #       - The changes in correlation cooefficient 
+    #       - The changes in correlation coefficient 
     #         (more generically, whatever combination is being optimized)
     #       - The changes on a Taylor Diagram
     # =============================================================================
@@ -79,61 +109,19 @@ def MMESH_run():
     shift_stats = traj0.optimize_shifts('u_mag', shifts=shifts)
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-        fig1, axs1 = plt.subplots(nrows=3, sharex=True, sharey=True)
-        plt.subplots_adjust(hspace=0.1)
-        
-    for i, (model_name, ax1) in enumerate(zip(traj0.model_names, axs1)):
-        ax1.plot(shift_stats[model_name]['shift'], shift_stats[model_name]['r'],
-                color=model_colors[model_name])
-        
-        best_shift_indx = np.argmax(shift_stats[model_name]['r'])
-        shift, r, sig, rmsd = shift_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'rmsd']]
-        
-        ax1.axvline(shift, color='red', linestyle='--')
-        ax1.annotate('({:.0f}, {:.3f})'.format(shift, r), 
-                    (shift, r), xytext=(0.5, 0.5),
-                    textcoords='offset fontsize')
-        
-        label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
-        ax1.annotate(label, (0,1), xytext=(0.5, -0.5),
-                    xycoords='axes fraction', textcoords='offset fontsize',
-                    ha='left', va='top')
-        
-        ax1.set_ylim(-0.4, 0.6)
-        ax1.set_xlim(-102, 102)
-        ax1.set_xticks(np.arange(-96, 96+24, 24))
-        
-    fig1.supxlabel('Temporal Shift [hours]')
-    fig1.supylabel('Correlation Coefficient (r)')
+        traj0.plot_ConstantTimeShifting_Optimization()
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         fig = plt.figure(figsize=[6,4.5])
-        fig, ax = TD.init_TaylorDiagram(np.nanstd(traj0.data['u_mag']), fig=fig)
+        traj0.plot_ConstantTimeShifting_TD(fig=fig)
         
-    for model_name in traj0.model_names:
-        
-        ref = traj0.data['u_mag'].to_numpy(dtype='float64')
-        tst = traj0.models[model_name]['u_mag'].to_numpy(dtype='float64')  
-        (r, sig), rmsd = TD.find_TaylorStatistics(tst, ref)
-        
-        ax.scatter(np.arccos(r), sig, zorder=9, 
-                   s=72, c='black', marker=model_symbols[model_name],
-                   label=model_name)
-        
-        best_shift_indx = np.argmax(shift_stats[model_name]['r'])
-        shift, r, sig, rmsd = shift_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'rmsd']]
-        
-        ax.scatter(np.arccos(r), sig, zorder=10, 
-                   s=72, c=model_colors[model_name], marker=model_symbols[model_name],
-                   label=model_name + ' ' + str(shift) + ' h')
-    
-    ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
     
     extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
     
     for suffix in ['.png']:
         plt.savefig('figures/' + 'test_TD', dpi=300, bbox_inches=extent)
     
+    return
     # =============================================================================
     #   Optimize the models via dynamic time warping
     #   Then plot:
