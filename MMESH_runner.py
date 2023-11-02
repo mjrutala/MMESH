@@ -147,34 +147,8 @@ def MMESH_traj_run():
 
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         traj0.plot_DynamicTimeWarping_Optimization()
-        
-    return
-
-    ref_std = np.nanstd(traj0.data['u_mag'])
-    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-        fig = plt.figure(figsize=(6,4.5))
-        fig, ax = TD.init_TaylorDiagram(ref_std, fig=fig)
-
-    for model_name in traj0.model_names:
-        (r, std), rmse = TD.find_TaylorStatistics(traj0.models[model_name]['u_mag'].to_numpy('float64'), 
-                                                  traj0.data['u_mag'].to_numpy('float64'))
-        ax.scatter(np.arccos(r), std, 
-                   marker=model_symbols[model_name], s=24, c='black',
-                   zorder=9,
-                   label=model_name)
-        
-        #best_shift_indx = np.argmax(dtw_stats[model_name]['r'] * 6/(dtw_stats[model_name]['width_68']))
-        # best_shift_indx = np.where(traj0.model_dtw_stats[model_name]['shift'] == best_shifts[model_name])[0]
-        # r, sig = traj0.model_dtw_stats[model_name].iloc[best_shift_indx][['r', 'stddev']].values.flatten()
-        r, sig = best_shifts[model_name][['r', 'stddev']].values.flatten()
-        ax.scatter(np.arccos(r), sig, 
-                   marker=model_symbols[model_name], s=48, c=model_colors[model_name],
-                   zorder=10,
-                   label='{} + DTW'.format(model_name))
-        
-    ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
-    ax.set_axisbelow(True)
-    
+        traj0.plot_DynamicTimeWarping_TD()
+    return traj0
     
     # =============================================================================
     #    Compare output list of temporal shifts (and, maybe, running standard deviation or similar)
