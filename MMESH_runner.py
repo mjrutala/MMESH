@@ -79,7 +79,6 @@ def MMESH_run():
     traj0 = mmesh.Trajectory()
     traj0.addData(spacecraft_name, spacecraft.data)
     
-    
     # traj0.addTrajectory(x)
     
     #  Read models and add to trajectory
@@ -115,7 +114,6 @@ def MMESH_run():
         fig = plt.figure(figsize=[6,4.5])
         traj0.plot_ConstantTimeShifting_TD(fig=fig)
         
-    
     extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
     
     for suffix in ['.png']:
@@ -133,7 +131,8 @@ def MMESH_run():
     smoothing_widths = {'Tao':      4,
                         'HUXt':     2,
                         'ENLIL':    2,
-                        'Juno':     6} # 'Ulysses':  12}   #  hours
+                        'Juno':     6,
+                        'Ulysses':  12}   #  hours
     traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3)
     
     traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
