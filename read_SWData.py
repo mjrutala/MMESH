@@ -127,7 +127,6 @@ def make_DerezzedData(*dfs, resolution=None):
         case str():
             #  As long as the input is a string, use resample
             for df in dfs:
-                print(type(df.index))
                 resample = df.resample(resolution).mean()
                 result_list.append(resample)
             
@@ -837,6 +836,5 @@ def read(spacecraft, starttime, stoptime, basedir=None, resolution=None, combine
                              basedir=basedir, resolution=resolution)
         case _:
             result = None
-    return(result)
-            
+    return result
         
