@@ -109,17 +109,15 @@ def MMESH_run():
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         traj0.plot_ConstantTimeShifting_Optimization()
-    
-    with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+        
         fig = plt.figure(figsize=[6,4.5])
         traj0.plot_ConstantTimeShifting_TD(fig=fig)
         
-    extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+        extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted()) 
+        
+        for suffix in ['.png']:
+            plt.savefig('figures/' + 'test_TD', dpi=300, bbox_inches=extent)
     
-    for suffix in ['.png']:
-        plt.savefig('figures/' + 'test_TD', dpi=300, bbox_inches=extent)
-    
-    return
     # =============================================================================
     #   Optimize the models via dynamic time warping
     #   Then plot:
@@ -138,14 +136,16 @@ def MMESH_run():
     traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
     traj0.plot_SingleTimeseries('jumps', starttime, stoptime)
     
-    dtw_stats = traj0.optimize_warp('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
+    #   Calculate a whole host of statistics
+    dtw_stats = traj0.find_WarpStatistics('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
+    #   Write an equation describing the optimization equation
+    def optimization_eqn(df):
+        return df['r'] * 6/df['width_68']
+    #   Plug in the optimization equation
+    traj0.optimize_Warp(optimization_eqn)
     
-    best_shifts = {}
-    for i, model_name in enumerate(traj0.model_names):
-        #  Optimize
-        best_shift_indx = np.argmax(dtw_stats[model_name]['r'] * 6/(dtw_stats[model_name]['width_68']))
-        #shift = dtw_stats[model_name].iloc[best_shift_indx][['shift']]
-        best_shifts[model_name] = dtw_stats[model_name].iloc[best_shift_indx]
+    return traj0.best_shifts
+    
     
     plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
     #with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
