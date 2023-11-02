@@ -8,7 +8,8 @@ Created on Wed Aug 30 16:38:04 2023
 
 import datetime as dt
 import logging
-
+import numpy as np
+import pandas as pd
 
 spacecraft_colors = {'Pioneer 10': '#F6E680',
                      'Pioneer 11': '#FFD485',
@@ -189,8 +190,6 @@ class Trajectory:
 
     def baseline(self):
         import scipy
-        import numpy as np
-        import pandas as pd
         
         models_stats = {}
         for model_name in self.model_names:
@@ -221,7 +220,6 @@ class Trajectory:
         return models_stats
     
     def plot_TaylorDiagram(self, tag_name='', fig=None, ax=None, **plt_kwargs):
-        import numpy as np
         
         import plot_TaylorDiagram as TD
 
@@ -329,12 +327,10 @@ class Trajectory:
             
         return self.model_shift_stats
     
-    def optimize_warp(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
+    def find_WarpStatistics(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
         import sys
         import DTW_Application as dtwa
         import SWData_Analysis as swda
-        import numpy as np
-        import pandas as pd
         
         #shifts = [0]  #  Needs to be input
         sigma_cutoff = 3  #  Needs to be input
@@ -376,6 +372,19 @@ class Trajectory:
             self.model_dtw_times[model_name] = times_df
             
         return self.model_dtw_stats
+    
+    def optimize_Warp(self, eqn):
+        
+        best_shifts = {}
+        for model_name in self.model_names:
+            
+            form = eqn(self.model_dtw_stats[model_name])
+            
+            best_shift_indx = np.argmax(form)
+            #shift = dtw_stats[model_name].iloc[best_shift_indx][['shift']]
+            best_shifts[model_name] = self.model_dtw_stats[model_name].iloc[best_shift_indx]
+            
+        self.best_shifts = best_shifts
     
     def ensemble(self, weights = None):
         """
@@ -442,8 +451,6 @@ class Trajectory:
     #   Plotting stuff
     # =============================================================================
     def _plot_parameters(self, parameter):
-        import numpy as np
-        
         #  Check which parameter was specified and set up some plotting keywords
         match parameter:
             case ('u_mag' | 'flow speed'):
@@ -558,7 +565,7 @@ class Trajectory:
             
     def plot_ConstantTimeShifting_Optimization(self):
         import matplotlib.pyplot as plt
-        import numpy as np
+        
         import string
         
         fig, axs = plt.subplots(nrows=3, sharex=True, sharey=True, figsize=(6, 4.5))
@@ -599,7 +606,6 @@ class Trajectory:
     
     def plot_ConstantTimeShifting_TD(self, fig=None):
         import matplotlib.pyplot as plt
-        import numpy as np
         import plot_TaylorDiagram as TD
         
         fig, ax = TD.init_TaylorDiagram(np.nanstd(self.data['u_mag']), fig=fig)
@@ -630,3 +636,4 @@ class Trajectory:
         
         ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
         
+    
