@@ -741,3 +741,41 @@ class Trajectory:
                  ha='center', va='center', rotation='vertical', 
                  fontsize=plt.rcParams["figure.labelsize"])
         
+        
+    def plot_DynamicTimeWarping_TD(self, fig=None):
+        import matplotlib.pyplot as plt
+        import plot_TaylorDiagram as TD
+        
+        #   There's probably a much neater way to do this
+        #   But we need to drop all NaNs in the data + model sets
+        #   Rather than just the NaNs in the data
+        #   Since we drop all the NaNs when calculating the other TD params
+        subset = []
+        for first in [self.spacecraft_name] + self.model_names:
+            subset.append((first, 'u_mag'))
+        ref_std = np.std(self._primary_df.dropna(subset=subset)[self.spacecraft_name, 'u_mag'])
+        
+        if fig == None:
+            fig = plt.figure(figsize=(6,4.5))
+        print(ref_std)
+        fig, ax = TD.init_TaylorDiagram(ref_std, fig=fig)
+
+        for model_name in self.model_names:
+            (r, sig), rmse = TD.find_TaylorStatistics(self.models[model_name]['u_mag'].to_numpy('float64'), 
+                                                      self.data['u_mag'].to_numpy('float64'))
+            ax.scatter(np.arccos(r), sig, 
+                        marker=model_symbols[model_name], s=24, c='black',
+                        zorder=9,
+                        label=model_name)
+            
+            #best_shift_indx = np.argmax(dtw_stats[model_name]['r'] * 6/(dtw_stats[model_name]['width_68']))
+            # best_shift_indx = np.where(traj0.model_dtw_stats[model_name]['shift'] == best_shifts[model_name])[0]
+            # r, sig = traj0.model_dtw_stats[model_name].iloc[best_shift_indx][['r', 'stddev']].values.flatten()
+            r, sig = self.best_shifts[model_name][['r', 'stddev']].values.flatten()
+            ax.scatter(np.arccos(r), sig, 
+                        marker=model_symbols[model_name], s=48, c=model_colors[model_name],
+                        zorder=10,
+                        label='{} + DTW'.format(model_name))
+            
+        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
+        ax.set_axisbelow(True)
