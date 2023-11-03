@@ -56,6 +56,10 @@ def MMESH_traj_run():
     spacecraft_name = 'Juno' # 'Ulysses'
     model_names = ['Tao', 'HUXt', 'ENLIL']
     
+    #   !!!! This whole pipline is currently (2023 11 03) sensitive to these
+    #   input dates, but shouldn't be-- Optimization should not change based on input dates
+    #   as long as the input dates span the whole of the spacecraft data being used
+    #   since we should always be dropping NaN rows...
     starttime = dt.datetime(2016, 5, 16) # dt.datetime(1997,8,14) # dt.datetime(1991,12,8) # 
     stoptime = dt.datetime(2016, 6, 26) # dt.datetime(1998,1,1) # dt.datetime(1992,2,2) # 
     
@@ -148,7 +152,7 @@ def MMESH_traj_run():
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         traj0.plot_DynamicTimeWarping_Optimization()
         traj0.plot_DynamicTimeWarping_TD()
-    return traj0
+    
     
     # =============================================================================
     #    Compare output list of temporal shifts (and, maybe, running standard deviation or similar)
@@ -161,8 +165,13 @@ def MMESH_traj_run():
     import statsmodels.api as sm
     import statsmodels.formula.api as smf
     
-    #formula = "total_dtimes ~ f10p7_flux + TSE_lat"  #  This can be input
-    formula = "total_dtimes ~ f10p7_flux + TSE_lat + TSE_lon" 
+    formula = "total_dtimes ~ f10p7_flux + TSE_lon"  #  This can be input
+    
+    mmesh0 = mmesh.MMESH(trajectories=[traj0])
+    
+    return mmesh0
+
+    # formula = "total_dtimes ~ f10p7_flux + TSE_lat + TSE_lon" 
     
     #   Do the work first, plot second
     #   We want to characterize linear relationships independently and together
@@ -177,7 +186,7 @@ def MMESH_traj_run():
         #   For each model, loop over each dataset (i.e. each Trajectory class)
         #   for j, trajectory in self.trajectories...
         
-        offset = best_shifts[model_name]['shift']
+        offset = traj0.best_shifts[model_name]['shift']
         dtimes = traj0.model_dtw_times[model_name][str(int(offset))]
         total_dtimes_inh = (offset + dtimes)
         
@@ -194,7 +203,7 @@ def MMESH_traj_run():
         solar_radio_flux = solar_radio_flux.resample("60Min", origin='start_day').mean().interpolate(method='linear')
         
         #   Reindex the radio data to the cadence of the model
-        solar_radio_flux = solar_radio_flux.reindex(index=total_dtimes_inh.index)['adjusted_flux']
+        srf_training = solar_radio_flux.reindex(index=total_dtimes_inh.index)['adjusted_flux']
         
         # training_values, target_values = TD.make_NaNFree(solar_radio_flux.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
         # training_values = training_values.reshape(-1, 1)
@@ -228,11 +237,24 @@ def MMESH_traj_run():
         # print('----------')
         
         training_df = pd.DataFrame({'total_dtimes': total_dtimes_inh,
-                                    'f10p7_flux': solar_radio_flux,
+                                    'f10p7_flux': srf_training,
                                     'TSE_lon': TSE_lon,
                                     'TSE_lat': TSE_lat}, index=total_dtimes_inh.index)
-        
         training_df.dropna(axis='index')
+        
+        #   Need to predict for spacecraft for comparison,
+        #   then for Jupiter for cross-spacecraft comparison
+        sc_pred = spacecraftdata.SpacecraftData(spacecraft_name)
+        sc_pred.make_timeseries(total_dtimes_inh.index[0]-dt.timedelta(days=30), 
+                                total_dtimes_inh.index[-1]+dt.timedelta(days=365*5), 
+                                timedelta=dt.timedelta(hours=1))
+        srf_prediction = solar_radio_flux.reindex(index=sc_pred.data.index)
+        pos_TSE_pred = sc_pred.find_StateToEarth()
+        prediction_df = pd.DataFrame({'f10p7_flux': srf_prediction['adjusted_flux'],
+                                      'TSE_lon': pos_TSE_pred['del_lon'],
+                                      'TSE_lat': pos_TSE_pred['del_lat']}, 
+                                     index=sc_pred.data.index)
+        
         #training1, training3, target = TD.make_NaNFree(solar_radio_flux, TSE_lat, total_dtimes_inh.to_numpy('float64'))
         #training = np.array([training1, training3]).T
         #target = target.reshape(-1, 1)
@@ -264,7 +286,7 @@ def MMESH_traj_run():
         reg = smf.ols(formula = formula, data=training_df).fit()
         print(reg.summary())
         
-        prediction_test = reg.get_prediction(exog=training_df, transform=True)
+        prediction_test = reg.get_prediction(exog=prediction_df, transform=True)
         alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
                             #  alpha = 0.05 gives 2sigma or 95%
                             #  alpha = 0.32 gives 1sigma or 68%
@@ -283,7 +305,13 @@ def MMESH_traj_run():
         #                                          'c0', 'c0_sigma',
         #                                          'c1', 'c1_sigma', 
         #                                          'c2', 'c2_sigma'])
-    return pred
+        
+        fig, ax = plt.subplots()
+        ax.plot(prediction_df.index, pred['mean'], color='red')
+        ax.fill_between(prediction_df.index, pred['obs_ci_lower'], pred['obs_ci_upper'], color='red', alpha=0.5)
+        ax.plot(training_df.index, training_df['total_dtimes'], color='black')
+        ax.set_ylim((-24*10, 24*10))
+    return training_df, prediction_df, pred
     
     #   Encapsulated Plotting
     def plot_LinearRegressions():
