@@ -99,7 +99,7 @@ class MMESH:
             
             training_df = pd.DataFrame.from_dict(d)
             training_df = training_df.set_index('datetime')
-            predictions_dict[model_name] = training_df
+            #predictions_dict[model_name] = training_df
             
             #   !!! Might need to allow different formulae for differen models...
             #   i.e. formula = formulae[model_name]
@@ -134,7 +134,16 @@ class MMESH:
                                 #  alpha = 0.32 gives 1sigma or 68%
             result = nowcast.summary_frame(alpha_level)
             
-        return result
+            predictions_dict[model_name] = mlr_fit
+            
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots()
+            ax.plot(training_df.index, result['mean'], color='C0')
+            ax.fill_between(training_df.index, result['obs_ci_lower'], result['obs_ci_upper'], color='C0', alpha=0.5)
+            ax.plot(training_df.index, training_df['empirical_dtime'], color='black')
+            plt.show()
+            
+        return predictions_dict
             
     #   We want to characterize linear relationships independently and together
     #   Via single-target (for now) multiple linear regression
