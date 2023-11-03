@@ -49,66 +49,52 @@ How I imagine this framework to work:
         Additionally, save the times at which the EM is available (i.e., times when all models are present)
 """
 
-class SolarWindEM:
+class MMESH:
     
-    def __init__(self):
-        
-        #self.startdate = startdate
-        #self.stopdate = stopdate
+    def __init__(self, trajectories=[]):
         
         self.spacecraft_names = []
-        self.spacecraft_dict = {}
-        # self.spacecraft_dictionary_template = {'spacecraft_name': '',
-        #                                        'spacecraft_data': 0.,
-        #                                        'models_present': [],
-        #                                        'model_outputs': []}
+        self.trajectories = {}
+        
+        for trajectory in trajectories:
+            self.spacecraft_names.append(trajectory.spacecraft_name)
+            self.trajectories[trajectory.spacecraft_name] = trajectory
+        
+        
     
-    def addData(self, spacecraft_name, spacecraft_df):
+    # def addData(self, spacecraft_name, spacecraft_df):
         
-        self.spacecraft_names.append(spacecraft_name)
+    #     self.spacecraft_names.append(spacecraft_name)
         
         
-        self.spacecraft_dict[spacecraft_name] = {'spacecraft_data': spacecraft_df,
-                                                         'models': {}}
+    #     self.spacecraft_dict[spacecraft_name] = {'spacecraft_data': spacecraft_df,
+    #                                                      'models': {}}
         
-    def addModel(self, model_name, model_df, spacecraft_name = 'Previous'):
+    # def addModel(self, model_name, model_df, spacecraft_name = 'Previous'):
         
-        #  Parse spacecraft_name
-        if (spacecraft_name == 'Previous') and (len(self.spacecraft_dictionaries) > 0):
-            spacecraft_name = self.spacecraft_dictionaries.keys()[-1]
-        elif spacecraft_name == 'Previous':
-            logging.warning('No spacecraft loaded yet! Either specify a spacecraft, or load spacecraft data first.')
+    #     #  Parse spacecraft_name
+    #     if (spacecraft_name == 'Previous') and (len(self.spacecraft_dictionaries) > 0):
+    #         spacecraft_name = self.spacecraft_dictionaries.keys()[-1]
+    #     elif spacecraft_name == 'Previous':
+    #         logging.warning('No spacecraft loaded yet! Either specify a spacecraft, or load spacecraft data first.')
                
-        self.spacecraft_dict[spacecraft_name]['models'][model_name] = model_df
+    #     self.spacecraft_dict[spacecraft_name]['models'][model_name] = model_df
 
 
-    def baseline(self):
+    # def baseline(self):
         
-        for key, value in self.spacecraft_dict.items():
-            print()
+    #     for key, value in self.spacecraft_dict.items():
+    #         print()
             
             
-    def warp(self, basis_tag):
+    # def warp(self, basis_tag):
         
-        for spacecraft_name, d in self.spacecraft_dict.items():
+    #     for spacecraft_name, d in self.spacecraft_dict.items():
             
-            for model_name, model_output in d['models'].items():
+    #         for model_name, model_output in d['models'].items():
                 
-                print()
+    #             print()
                 
-                
-
-
-#  If the nested dictionaries used in SolarWindEM become a headache
-#  I could always spin off a new class to hold the data and models
-#  This would be kinda nice, because it could have built in plotting routines and the like
-# class DataModel:
-#     def __init__(self):
-
-    
-#  There should be a model_output class, which has methods to warp it
-import pandas as pd
-
 class Trajectory:
     """
     The Trajectory class is designed to hold trajectory information in 4D
