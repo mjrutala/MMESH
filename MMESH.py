@@ -11,6 +11,9 @@ import logging
 import numpy as np
 import pandas as pd
 
+#   To set up file
+SolarRadioFlux_filepath = '/Users/mrutala/Data/Sun/DRAO/penticton_radio_flux.csv'
+
 spacecraft_colors = {'Pioneer 10': '#F6E680',
                      'Pioneer 11': '#FFD485',
                      'Voyager 1' : '#FEC286',
@@ -47,8 +50,7 @@ How I imagine this framework to work:
         
         Finally, store the ensemble model outputs (after averaging) in a top level dataframe
         Additionally, save the times at which the EM is available (i.e., times when all models are present)
-"""
-
+""" 
 class MMESH:
     
     def __init__(self, trajectories=[]):
@@ -61,39 +63,7 @@ class MMESH:
             self.trajectories[trajectory.spacecraft_name] = trajectory
         
         
-    
-    # def addData(self, spacecraft_name, spacecraft_df):
-        
-    #     self.spacecraft_names.append(spacecraft_name)
-        
-        
-    #     self.spacecraft_dict[spacecraft_name] = {'spacecraft_data': spacecraft_df,
-    #                                                      'models': {}}
-        
-    # def addModel(self, model_name, model_df, spacecraft_name = 'Previous'):
-        
-    #     #  Parse spacecraft_name
-    #     if (spacecraft_name == 'Previous') and (len(self.spacecraft_dictionaries) > 0):
-    #         spacecraft_name = self.spacecraft_dictionaries.keys()[-1]
-    #     elif spacecraft_name == 'Previous':
-    #         logging.warning('No spacecraft loaded yet! Either specify a spacecraft, or load spacecraft data first.')
-               
-    #     self.spacecraft_dict[spacecraft_name]['models'][model_name] = model_df
-
-
-    # def baseline(self):
-        
-    #     for key, value in self.spacecraft_dict.items():
-    #         print()
-            
-            
-    # def warp(self, basis_tag):
-        
-    #     for spacecraft_name, d in self.spacecraft_dict.items():
-            
-    #         for model_name, model_output in d['models'].items():
-                
-    #             print()
+ 
                 
 class Trajectory:
     """
@@ -765,3 +735,22 @@ class Trajectory:
             
         ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
         ax.set_axisbelow(True)
+
+
+def read_SolarRadioFlux(startdate, stopdate, sample_rate='60Min'):
+    
+    # =============================================================================
+    # F10.7 Radio flux from the sun
+    # !!!! This needs a reader so this can be one line
+    # =============================================================================
+    column_headers = ('date', 'observed_flux', 'adjusted_flux',)
+    srf_df = pd.read_csv(SolarRadioFlux_filepath,
+                         header = 0, names = column_headers)
+    srf_df['date'] = [dt.datetime.strptime(d, '%Y-%m-%dT%H:%M:%S')
+                                for d in srf_df['date']]
+    srf_df = srf_df.set_index('date')
+    srf_df = srf_df.resample(sample_rate, origin='start_day').mean().interpolate(method='linear')
+
+    result = srf_df[(srf_df.index >= startdate) & (srf_df.index <= stopdate)]
+    
+    return result
