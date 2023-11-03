@@ -161,11 +161,14 @@ def MMESH_traj_run():
     #       -  Solar cycle phase
     #       -  Running Mean SW Speed
     #   This should **ALL** ultimately go into the "Ensemble" class 
-    # =============================================================================
-    import statsmodels.api as sm
-    import statsmodels.formula.api as smf
+    # =============================================================================    
+    formula = "total_dtimes ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     
-    formula = "total_dtimes ~ f10p7_flux + TSE_lon"  #  This can be input
+    #   traj0.addContext()
+    srf = mmesh.read_SolarRadioFlux(traj0._primary_df.index[0], traj0._primary_df.index[-1])
+    traj0._primary_df[('context', 'solar_radio_flux')] = srf['adjusted_flux']   
+    traj0._primary_df[('context', 'target_sun_earth_lon')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lon']
+    traj0._primary_df[('context', 'target_sun_earth_lat')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lon']
     
     mmesh0 = mmesh.MMESH(trajectories=[traj0])
     
@@ -173,145 +176,7 @@ def MMESH_traj_run():
 
     # formula = "total_dtimes ~ f10p7_flux + TSE_lat + TSE_lon" 
     
-    #   Do the work first, plot second
-    #   We want to characterize linear relationships independently and together
-    #   Via single-target (for now) multiple linear regression
-    
-    #   For now: single-target MLR within each model-- treat models fully independently
-    lr_dict = {}
-    for i, model_name in enumerate(traj0.model_names):
-        print('For model: {} ----------'.format(model_name))
-        label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
-        
-        #   For each model, loop over each dataset (i.e. each Trajectory class)
-        #   for j, trajectory in self.trajectories...
-        
-        offset = traj0.best_shifts[model_name]['shift']
-        dtimes = traj0.model_dtw_times[model_name][str(int(offset))]
-        total_dtimes_inh = (offset + dtimes)
-        
-        # =============================================================================
-        # F10.7 Radio flux from the sun
-        # !!!! This needs a reader so this can be one line
-        # =============================================================================
-        column_headers = ('date', 'observed_flux', 'adjusted_flux',)
-        solar_radio_flux = pd.read_csv('/Users/mrutala/Data/Sun/DRAO/penticton_radio_flux.csv',
-                                       header = 0, names = column_headers)
-        solar_radio_flux['date'] = [dt.datetime.strptime(d, '%Y-%m-%dT%H:%M:%S')
-                                    for d in solar_radio_flux['date']]
-        solar_radio_flux = solar_radio_flux.set_index('date')
-        solar_radio_flux = solar_radio_flux.resample("60Min", origin='start_day').mean().interpolate(method='linear')
-        
-        #   Reindex the radio data to the cadence of the model
-        srf_training = solar_radio_flux.reindex(index=total_dtimes_inh.index)['adjusted_flux']
-        
-        # training_values, target_values = TD.make_NaNFree(solar_radio_flux.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
-        # training_values = training_values.reshape(-1, 1)
-        # target_values = target_values.reshape(-1, 1)
-        # reg = LinearRegression().fit(training_values, target_values)
-        # print(reg.score(training_values, target_values))
-        # print(reg.coef_)
-        # print(reg.intercept_)
-        # print('----------')
-        
-        TSE_lon = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lon']
-        
-        # training_values, target_values = TD.make_NaNFree(TSE_lon.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
-        # training_values = training_values.reshape(-1, 1)
-        # target_values = target_values.reshape(-1, 1)
-        # reg = LinearRegression().fit(training_values, target_values)
-        # print(reg.score(training_values, target_values))
-        # print(reg.coef_)
-        # print(reg.intercept_)
-        # print('----------')
-        
-        TSE_lat = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lat']
-        
-        # training_values, target_values = TD.make_NaNFree(TSE_lat.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
-        # training_values = training_values.reshape(-1, 1)
-        # target_values = target_values.reshape(-1, 1)
-        # reg = LinearRegression().fit(training_values, target_values)
-        # print(reg.score(training_values, target_values))
-        # print(reg.coef_)
-        # print(reg.intercept_)
-        # print('----------')
-        
-        training_df = pd.DataFrame({'total_dtimes': total_dtimes_inh,
-                                    'f10p7_flux': srf_training,
-                                    'TSE_lon': TSE_lon,
-                                    'TSE_lat': TSE_lat}, index=total_dtimes_inh.index)
-        training_df.dropna(axis='index')
-        
-        #   Need to predict for spacecraft for comparison,
-        #   then for Jupiter for cross-spacecraft comparison
-        sc_pred = spacecraftdata.SpacecraftData(spacecraft_name)
-        sc_pred.make_timeseries(total_dtimes_inh.index[0]-dt.timedelta(days=30), 
-                                total_dtimes_inh.index[-1]+dt.timedelta(days=365*5), 
-                                timedelta=dt.timedelta(hours=1))
-        srf_prediction = solar_radio_flux.reindex(index=sc_pred.data.index)
-        pos_TSE_pred = sc_pred.find_StateToEarth()
-        prediction_df = pd.DataFrame({'f10p7_flux': srf_prediction['adjusted_flux'],
-                                      'TSE_lon': pos_TSE_pred['del_lon'],
-                                      'TSE_lat': pos_TSE_pred['del_lat']}, 
-                                     index=sc_pred.data.index)
-        
-        #training1, training3, target = TD.make_NaNFree(solar_radio_flux, TSE_lat, total_dtimes_inh.to_numpy('float64'))
-        #training = np.array([training1, training3]).T
-        #target = target.reshape(-1, 1)
-        
-        # n = int(1e4)
-        # mlr_arr = np.zeros((n, 4))
-        # for sample in range(n):
-        #     rand_indx = np.random.Generator.integers(0, len(target), len(target))
-        #     reg = LinearRegression().fit(training[rand_indx,:], target[rand_indx])
-        #     mlr_arr[sample,:] = np.array([reg.score(training, target), 
-        #                                   reg.intercept_[0], 
-        #                                   reg.coef_[0,0], 
-        #                                   reg.coef_[0,1]])
-            
-        # fig, axs = plt.subplots(nrows = 4)
-        # axs[0].hist(mlr_arr[:,0], bins=np.arange(0, 1+0.01, 0.01))
-        # axs[1].hist(mlr_arr[:,1])
-        # axs[2].hist(mlr_arr[:,2])
-        # axs[3].hist(mlr_arr[:,3])
-        
-        # lr_dict[model_name] = [np.mean(mlr_arr[:,0]), np.std(mlr_arr[:,0]),
-        #                        np.mean(mlr_arr[:,1]), np.std(mlr_arr[:,1]),
-        #                        np.mean(mlr_arr[:,2]), np.std(mlr_arr[:,2]),
-        #                        np.mean(mlr_arr[:,3]), np.std(mlr_arr[:,3])]
-        # print(lr_dict[model_name])
-        # print('------------------------------------------')
-        
-        
-        reg = smf.ols(formula = formula, data=training_df).fit()
-        print(reg.summary())
-        
-        prediction_test = reg.get_prediction(exog=prediction_df, transform=True)
-        alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
-                            #  alpha = 0.05 gives 2sigma or 95%
-                            #  alpha = 0.32 gives 1sigma or 68%
-        pred = prediction_test.summary_frame(alpha_level)
-        
-        #print(reg.predict({trai}))
-        
-        # print('Training data is shape: {}'.format(np.shape(sm_training)))
-        # ols = sm.OLS(target, sm_training)
-        # ols_result = ols.fit()
-        # summ = ols_result.summary()
-        # print(summ)
-        
-        # mlr_df = pd.DataFrame.from_dict(lr_dict, orient='index',
-        #                                 columns=['r2', 'r2_sigma', 
-        #                                          'c0', 'c0_sigma',
-        #                                          'c1', 'c1_sigma', 
-        #                                          'c2', 'c2_sigma'])
-        
-        fig, ax = plt.subplots()
-        ax.plot(prediction_df.index, pred['mean'], color='red')
-        ax.fill_between(prediction_df.index, pred['obs_ci_lower'], pred['obs_ci_upper'], color='red', alpha=0.5)
-        ax.plot(training_df.index, training_df['total_dtimes'], color='black')
-        ax.set_ylim((-24*10, 24*10))
-    return training_df, prediction_df, pred
+
     
     #   Encapsulated Plotting
     def plot_LinearRegressions():
