@@ -153,7 +153,7 @@ def MMESH_traj_run():
     for model_name in traj0.model_names:
         constant_offset = traj0.best_shifts[model_name]['shift']
         dynamic_offsets = traj0.model_dtw_times[model_name][str(int(constant_offset))]
-        traj0.models[model_name]['empirical_dtime'] = constant_offset + dynamic_offsets
+        traj0._primary_df[model_name, 'empirical_dtime'] = constant_offset + dynamic_offsets
 
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         traj0.plot_DynamicTimeWarping_Optimization()
@@ -176,12 +176,14 @@ def MMESH_traj_run():
     traj0._primary_df[('context', 'target_sun_earth_lon')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lon']
     traj0._primary_df[('context', 'target_sun_earth_lat')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lon']
     
-    
+    #prediction_df = 
     
     
     mmesh0 = mmesh.MMESH(trajectories=[traj0])
     
-    return mmesh0
+    test = mmesh0.linear_regression(formula)
+    
+    return test
 
     # formula = "total_dtimes ~ f10p7_flux + TSE_lat + TSE_lon" 
     
