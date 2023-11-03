@@ -58,12 +58,220 @@ class MMESH:
         self.spacecraft_names = []
         self.trajectories = {}
         
+        possible_models = []
         for trajectory in trajectories:
             self.spacecraft_names.append(trajectory.spacecraft_name)
             self.trajectories[trajectory.spacecraft_name] = trajectory
+            possible_models += trajectory.model_names
+        
+        self.model_names = list(set(possible_models))
         
         
- 
+    def linear_regression(self, formula):
+        import statsmodels.api as sm
+        import statsmodels.formula.api as smf
+        import re
+        
+        # =============================================================================
+        #   Concatenate trajectories into a single training set based on model
+        #   
+        # =============================================================================
+        predictions_dict = {}
+        for model_name in self.model_names:
+            
+            d = {'datetime':[], 
+                 'empirical_dtime':[], 
+                 'solar_radio_flux':[], 
+                 'target_sun_earth_lon':[], 
+                 'target_sun_earth_lat':[], 
+                 'u_mag_model':[]}
+            
+            for spacecraft_name, trajectory in self.trajectories.items():
+                d['empirical_dtime'].extend(trajectory.models[model_name]['empirical_dtime'])
+                d['u_mag_model'].extend(trajectory.models[model_name]['u_mag'])
+                
+                #   Need to write a better getter/setter for 'context'
+                d['solar_radio_flux'].extend(trajectory._primary_df[('context', 'solar_radio_flux')])
+                d['target_sun_earth_lon'].extend(trajectory._primary_df[('context', 'target_sun_earth_lon')])
+                d['target_sun_earth_lat'].extend(trajectory._primary_df[('context', 'target_sun_earth_lat')])
+                
+                d['datetime'] = trajectory._primary_df.index
+            
+            training_df = pd.DataFrame.from_dict(d)
+            training_df = training_df.set_index('datetime')
+            predictions_dict[model_name] = training_df
+            
+            #   !!! Might need to allow different formulae for differen models...
+            #   i.e. formula = formulae[model_name]
+            needed_columns = re.findall(r"[\w']+", formula)
+            training_df.dropna(subset=needed_columns, axis='index')
+            
+            #   Need to predict for spacecraft for comparison,
+            #   then for Jupiter for cross-spacecraft comparison
+            # sc_pred = spacecraftdata.SpacecraftData(spacecraft_name)
+            # sc_pred.make_timeseries(total_dtimes_inh.index[0]-dt.timedelta(days=30), 
+            #                         total_dtimes_inh.index[-1]+dt.timedelta(days=365*5), 
+            #                         timedelta=dt.timedelta(hours=1))
+            # srf_prediction = solar_radio_flux.reindex(index=sc_pred.data.index)
+            # pos_TSE_pred = sc_pred.find_StateToEarth()
+            # prediction_df = pd.DataFrame({'f10p7_flux': srf_prediction['adjusted_flux'],
+            #                               'TSE_lon': pos_TSE_pred['del_lon'],
+            #                               'TSE_lat': pos_TSE_pred['del_lat']}, 
+            #                               index=sc_pred.data.index)
+            
+            mlr_fit = smf.ols(formula = formula, data=training_df).fit()
+            print(mlr_fit.summary())
+            
+            # prediction_test = reg.get_prediction(exog=prediction_df, transform=True)
+            # alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
+            #                     #  alpha = 0.05 gives 2sigma or 95%
+            #                     #  alpha = 0.32 gives 1sigma or 68%
+            # pred = prediction_test.summary_frame(alpha_level)
+            
+            nowcast = mlr_fit.get_prediction(exog=training_df, transform=True)
+            alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
+                                #  alpha = 0.05 gives 2sigma or 95%
+                                #  alpha = 0.32 gives 1sigma or 68%
+            result = nowcast.summary_frame(alpha_level)
+            
+        return result
+            
+    #   We want to characterize linear relationships independently and together
+    #   Via single-target (for now) multiple linear regression
+        
+    # #     #   For now: single-target MLR within each model-- treat models fully independently
+    # #     lr_dict = {}
+    # #     for i, model_name in enumerate(traj0.model_names):
+    #         print('For model: {} ----------'.format(model_name))
+    #         label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
+            
+    #         #   For each model, loop over each dataset (i.e. each Trajectory class)
+    #         #   for j, trajectory in self.trajectories...
+            
+    #         
+            
+            
+            
+    #         #   Reindex the radio data to the cadence of the model
+    #         srf_training = solar_radio_flux.reindex(index=total_dtimes_inh.index)['adjusted_flux']
+            
+    #         # training_values, target_values = TD.make_NaNFree(solar_radio_flux.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
+    #         # training_values = training_values.reshape(-1, 1)
+    #         # target_values = target_values.reshape(-1, 1)
+    #         # reg = LinearRegression().fit(training_values, target_values)
+    #         # print(reg.score(training_values, target_values))
+    #         # print(reg.coef_)
+    #         # print(reg.intercept_)
+    #         # print('----------')
+            
+    #         TSE_lon = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lon']
+            
+    #         # training_values, target_values = TD.make_NaNFree(TSE_lon.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
+    #         # training_values = training_values.reshape(-1, 1)
+    #         # target_values = target_values.reshape(-1, 1)
+    #         # reg = LinearRegression().fit(training_values, target_values)
+    #         # print(reg.score(training_values, target_values))
+    #         # print(reg.coef_)
+    #         # print(reg.intercept_)
+    #         # print('----------')
+            
+    #         TSE_lat = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lat']
+            
+    #         # training_values, target_values = TD.make_NaNFree(TSE_lat.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
+    #         # training_values = training_values.reshape(-1, 1)
+    #         # target_values = target_values.reshape(-1, 1)
+    #         # reg = LinearRegression().fit(training_values, target_values)
+    #         # print(reg.score(training_values, target_values))
+    #         # print(reg.coef_)
+    #         # print(reg.intercept_)
+    #         # print('----------')
+            
+    #         training_df = pd.DataFrame({'total_dtimes': total_dtimes_inh,
+    #                                     'f10p7_flux': srf_training,
+    #                                     'TSE_lon': TSE_lon,
+    #                                     'TSE_lat': TSE_lat}, index=total_dtimes_inh.index)
+    #         training_df.dropna(axis='index')
+            
+    #         #training1, training3, target = TD.make_NaNFree(solar_radio_flux, TSE_lat, total_dtimes_inh.to_numpy('float64'))
+    #         #training = np.array([training1, training3]).T
+    #         #target = target.reshape(-1, 1)
+            
+    #         # n = int(1e4)
+    #         # mlr_arr = np.zeros((n, 4))
+    #         # for sample in range(n):
+    #         #     rand_indx = np.random.Generator.integers(0, len(target), len(target))
+    #         #     reg = LinearRegression().fit(training[rand_indx,:], target[rand_indx])
+    #         #     mlr_arr[sample,:] = np.array([reg.score(training, target), 
+    #         #                                   reg.intercept_[0], 
+    #         #                                   reg.coef_[0,0], 
+    #         #                                   reg.coef_[0,1]])
+                
+    #         # fig, axs = plt.subplots(nrows = 4)
+    #         # axs[0].hist(mlr_arr[:,0], bins=np.arange(0, 1+0.01, 0.01))
+    #         # axs[1].hist(mlr_arr[:,1])
+    #         # axs[2].hist(mlr_arr[:,2])
+    #         # axs[3].hist(mlr_arr[:,3])
+            
+    #         # lr_dict[model_name] = [np.mean(mlr_arr[:,0]), np.std(mlr_arr[:,0]),
+    #         #                        np.mean(mlr_arr[:,1]), np.std(mlr_arr[:,1]),
+    #         #                        np.mean(mlr_arr[:,2]), np.std(mlr_arr[:,2]),
+    #         #                        np.mean(mlr_arr[:,3]), np.std(mlr_arr[:,3])]
+    #         # print(lr_dict[model_name])
+    #         # print('------------------------------------------')
+            
+    #         #print(reg.predict({trai}))
+            
+    #         # print('Training data is shape: {}'.format(np.shape(sm_training)))
+    #         # ols = sm.OLS(target, sm_training)
+    #         # ols_result = ols.fit()
+    #         # summ = ols_result.summary()
+    #         # print(summ)
+            
+    #         # mlr_df = pd.DataFrame.from_dict(lr_dict, orient='index',
+    #         #                                 columns=['r2', 'r2_sigma', 
+    #         #                                          'c0', 'c0_sigma',
+    #         #                                          'c1', 'c1_sigma', 
+    #         #                                          'c2', 'c2_sigma'])
+            
+    #         fig, ax = plt.subplots()
+    #         ax.plot(prediction_df.index, pred['mean'], color='red')
+    #         ax.fill_between(prediction_df.index, pred['obs_ci_lower'], pred['obs_ci_upper'], color='red', alpha=0.5)
+    #         ax.plot(training_df.index, training_df['total_dtimes'], color='black')
+    #         ax.set_ylim((-24*10, 24*10))
+    #     return training_df, prediction_df, pred
+        
+    # # def addData(self, spacecraft_name, spacecraft_df):
+        
+    # #     self.spacecraft_names.append(spacecraft_name)
+        
+        
+    # #     self.spacecraft_dict[spacecraft_name] = {'spacecraft_data': spacecraft_df,
+    # #                                                      'models': {}}
+        
+    # # def addModel(self, model_name, model_df, spacecraft_name = 'Previous'):
+        
+    # #     #  Parse spacecraft_name
+    # #     if (spacecraft_name == 'Previous') and (len(self.spacecraft_dictionaries) > 0):
+    # #         spacecraft_name = self.spacecraft_dictionaries.keys()[-1]
+    # #     elif spacecraft_name == 'Previous':
+    # #         logging.warning('No spacecraft loaded yet! Either specify a spacecraft, or load spacecraft data first.')
+               
+    # #     self.spacecraft_dict[spacecraft_name]['models'][model_name] = model_df
+
+
+    # # def baseline(self):
+        
+    # #     for key, value in self.spacecraft_dict.items():
+    # #         print()
+            
+            
+    # # def warp(self, basis_tag):
+        
+    # #     for spacecraft_name, d in self.spacecraft_dict.items():
+            
+    # #         for model_name, model_output in d['models'].items():
+                
+    # #             print()
                 
 class Trajectory:
     """
