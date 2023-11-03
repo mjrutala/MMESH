@@ -148,6 +148,12 @@ def MMESH_traj_run():
         return (f - np.min(f))/(np.max(f)-np.min(f))
     #   Plug in the optimization equation
     traj0.optimize_Warp(optimization_eqn)
+    
+    #   This should probably be in MMESH/trajectory class
+    for model_name in traj0.model_names:
+        constant_offset = traj0.best_shifts[model_name]['shift']
+        dynamic_offsets = traj0.model_dtw_times[model_name][str(int(constant_offset))]
+        traj0.models[model_name]['empirical_dtime'] = constant_offset + dynamic_offsets
 
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         traj0.plot_DynamicTimeWarping_Optimization()
@@ -162,13 +168,16 @@ def MMESH_traj_run():
     #       -  Running Mean SW Speed
     #   This should **ALL** ultimately go into the "Ensemble" class 
     # =============================================================================    
-    formula = "total_dtimes ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
+    formula = "empirical_dtime ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     
     #   traj0.addContext()
     srf = mmesh.read_SolarRadioFlux(traj0._primary_df.index[0], traj0._primary_df.index[-1])
     traj0._primary_df[('context', 'solar_radio_flux')] = srf['adjusted_flux']   
     traj0._primary_df[('context', 'target_sun_earth_lon')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lon']
     traj0._primary_df[('context', 'target_sun_earth_lat')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lon']
+    
+    
+    
     
     mmesh0 = mmesh.MMESH(trajectories=[traj0])
     
