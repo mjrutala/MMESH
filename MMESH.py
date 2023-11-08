@@ -104,7 +104,7 @@ class MMESH:
             #   !!! Might need to allow different formulae for differen models...
             #   i.e. formula = formulae[model_name]
             needed_columns = re.findall(r"[\w']+", formula)
-            training_df.dropna(subset=needed_columns, axis='index')
+            training_df = training_df.dropna(subset=needed_columns, axis='index')
             
             #   Need to predict for spacecraft for comparison,
             #   then for Jupiter for cross-spacecraft comparison
@@ -137,10 +137,16 @@ class MMESH:
             predictions_dict[model_name] = mlr_fit
             
             import matplotlib.pyplot as plt
-            fig, ax = plt.subplots()
+            fig, ax = plt.subplots(figsize=(6,2))
             ax.plot(training_df.index, result['mean'], color='C0')
             ax.fill_between(training_df.index, result['obs_ci_lower'], result['obs_ci_upper'], color='C0', alpha=0.5)
             ax.plot(training_df.index, training_df['empirical_dtime'], color='black')
+            ax.set_xlabel('Date')
+            ax.set_ylabel(r'$\Delta$ Time [hours]')
+            ax.annotate(model_name, 
+                        (0,1), xytext=(1,-1),
+                        xycoords='axes fraction',
+                        textcoords='offset fontsize')
             plt.show()
             
         return predictions_dict
