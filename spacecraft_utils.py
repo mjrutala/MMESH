@@ -451,7 +451,7 @@ def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
     observer2 = 'JUPITER BARYCENTER'
     frame2 = 'JUPITER_JSS' 
     
-    spice.furnsh('/Users/mrutala/SPICE/customframes/SolarFrames.tf')
+    spice.furnsh('/Users/mrutala/SPICE/generic/kernels/fk/SolarFrames.tf')
     
     sr = 5 #sr == sample rate for scatter plots
     
@@ -466,7 +466,7 @@ def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
     spice.furnsh(spacecraft_list[0].SPICE_METAKERNEL_PLANETARY)
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-        fig, axs = plt.subplots(ncols=2, figsize=(8,4)) # subplot_kw={'projection': 'polar'}
+        fig, axs = plt.subplots(ncols=2, figsize=(6,4)) # subplot_kw={'projection': 'polar'}
         plt.subplots_adjust(left=0.05, bottom=0.05, right=0.95, top=0.95, wspace=0.3, hspace=0.05)
         
         delta_r_TS = []
