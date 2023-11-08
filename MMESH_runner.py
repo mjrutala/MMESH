@@ -66,18 +66,18 @@ def MMESH_traj_run():
     reference_frame = 'SUN_INERTIAL'
     observer = 'SUN'
     
-    #  Load spacecraft data
-    spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
-    spacecraft.read_processeddata(starttime, stoptime, resolution='60Min')
-    pos_TSE = spacecraft.find_StateToEarth()
-    
     #!!!!
     #  NEED ROBUST in-SW-subset TOOL! ADD HERE!
     
     #  Change start and stop times to reflect spacecraft limits-- with optional padding
     padding = dt.timedelta(days=8)
-    starttime = spacecraft.data.index[0] - padding
-    stoptime = spacecraft.data.index[-1] + padding
+    starttime = starttime - padding
+    stoptime = stoptime + padding
+    
+    #  Load spacecraft data
+    spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
+    spacecraft.read_processeddata(starttime, stoptime, resolution='60Min')
+    pos_TSE = spacecraft.find_StateToEarth()
     
     #  Initialize a trajectory class and add the spacecraft data
     traj0 = mmesh.Trajectory()
@@ -220,6 +220,8 @@ def MMESH_run():
     
     from numpy.polynomial import Polynomial
     
+    plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
+    
     spacecraft_names = ['Juno']  #, 'Ulysses'
     model_names = ['Tao', 'HUXt', 'ENLIL']
     
@@ -336,7 +338,7 @@ def MMESH_run():
         srf = mmesh.read_SolarRadioFlux(traj0._primary_df.index[0], traj0._primary_df.index[-1])
         traj0._primary_df[('context', 'solar_radio_flux')] = srf['adjusted_flux']   
         traj0._primary_df[('context', 'target_sun_earth_lon')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lon']
-        traj0._primary_df[('context', 'target_sun_earth_lat')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lon']
+        traj0._primary_df[('context', 'target_sun_earth_lat')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lat']
 
         trajectories.append(traj0)
         
@@ -350,27 +352,41 @@ def MMESH_run():
     #       -  Running Mean SW Speed
     #   This should **ALL** ultimately go into the "Ensemble" class 
     # =============================================================================    
-    formula = "empirical_dtime ~ solar_radio_flux " # + target_sun_earth_lon"  #  This can be input
+    formula = "empirical_dtime ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     
     test = mmesh0.linear_regression(formula)
     
-    prediction_df = pd.DataFrame(index = pd.DatetimeIndex(np.arange(traj0._primary_df.index[0], traj0._primary_df.index[-1] + dt.timedelta(days=1000), dt.timedelta(hours=1))))
+    prediction_df = pd.DataFrame(index = pd.DatetimeIndex(np.arange(traj0._primary_df.index[0], traj0._primary_df.index[-1] + dt.timedelta(days=365), dt.timedelta(hours=1))))
     prediction_df['solar_radio_flux'] = mmesh.read_SolarRadioFlux(prediction_df.index[0], prediction_df.index[-1])['adjusted_flux']
     
-    # sc_pred = spacecraftdata.SpacecraftData(spacecraft_name)
-    # sc_pred.make_timeseries(prediction_df.index[0], 
-    #                         prediction_df.index[-1] + dt.timedelta(hours=1), 
-    #                         timedelta=dt.timedelta(hours=1))
-    # pos_TSE_pred = sc_pred.find_StateToEarth()
-    # prediction_df['target_sun_earth_lon'] = pos_TSE_pred.reindex(index=prediction_df.index)['del_lon']
+    sc_pred = spacecraftdata.SpacecraftData(spacecraft_name)
+    sc_pred.make_timeseries(prediction_df.index[0], 
+                            prediction_df.index[-1] + dt.timedelta(hours=1), 
+                            timedelta=dt.timedelta(hours=1))
+    pos_TSE_pred = sc_pred.find_StateToEarth()
+    prediction_df['target_sun_earth_lon'] = pos_TSE_pred.reindex(index=prediction_df.index)['del_lon']
     
     import statsmodels.api as sm
     import statsmodels.formula.api as smf
     
-    # for model_name in traj0.model_names:
-    forecast = test['Tao'].get_prediction(prediction_df)
-    alpha_level = 0.32 
-    result = forecast.summary_frame(alpha_level)
+    for model_name in traj0.model_names:
+        forecast = test[model_name].get_prediction(prediction_df)
+        alpha_level = 0.32 
+        result = forecast.summary_frame(alpha_level)
+        
+        fig, ax = plt.subplots(figsize=(6,2))
+        ax.plot(prediction_df.index, result['mean'], color='C0')
+        ax.fill_between(prediction_df.index, result['obs_ci_lower'], result['obs_ci_upper'], color='C0', alpha=0.5)
+        ax.plot(traj0.models[model_name].index, traj0.models[model_name]['empirical_dtime'], color='black')
+        ax.set_xlabel('Date')
+        ax.set_ylabel(r'$\Delta$ Time [hours]')
+        ax.annotate(model_name, 
+                    (0,1), xytext=(1,-1),
+                    xycoords='axes fraction',
+                    textcoords='offset fontsize')
+        plt.show()
+    
+    
     
     return prediction_df, result
     
