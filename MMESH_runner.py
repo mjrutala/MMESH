@@ -301,11 +301,8 @@ def MMESH_run():
         #       - The changes on a Taylor Diagram
         # =============================================================================
         #   Binarize the data and models
-        smoothing_widths = {'Tao':      4,
-                            'HUXt':     2,
-                            'ENLIL':    2,
-                            'Juno':     6,
-                            'Ulysses':  12}   #  hours
+        smoothing_widths = traj0.optimize_ForBinarization('u_mag', threshold=1.5)
+        # {'Tao':4, 'HUXt':2, 'ENLIL':2, 'Juno':6, 'Ulysses':12}   #  hours
         traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3)
         
         traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
@@ -388,7 +385,7 @@ def MMESH_run():
     
     
     
-    return prediction_df, result
+    return traj0 # prediction_df, result
     
 
 
