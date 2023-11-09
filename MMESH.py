@@ -428,7 +428,7 @@ class Trajectory:
         
         return (fig, ax)
     
-    def binarize(self, parameter, smooth = 1, sigma = 3):
+    def binarize(self, parameter, smooth = 1, sigma = 3, reswidth=0.0):
         from SWData_Analysis import find_Jumps
         
         if type(smooth) != dict:
@@ -440,7 +440,7 @@ class Trajectory:
         self._primary_df[self.spacecraft_name, 'jumps'] = df['jumps']
         
         for model_name in self.model_names:
-            df = find_Jumps(self.models[model_name], parameter, sigma, smoothing_kernels[model_name])
+            df = find_Jumps(self.models[model_name], parameter, sigma, smoothing_kernels[model_name], resolution_width=reswidth)
             self._primary_df[model_name, 'jumps'] = df['jumps']
         
         self._primary_df.sort_index(axis=1, inplace=True)
@@ -475,7 +475,7 @@ class Trajectory:
             sd  = smooth_deriv(smooth_series, dt.timedelta(hours=1))
             smooth_score = np.nanstd(sd) / ref_std
             
-            smooth_window = dt.timedelta(hours=0)
+            smooth_window = dt.timedelta(hours=1)
             while smooth_score > threshold:
                 
                 smooth_window += dt.timedelta(hours=1)
@@ -485,6 +485,9 @@ class Trajectory:
                 
                 if smooth_window > dt.timedelta(hours=smooth_max):
                     break
+                
+            #   Can't smooth to a width of 0; for hourly data, this is no change
+            if smooth_window.total_seconds() == 0.: smooth_window = dt.timedelta(hours=1)
             
             result[name] = smooth_window.total_seconds()/3600.
             #print("Smoothing of {} hours yields a standard deviation of {} for {}".format(str(smooth_window), smooth_score, name))
@@ -855,7 +858,15 @@ class Trajectory:
             #            label=model_name)
             
             best_shift_indx = np.argmax(self.model_shift_stats[model_name]['r'])
-            shift, r, sig, rmsd = self.model_shift_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'rmsd']]
+            shift = int((self.model_shift_stats[model_name].iloc[best_shift_indx])['shift'])
+            
+            shift_model_df = self.models[model_name].copy(deep=True)
+            shift_model_df.index += dt.timedelta(hours=shift)
+            shift_model_df = pd.concat([self.data, shift_model_df], axis=1,
+                                        keys=[self.spacecraft_name, model_name])
+            
+            (r, sig), rmsd = TD.find_TaylorStatistics(shift_model_df[(model_name, 'u_mag')], 
+                                                           shift_model_df[(self.spacecraft_name, 'u_mag')]) #self.model_shift_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'rmsd']]
             
             ax.scatter(np.arccos(r), sig, zorder=10, 
                         s=36, c=model_colors[model_name], marker=model_symbols[model_name],
