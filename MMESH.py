@@ -444,6 +444,53 @@ class Trajectory:
             self._primary_df[model_name, 'jumps'] = df['jumps']
         
         self._primary_df.sort_index(axis=1, inplace=True)
+        
+    def optimize_ForBinarization(self, parameter, smooth_max = 648, threshold=1):
+        
+        #   Isolate the parameter we're interested in binarizing
+        param_df = self._primary_df.xs(parameter, axis=1, level=1)
+        #norm_param_df = (param_df - param_df.min())/(param_df.max() - param_df.min())
+        
+        #   Get the smoothed derivative
+        def smooth_deriv(series, smooth_window):
+            smooth_series = series.rolling(smooth_window, min_periods=1, 
+                                           center=True, closed='left').mean()
+            smooth_deriv = np.gradient(smooth_series, 
+                                       smooth_series.index.values.astype(np.float64))
+            return smooth_deriv
+        
+        param_sigs = {}
+        for name, series in param_df.items():
+            sd = smooth_deriv(param_df[name], dt.timedelta(hours=1))
+            param_sigs[name] = np.nanstd(sd)
+       
+        ref_std = min(param_sigs.values())
+        
+        #   Iterate over second-level column labels matching parameter
+        result = {}
+        for name, series in param_df.items():
+            #print(name)
+            
+            smooth_series = series
+            sd  = smooth_deriv(smooth_series, dt.timedelta(hours=1))
+            smooth_score = np.nanstd(sd) / ref_std
+            
+            smooth_window = dt.timedelta(hours=0)
+            while smooth_score > threshold:
+                
+                smooth_window += dt.timedelta(hours=1)
+                
+                sd = smooth_deriv(series, smooth_window)
+                smooth_score = np.nanstd(sd) / ref_std
+                
+                if smooth_window > dt.timedelta(hours=smooth_max):
+                    break
+            
+            result[name] = float(str(smooth_window))
+            #print("Smoothing of {} hours yields a standard deviation of {} for {}".format(str(smooth_window), smooth_score, name))
+             
+        return result
+            
     
     def optimize_shifts(self, metric_tag, shifts=[0]):
         """
