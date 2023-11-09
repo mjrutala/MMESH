@@ -449,7 +449,7 @@ class Trajectory:
         
         #   Isolate the parameter we're interested in binarizing
         param_df = self._primary_df.xs(parameter, axis=1, level=1)
-        #norm_param_df = (param_df - param_df.min())/(param_df.max() - param_df.min())
+        param_df = (param_df - param_df.min())/(param_df.max() - param_df.min())
         
         #   Get the smoothed derivative
         def smooth_deriv(series, smooth_window):
@@ -486,9 +486,9 @@ class Trajectory:
                 if smooth_window > dt.timedelta(hours=smooth_max):
                     break
             
-            result[name] = float(str(smooth_window))
+            result[name] = smooth_window.total_seconds()/3600.
             #print("Smoothing of {} hours yields a standard deviation of {} for {}".format(str(smooth_window), smooth_score, name))
-             
+            
         return result
             
     
