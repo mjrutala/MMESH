@@ -204,7 +204,12 @@ def MMESH_traj_run():
     
 
 
-def MMESH_run():
+spacecraft_names = ['Juno']
+spacecraft_spans = {'Juno': (dt.datetime(2016, 5, 16), dt.datetime(2016, 6, 26))}
+
+model_names = ['Tao', 'HUXt', 'ENLIL']
+
+def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     import string
     
     import sys
@@ -222,8 +227,8 @@ def MMESH_run():
     
     plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
     
-    spacecraft_names = ['Juno']  #, 'Ulysses'
-    model_names = ['Tao', 'HUXt', 'ENLIL']
+    #spacecraft_names = ['Juno']  #, 'Ulysses'
+    #model_names = ['Tao', 'HUXt', 'ENLIL']
     
     trajectories = []
     for spacecraft_name in spacecraft_names:
@@ -231,8 +236,10 @@ def MMESH_run():
         #   input dates, but shouldn't be-- Optimization should not change based on input dates
         #   as long as the input dates span the whole of the spacecraft data being used
         #   since we should always be dropping NaN rows...
-        starttime = dt.datetime(2016, 5, 16) # dt.datetime(1997,8,14) # dt.datetime(1991,12,8) # 
-        stoptime = dt.datetime(2016, 6, 26) # dt.datetime(1998,1,1) # dt.datetime(1992,2,2) # 
+        # starttime = dt.datetime(2016, 5, 16) # dt.datetime(1997,8,14) # dt.datetime(1991,12,8) # 
+        # stoptime = dt.datetime(2016, 6, 26) # dt.datetime(1998,1,1) # dt.datetime(1992,2,2) # 
+        starttime = spacecraft_spans[spacecraft_name]
+        stoptime = spacecraft_spans[spacecraft_name]
         
         reference_frame = 'SUN_INERTIAL'
         observer = 'SUN'
@@ -301,7 +308,7 @@ def MMESH_run():
         #       - The changes on a Taylor Diagram
         # =============================================================================
         #   Binarize the data and models
-        smoothing_widths = traj0.optimize_ForBinarization('u_mag', threshold=1.5)
+        smoothing_widths = traj0.optimize_ForBinarization('u_mag', threshold=1.0)
         # {'Tao':4, 'HUXt':2, 'ENLIL':2, 'Juno':6, 'Ulysses':12}   #  hours
         traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3)
         
@@ -326,6 +333,9 @@ def MMESH_run():
         with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
             traj0.plot_DynamicTimeWarping_Optimization()
             traj0.plot_DynamicTimeWarping_TD()
+            
+        #def plot_BaselineConstantDynamic_TD():
+            
             
             
         # =============================================================================
