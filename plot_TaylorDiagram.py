@@ -14,6 +14,7 @@ Options:
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def make_NaNFree(*arrays):
 
     nans_arr = np.zeros(len(arrays[0]))
@@ -38,32 +39,32 @@ def find_TaylorStatistics(test_data, ref_data):
         return
     
     
-    test_data = np.array(test_data, dtype='float64')
-    ref_data = np.array(ref_data, dtype='float64')
-    test_data, ref_data = make_NaNFree(test_data, ref_data)
-    N = float(len(test_data))
-    if (len(test_data) == 0.) or (len(ref_data) == 0.):
+    test_arr = np.array(test_data, dtype='float64')
+    ref_arr = np.array(ref_data, dtype='float64')
+    test_arr, ref_arr = make_NaNFree(test_arr, ref_arr)
+    N = float(len(test_arr))
+    if (len(test_arr) == 0.) or (len(ref_arr) == 0.):
         print('One array is all NaNs. Returning...')
         return (0., 0.), 0.
     
-    test_mean = np.mean(test_data)
-    test_std = np.std(test_data)
+    test_mean = np.mean(test_arr)
+    test_std = np.std(test_arr)
     
     
-    ref_mean = np.mean(ref_data)
-    ref_std = np.std(ref_data)
+    ref_mean = np.mean(ref_arr)
+    ref_std = np.std(ref_arr)
     
-    correlation_r = np.sum((test_data - test_mean) * (ref_data - ref_mean)) * (1./N) * (1./(test_std * ref_std))
+    correlation_r = np.sum((test_arr - test_mean) * (ref_arr - ref_mean)) * (1./N) * (1./(test_std * ref_std))
     
-    centered_RMS_diff = np.sqrt((1./N) * np.sum(((test_data - test_mean) - (ref_data - ref_mean))**2))
+    centered_RMS_diff = np.sqrt((1./N) * np.sum(((test_arr - test_mean) - (ref_arr - ref_mean))**2))
     
     return((correlation_r, test_std), centered_RMS_diff)
 
 def plot_TaylorDiagram(test_data, ref_data, fig=None, ax=None, **plt_kwargs):
     
     #   Make sure the inputs are NaN free
-    test_data = np.array(test_data)
-    ref_data = np.array(ref_data)
+    test_data = np.array(test_data, dtype='float64')
+    ref_data = np.array(ref_data, dtype='float64')
     test_data, ref_data = make_NaNFree(test_data, ref_data)
     
     #   Get the figure and axis
