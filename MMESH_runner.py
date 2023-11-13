@@ -110,6 +110,7 @@ def MMESH_traj_run():
     # =============================================================================
     shifts = np.arange(-96, 96+6, 6)    #  in hours
     shift_stats = traj0.optimize_shifts('u_mag', shifts=shifts)
+    print(traj0.model_shift_mode)
     
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
         traj0.plot_ConstantTimeShifting_Optimization()
@@ -148,11 +149,11 @@ def MMESH_traj_run():
         return (f - np.min(f))/(np.max(f)-np.min(f))
     #   Plug in the optimization equation
     traj0.optimize_Warp(optimization_eqn)
-    
+    print(traj0.model_shift_mode)
     #   This should probably be in MMESH/trajectory class
     for model_name in traj0.model_names:
         constant_offset = traj0.best_shifts[model_name]['shift']
-        dynamic_offsets = traj0.model_dtw_times[model_name][str(int(constant_offset))]
+        dynamic_offsets = traj0.model_shifts[model_name][str(int(constant_offset))]
         traj0._primary_df[model_name, 'empirical_dtime'] = constant_offset + dynamic_offsets
 
     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
@@ -238,8 +239,8 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         #   since we should always be dropping NaN rows...
         # starttime = dt.datetime(2016, 5, 16) # dt.datetime(1997,8,14) # dt.datetime(1991,12,8) # 
         # stoptime = dt.datetime(2016, 6, 26) # dt.datetime(1998,1,1) # dt.datetime(1992,2,2) # 
-        starttime = spacecraft_spans[spacecraft_name]
-        stoptime = spacecraft_spans[spacecraft_name]
+        starttime = spacecraft_spans[spacecraft_name][0]
+        stoptime = spacecraft_spans[spacecraft_name][1]
         
         reference_frame = 'SUN_INERTIAL'
         observer = 'SUN'
@@ -308,8 +309,8 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         #       - The changes on a Taylor Diagram
         # =============================================================================
         #   Binarize the data and models
+        #   Previously used: # {'Tao':4, 'HUXt':2, 'ENLIL':2, 'Juno':6, 'Ulysses':12}   #  hours
         smoothing_widths = traj0.optimize_ForBinarization('u_mag', threshold=1.0)
-        # {'Tao':4, 'HUXt':2, 'ENLIL':2, 'Juno':6, 'Ulysses':12}   #  hours
         traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3)
         
         traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
@@ -317,6 +318,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         
         #   Calculate a whole host of statistics
         dtw_stats = traj0.find_WarpStatistics('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
+        
         #   Write an equation describing the optimization equation
         def optimization_eqn(df):
             f = df['r'] * 2/df['width_68']
@@ -327,13 +329,22 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         #   This should probably be in MMESH/trajectory class
         for model_name in traj0.model_names:
             constant_offset = traj0.best_shifts[model_name]['shift']
-            dynamic_offsets = traj0.model_dtw_times[model_name][str(int(constant_offset))]
+            dynamic_offsets = traj0.model_shifts[model_name][str(int(constant_offset))]
             traj0._primary_df[model_name, 'empirical_dtime'] = constant_offset + dynamic_offsets
     
         with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
             traj0.plot_DynamicTimeWarping_Optimization()
-            traj0.plot_DynamicTimeWarping_TD()
-            
+            #traj0.plot_DynamicTimeWarping_TD()
+        
+        #   This TD initialization is not totally accurate
+        #   Since we take the standard deviation after dropping NaNs in the 
+        #   reference only-- would be better to drop all NaN rows among ref and
+        #   tests first, then take all standard deviations
+        fig, ax = TD.init_TaylorDiagram(np.nanstd(traj0.data['u_mag']))
+        for model_name in traj0.model_names:
+            TD.plot_TaylorDiagram(traj0.models[model_name]['u_mag'], traj0.data['u_mag'], ax=ax)
+            ax.scatter(np.arccos(traj0.best_shifts[model_name]['r']), traj0.best_shifts[model_name]['stddev'])
+        plt.show()
         #def plot_BaselineConstantDynamic_TD():
             
             
