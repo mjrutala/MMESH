@@ -51,12 +51,13 @@ How I imagine this framework to work:
         Finally, store the ensemble model outputs (after averaging) in a top level dataframe
         Additionally, save the times at which the EM is available (i.e., times when all models are present)
 """ 
-class MMESH:
+class MultiTrajectory:
     
     def __init__(self, trajectories=[]):
         
         self.spacecraft_names = []
-        self.trajectories = {}
+        self.trajectories = {}   #  dict of Instances of Trajectory class
+        self.cast_intervals = {}  #  ???? of Instances of Trajectory class
         
         possible_models = []
         for trajectory in trajectories:
@@ -123,7 +124,7 @@ class MMESH:
             #                               index=sc_pred.data.index)
             
             mlr_fit = smf.ols(formula = formula, data=training_df).fit()
-            print(mlr_fit.summary())
+            #print(mlr_fit.summary())
             
             # prediction_test = reg.get_prediction(exog=prediction_df, transform=True)
             # alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
@@ -334,7 +335,7 @@ class Trajectory:
 
     @property
     def data(self):
-        return self._primary_df[self.spacecraft_name]
+        return self._primary_df[self.spacecraft_name].dropna(axis='index', how='all')
     
     @data.setter
     def data(self, df):
@@ -350,6 +351,7 @@ class Trajectory:
             new_keys = [self._primary_df.columns.levels[0], self.spacecraft_name]
             self._primary_df = pd.concat([self._primary_df, df], axis=1,
                                         keys=new_keys)
+        self.data_index = self.data.dropna(axis='index', how='all').index
     
     def addData(self, spacecraft_name, spacecraft_df):
         self.spacecraft_name = spacecraft_name
@@ -429,8 +431,8 @@ class Trajectory:
         for model_name in self.model_names:
             
             #model_nonan, ref_nonan = TD.make_NaNFree(self.models[model_name][tag_name].to_numpy(dtype='float64'), ref_data)
-
-            (r, std), rmsd = TD.find_TaylorStatistics(self.models[model_name][tag_name].to_numpy(dtype='float64'), ref_data)
+            
+            (r, std), rmsd = TD.find_TaylorStatistics(self.models[model_name][tag_name].loc[self.data_index].to_numpy(dtype='float64'), ref_data)
             
             ax.scatter(np.arccos(r), std, label=model_name,
                        marker=model_symbols[model_name], s=72, c=model_colors[model_name],
@@ -597,10 +599,13 @@ class Trajectory:
         #                                smoothing_time_model, 
         #                                resolution_width=resolution_width_model)
             
+            #  Only compare where data exists
+            df_nonan = self._primary_df.dropna(subset=[(self.spacecraft_name, basis_tag)], axis='index')
+            
             stats = []
             time_deltas = []
             for shift in shifts:
-                stat, time_delta = dtwa.find_SolarWindDTW(self.data, self.models[model_name], shift, 
+                stat, time_delta = dtwa.find_SolarWindDTW(df_nonan[self.spacecraft_name], df_nonan[model_name], shift, 
                                                           basis_tag, metric_tag, 
                                                           total_slope_limit=96.0,
                                                           intermediate_plots=intermediate_plots,
@@ -632,6 +637,22 @@ class Trajectory:
             
         #self.best_shifts = best_shifts
         self._dtw_optimization_equation = eqn
+    
+    def shift_models(self, column='empirical_dtime'):
+        """
+        Shifts models by the specified column, expected to contain delta times in hours.
+        Shifted models are only valid during the interval where data is present,
+        and NaN outside this interval.
+        """
+        
+        index_times = self.data.index
+        
+        for model_name in self.model_names():
+            
+            dtimes = [dt.timedelta(hours=t) for t in self.models[model_name][column]]
+            adjusted_model_time = index_times + dtimes
+            
+        return
     
     def ensemble(self, weights = None):
         """
@@ -860,7 +881,7 @@ class Trajectory:
         for model_name in self.model_names:
             
             ref = self.data['u_mag'].to_numpy(dtype='float64')
-            tst = self.models[model_name]['u_mag'].to_numpy(dtype='float64')  
+            tst = self.models[model_name]['u_mag'].loc[self.data_index].to_numpy(dtype='float64')
             
             fig, ax = TD.plot_TaylorDiagram(tst, ref, fig=fig, ax=ax, zorder=9, 
                                             s=36, c='black', marker=model_symbols[model_name],
