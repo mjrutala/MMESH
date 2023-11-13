@@ -66,6 +66,9 @@ class MMESH:
         
         self.model_names = list(set(possible_models))
         
+        self.offset_times = []  #   offset_times + (constant_offset) + np.linspace(0, total_hours, n_steps) give interpolation index
+        self.optimized_shifts = []
+        
         
     def linear_regression(self, formula):
         import statsmodels.api as sm
@@ -305,9 +308,15 @@ class Trajectory:
         
         self.model_names = []
         self.model_dfs = {}
+        
+        #   Can only choose one shift method at a time
+        self.model_shifts = {}
         self.model_shift_stats = {}
-        self.model_dtw_stats = {}
-        self.model_dtw_times = {}
+        self.model_shift_mode = None
+        
+        #self.model_shift_stats = {}
+        #self.model_dtw_stats = {}
+        #self.model_dtw_times = {}
         
         #self.trajectory = pd.Dataframe(index=index)
         
@@ -547,13 +556,16 @@ class Trajectory:
                         # 'precision': precision,
                         # 'recall': recall,
                         # 'f1_score': f1_score}
-                
-                
+                time_delta = pd.DataFrame([shift]*len(self.models[model_name].index), index=self.models[model_name].index, columns=[str(shift)])
+                time_deltas.append(time_delta)
                 stats.append(pd.DataFrame.from_dict(stat))
             
             stats_df = pd.concat(stats, axis='index', ignore_index=True)
+            times_df = pd.concat(time_deltas, axis='columns')
+            self.model_shifts[model_name] = times_df
             self.model_shift_stats[model_name] = stats_df
-            
+        
+        self.model_shift_mode = 'constant'
         return self.model_shift_stats
     
     def find_WarpStatistics(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
@@ -597,21 +609,22 @@ class Trajectory:
             
             stats_df = pd.concat(stats, axis='index', ignore_index=True)
             times_df = pd.concat(time_deltas, axis='columns')
-            self.model_dtw_stats[model_name] = stats_df
-            self.model_dtw_times[model_name] = times_df
-            
-        return self.model_dtw_stats
+            self.model_shifts[model_name] = times_df
+            self.model_shift_stats[model_name] = stats_df
+        
+        self.model_shift_mode = 'dynamic'
+        return self.model_shift_stats
     
     def optimize_Warp(self, eqn):
         
         best_shifts = {}
         for model_name in self.model_names:
             
-            form = eqn(self.model_dtw_stats[model_name])
+            form = eqn(self.model_shift_stats[model_name])
             
             best_shift_indx = np.argmax(form)
             #shift = dtw_stats[model_name].iloc[best_shift_indx][['shift']]
-            best_shifts[model_name] = self.model_dtw_stats[model_name].iloc[best_shift_indx]
+            best_shifts[model_name] = self.model_shift_stats[model_name].iloc[best_shift_indx]
             
         self.best_shifts = best_shifts
         self._dtw_optimization_equation = eqn
@@ -902,11 +915,11 @@ class Trajectory:
             
             #   Plot the optimization function, and its components (shift and dist. width)
             #   Plot half the 68% width, or the quasi-1-sigma value, in hours
-            ax0.plot(self.model_dtw_stats[model_name]['shift'], self._dtw_optimization_equation(self.model_dtw_stats[model_name]),
+            ax0.plot(self.model_shift_stats[model_name]['shift'], self._dtw_optimization_equation(self.model_shift_stats[model_name]),
                      color=model_colors[model_name], zorder=10)
-            ax0_correl.plot(self.model_dtw_stats[model_name]['shift'], self.model_dtw_stats[model_name]['r'],
+            ax0_correl.plot(self.model_shift_stats[model_name]['shift'], self.model_shift_stats[model_name]['r'],
                             color='C1', zorder=1)
-            ax0_width.plot(self.model_dtw_stats[model_name]['shift'], (self.model_dtw_stats[model_name]['width_68']/2.),
+            ax0_width.plot(self.model_shift_stats[model_name]['shift'], (self.model_shift_stats[model_name]['width_68']/2.),
                            color='C3', zorder=1)
 
             #   Mark the maximum of the optimization function
@@ -919,7 +932,7 @@ class Trajectory:
                                xycoords='axes fraction', textcoords='offset fontsize',
                                ha='left', va='top')
             
-            dtw_opt_shifts = self.model_dtw_times[model_name]['{:.0f}'.format(shift)]
+            dtw_opt_shifts = self.model_shifts[model_name]['{:.0f}'.format(shift)]
             histo = np.histogram(dtw_opt_shifts, range=[-96,96], bins=int(192/6))
             
             ax1.stairs(histo[0]/np.sum(histo[0]), histo[1],
@@ -1016,7 +1029,7 @@ class Trajectory:
             
         ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
         ax.set_axisbelow(True)
-
+        
 
 def read_SolarRadioFlux(startdate, stopdate, sample_rate='60Min'):
     
