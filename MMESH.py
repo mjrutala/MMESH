@@ -312,7 +312,8 @@ class Trajectory:
         #   Can only choose one shift method at a time
         self.model_shifts = {}
         self.model_shift_stats = {}
-        self.model_shift_mode = None
+        self.model_shift_method = None
+        self.best_shifts = {}
         
         #self.model_shift_stats = {}
         #self.model_dtw_stats = {}
@@ -564,8 +565,11 @@ class Trajectory:
             times_df = pd.concat(time_deltas, axis='columns')
             self.model_shifts[model_name] = times_df
             self.model_shift_stats[model_name] = stats_df
+            
+            best_shift_indx = np.argmax(stats_df['r'])
+            self.best_shifts[model_name] = stats_df.iloc[best_shift_indx]
         
-        self.model_shift_mode = 'constant'
+        self.model_shift_method = 'constant'
         return self.model_shift_stats
     
     def find_WarpStatistics(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
@@ -612,21 +616,21 @@ class Trajectory:
             self.model_shifts[model_name] = times_df
             self.model_shift_stats[model_name] = stats_df
         
-        self.model_shift_mode = 'dynamic'
+        self.model_shift_method = 'dynamic'
         return self.model_shift_stats
     
     def optimize_Warp(self, eqn):
         
-        best_shifts = {}
+        #best_shifts = {}
         for model_name in self.model_names:
             
             form = eqn(self.model_shift_stats[model_name])
             
             best_shift_indx = np.argmax(form)
             #shift = dtw_stats[model_name].iloc[best_shift_indx][['shift']]
-            best_shifts[model_name] = self.model_shift_stats[model_name].iloc[best_shift_indx]
+            self.best_shifts[model_name] = self.model_shift_stats[model_name].iloc[best_shift_indx]
             
-        self.best_shifts = best_shifts
+        #self.best_shifts = best_shifts
         self._dtw_optimization_equation = eqn
     
     def ensemble(self, weights = None):
