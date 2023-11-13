@@ -237,7 +237,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         fig = plt.figure(figsize=(6,4.5))
         fig, ax = TD.init_TaylorDiagram(np.nanstd(traj0.data['u_mag']), fig=fig)
         for model_name in traj0.model_names:
-            TD.plot_TaylorDiagram(traj0.models[model_name]['u_mag'], traj0.data['u_mag'], ax=ax,
+            TD.plot_TaylorDiagram(traj0.models[model_name]['u_mag'].loc[traj0.data_index], traj0.data['u_mag'], ax=ax,
                                   s=32, c='black', marker=model_symbols[model_name],
                                   label=r'{}'.format(model_name))
             ax.scatter(*constant_shift_dict[model_name],
@@ -378,7 +378,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
 
         trajectories.append(traj0)
         
-    mmesh0 = mmesh.MMESH(trajectories=trajectories)
+    mmesh0 = mmesh.MultiTrajectory(trajectories=trajectories)
     
     # =============================================================================
     #    Compare output list of temporal shifts (and, maybe, running standard deviation or similar)
@@ -391,6 +391,10 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     formula = "empirical_dtime ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     
     test = mmesh0.linear_regression(formula)
+    
+    return traj0
+
+    #mmesh0.cast_intervals
     
     prediction_df = pd.DataFrame(index = pd.DatetimeIndex(np.arange(traj0._primary_df.index[0], traj0._primary_df.index[-1] + dt.timedelta(days=365), dt.timedelta(hours=1))))
     prediction_df['solar_radio_flux'] = mmesh.read_SolarRadioFlux(prediction_df.index[0], prediction_df.index[-1])['adjusted_flux']
