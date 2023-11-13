@@ -105,9 +105,11 @@ def init_TaylorDiagram(ref_std, fig=None, ax=None, **plt_kwargs):
     ax.set_xticks([np.arccos(ang) for ang in theta_ticks])
     ax.set_xticklabels(theta_ticks)
     
+    ax.grid(visible=True, zorder=-6)
+    
     #  Centered RMS difference circles, centered on reference
-    ax.plot(0, ref_std, marker='o', color='black', markersize=12)
-    ax.plot(np.linspace(0, np.pi, 180), np.zeros(180)+ref_std, color='black', linestyle='--')
+    ax.scatter(0, ref_std, marker='o', color='black')
+    ax.plot(np.linspace(0, np.pi, 180), np.zeros(180)+ref_std, color='black', linewidth=1.5, linestyle='--', zorder=-2)
     
     RMS_r = np.arange(ref_std/3., (3 + 1/3.)*ref_std, ref_std/3.)
     for r in RMS_r:
@@ -115,7 +117,7 @@ def init_TaylorDiagram(ref_std, fig=None, ax=None, **plt_kwargs):
         y = r * np.sin(np.linspace(0, 2*np.pi, 100))
         x2 = x + (ref_std)
         y2 = y #  Reference point is on y=0 by definition
-        ax.plot(np.arctan2(y2,x2), np.sqrt(x2**2 + y2**2), color='gray', linestyle=':')
+        ax.plot(np.arctan2(y2,x2), np.sqrt(x2**2 + y2**2), color='gray', linestyle=':', zorder=-4)
     ax.set_rlim([0, 2.0*ref_std])
         
     for element in [ax.xaxis.label, ax.yaxis.label]:
