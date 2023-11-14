@@ -222,6 +222,8 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     import matplotlib.pyplot as plt
     import plot_TaylorDiagram as TD
     
+    import string
+    
     from sklearn.linear_model import LinearRegression
     
     from numpy.polynomial import Polynomial
@@ -234,7 +236,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         #   Since we take the standard deviation after dropping NaNs in the 
         #   reference only-- would be better to drop all NaN rows among ref and
         #   tests first, then take all standard deviations
-        fig = plt.figure(figsize=(6,4.5))
+        fig = plt.figure(figsize=(6,4.5), constrained_layout=True)
         fig, ax = TD.init_TaylorDiagram(np.nanstd(traj0.data['u_mag']), fig=fig)
         for model_name in traj0.model_names:
             TD.plot_TaylorDiagram(traj0.models[model_name]['u_mag'].loc[traj0.data_index], traj0.data['u_mag'], ax=ax,
@@ -248,9 +250,37 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
                        s=32, c=model_colors[model_name], marker=model_symbols[model_name],
                        label=r'{} + DTW'.format(model_name))
             
-        ax.legend(ncols=3, bbox_to_anchor=[0.0,-0.05,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
-        #plt.savefig('figures/' + 'test_TD', dpi=300, bbox_inches=extent)
+        ax.legend(ncols=3, bbox_to_anchor=[0.0,-0.02,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
+        #print(fig, ax)
+        #extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted()) 
+        fig.set_constrained_layout_pads(w_pad=0, h_pad=0.05)
+        fig.savefig('figures/Paper/' + 'TD_{}_BothShiftMethods.png'.format('_'.join(traj0.model_names)), 
+                    dpi=300)#, bbox_inches=extent)
         plt.show()
+    def plot_BestShiftWarpedTimeDistribution():
+        
+        nmodels = len(traj0.model_names)
+        fig, axs = plt.subplots(nrows=nmodels, figsize=(3, 4.5), sharex=True, sharey=True)
+        plt.subplots_adjust(left=0.2, top=0.975 ,hspace=0.075)
+        
+        for i, (model_name, ax) in enumerate(zip(traj0.model_names, axs)):
+            
+            ax.hist(traj0.models[model_name]['empirical_dtime'].to_numpy(), 
+                    range=(-120, 120), bins=40,
+                    density=True, label=model_name, color=model_colors[model_name])
+            ax.annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
+                        (0,1), (1,-1), ha='left', va='center', 
+                        xycoords='axes fraction', textcoords='offset fontsize')
+
+        ax.set_yticks(ax.get_yticks(), (100.*np.array(ax.get_yticks())).astype('int64'))
+        
+        fig.supylabel('Percentage')
+        fig.supxlabel('Total Temporal Shifts [hours]')
+        
+        plt.savefig('figures/Paper/' + 'TemporalShifts_{}_Total.png'.format('_'.join(traj0.model_names)), 
+                    dpi=300)
+        plt.show()
+        
     
     #spacecraft_names = ['Juno']  #, 'Ulysses'
     #model_names = ['Tao', 'HUXt', 'ENLIL']
@@ -366,6 +396,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
             #traj0.plot_DynamicTimeWarping_TD()
         
         plot_BothShiftMethodsTD()
+        plot_BestShiftWarpedTimeDistribution()
             
         # =============================================================================
         #             
@@ -378,38 +409,38 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
 
         trajectories.append(traj0)
         
-        return traj0
+        # return traj0
         
-        #  Testing shifting -- REMOVE WHEN DONE
-        # traj1 = traj0.copy()
-        # traj1.find_WarpStatistics('jumps', 'u_mag', shifts=[-30])
+        # #  Testing shifting -- REMOVE WHEN DONE
+        # # traj1 = traj0.copy()
+        # # traj1.find_WarpStatistics('jumps', 'u_mag', shifts=[-30])
         
-        fig, axs = plt.subplots(nrows=3, figsize=(6, 4.5))
-        axs[0].plot(traj0.models['Tao']['u_mag'])
-        axs[1].plot(traj0.models['HUXt']['u_mag'])
-        axs[2].plot(traj0.models['ENLIL']['u_mag'])
+        # fig, axs = plt.subplots(nrows=3, figsize=(6, 4.5))
+        # axs[0].plot(traj0.models['Tao']['u_mag'])
+        # axs[1].plot(traj0.models['HUXt']['u_mag'])
+        # axs[2].plot(traj0.models['ENLIL']['u_mag'])
         
-        traj0.shift_Models()
+        # traj0.shift_Models()
         
-        axs[0].plot(traj0.models['Tao']['u_mag'])
-        axs[1].plot(traj0.models['HUXt']['u_mag'])
-        axs[2].plot(traj0.models['ENLIL']['u_mag'])
+        # axs[0].plot(traj0.models['Tao']['u_mag'])
+        # axs[1].plot(traj0.models['HUXt']['u_mag'])
+        # axs[2].plot(traj0.models['ENLIL']['u_mag'])
         
-        plt.show()
+        # plt.show()
         
-        stat = TD.find_TaylorStatistics(traj0.models['Tao']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
-        print(stat)
-        stat = TD.find_TaylorStatistics(traj0.models['HUXt']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
-        print(stat)
-        stat = TD.find_TaylorStatistics(traj0.models['ENLIL']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
-        print(stat)
+        # stat = TD.find_TaylorStatistics(traj0.models['Tao']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
+        # print(stat)
+        # stat = TD.find_TaylorStatistics(traj0.models['HUXt']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
+        # print(stat)
+        # stat = TD.find_TaylorStatistics(traj0.models['ENLIL']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
+        # print(stat)
         
-        fig = plt.figure(figsize=(6,4.5))
-        fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
-        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
-                  loc='lower left', mode='expand', markerscale=1.0)
-        plt.show()
-        traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
+        # fig = plt.figure(figsize=(6,4.5))
+        # fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
+        # ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
+        #           loc='lower left', mode='expand', markerscale=1.0)
+        # plt.show()
+        # traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
         
     mmesh0 = mmesh.MultiTrajectory(trajectories=trajectories)
     
@@ -428,11 +459,11 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     
     
     
-    return traj0
+    #return traj0
 
     #mmesh0.cast_intervals
     
-    prediction_df = pd.DataFrame(index = pd.DatetimeIndex(np.arange(traj0._primary_df.index[0], traj0._primary_df.index[-1] + dt.timedelta(days=365), dt.timedelta(hours=1))))
+    prediction_df = pd.DataFrame(index = pd.DatetimeIndex(np.arange(traj0._primary_df.index[0], traj0._primary_df.index[-1] + dt.timedelta(days=41), dt.timedelta(hours=1))))
     prediction_df['solar_radio_flux'] = mmesh.read_SolarRadioFlux(prediction_df.index[0], prediction_df.index[-1])['adjusted_flux']
     
     sc_pred = spacecraftdata.SpacecraftData(spacecraft_name)
@@ -442,25 +473,28 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     pos_TSE_pred = sc_pred.find_StateToEarth()
     prediction_df['target_sun_earth_lon'] = pos_TSE_pred.reindex(index=prediction_df.index)['del_lon']
     
-    import statsmodels.api as sm
-    import statsmodels.formula.api as smf
-    
-    for model_name in traj0.model_names:
+    fig, axs = plt.subplots(nrows=3, figsize=(6, 4.5), sharex=True, sharey=True)
+    for i, (model_name, ax) in enumerate(zip(traj0.model_names, axs)):
+        
         forecast = test[model_name].get_prediction(prediction_df)
         alpha_level = 0.32 
         result = forecast.summary_frame(alpha_level)
         
-        fig, ax = plt.subplots(figsize=(6,2))
         ax.plot(prediction_df.index, result['mean'], color='C0')
         ax.fill_between(prediction_df.index, result['obs_ci_lower'], result['obs_ci_upper'], color='C0', alpha=0.5)
-        ax.plot(traj0.models[model_name].index, traj0.models[model_name]['empirical_dtime'], color='black')
-        ax.set_xlabel('Date')
-        ax.set_ylabel(r'$\Delta$ Time [hours]')
-        ax.annotate(model_name, 
+        
+        ax.plot(traj0.models[model_name].index, traj0.models[model_name]['empirical_dtime'], color='black', linewidth=2)
+        ax.plot(traj0.models[model_name].index, traj0.models[model_name]['empirical_dtime'], color=model_colors[model_name], linewidth=1.5)
+
+        ax.annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
                     (0,1), xytext=(1,-1),
                     xycoords='axes fraction',
                     textcoords='offset fontsize')
-        plt.show()
+    
+    fig.supxlabel('Date')
+    fig.supylabel(r'$\Delta$ Time [hours]')
+    fig.savefig('figures/Paper/' + 'MLR_{}_withPredictions.png'.format('_'.join(traj0.model_names)), 
+                dpi=300)
     
     
     
