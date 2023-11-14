@@ -579,26 +579,8 @@ class Trajectory:
         import DTW_Application as dtwa
         import SWData_Analysis as swda
         
-        #shifts = [0]  #  Needs to be input
-        sigma_cutoff = 3  #  Needs to be input
-        smoothing_time_spacecraft = 2.0  #  Needs to be input
-        smoothing_time_model = 2.0  #  Needs to be input
-        
-        resolution_width_spacecraft = 0.0  #  Input?
-        resolution_width_model = 0.0  #  Input?
-        
-        # self.spacecraft_df = swda.find_Jumps(self.spacecraft_df, 'u_mag', 
-        #                                      sigma_cutoff, 
-        #                                      smoothing_time_spacecraft, 
-        #                                      resolution_width=resolution_width_spacecraft)
-        
         for model_name in self.model_names:
-            
-        #     model_df = swda.find_Jumps(model_df, 'u_mag', 
-        #                                sigma_cutoff, 
-        #                                smoothing_time_model, 
-        #                                resolution_width=resolution_width_model)
-            
+               
             #  Only compare where data exists
             df_nonan = self._primary_df.dropna(subset=[(self.spacecraft_name, basis_tag)], axis='index')
             
@@ -635,24 +617,86 @@ class Trajectory:
             #shift = dtw_stats[model_name].iloc[best_shift_indx][['shift']]
             self.best_shifts[model_name] = self.model_shift_stats[model_name].iloc[best_shift_indx]
             
+            #   Add the new shift times to the model dataframe
+            print(self.best_shifts[model_name])
+            constant_offset = self.best_shifts[model_name]['shift']
+            print(constant_offset)
+            dynamic_offsets = self.model_shifts[model_name][str(int(constant_offset))]
+            
+            #   Apply the constant offset everywhere, but the dynamic ones only where data exist
+            #   !!!! May want to reconsider this at some point
+            self._primary_df.loc[:, (model_name, 'empirical_dtime')] = constant_offset
+            self._primary_df.loc[self.data_index, (model_name, 'empirical_dtime')] += dynamic_offsets
+            
         #self.best_shifts = best_shifts
         self._dtw_optimization_equation = eqn
     
-    def shift_models(self, column='empirical_dtime'):
+    def shift_Models(self, column='empirical_dtime'):
         """
         Shifts models by the specified column, expected to contain delta times in hours.
         Shifted models are only valid during the interval where data is present,
         and NaN outside this interval.
+        
+        OVERWRITES CURRENT VALUES -- or returns new df? Hmmm...
         """
+        import matplotlib.pyplot as plt
         
-        index_times = self.data.index
+        #index_times = (self._primary_df.index - self._primary_df.index[0])
+        #index_times = (index_times.to_numpy("timedelta64[ms]")/(1e3 * 3600.)).astype('float64')  # to hours
         
-        for model_name in self.model_names():
+        for model_name in self.model_names:
             
-            dtimes = [dt.timedelta(hours=t) for t in self.models[model_name][column]]
-            adjusted_model_time = index_times + dtimes
+            shift = self.best_shifts[model_name]['shift']
             
-        return
+            shift_model_df = self.models[model_name].copy()
+            shift_model_df.index = shift_model_df.index + dt.timedelta(hours=-shift)
+            shift_model_df = shift_model_df.reindex(self._primary_df.index, method='nearest')   
+            
+            zeropoint = shift_model_df.index[0]
+            
+            cumulative_time = (self.data.index - zeropoint).total_seconds().to_numpy('float64')/3600.
+            
+            delta_t = self.model_shifts[model_name][str(int(shift))].to_numpy('float64') + (cumulative_time)
+            
+            #print(delta_t)
+            #print(cumulative_time)
+            
+            #dtimes = np.array([dt.timedelta(hours=t) for t in self.models[model_name][column]])
+            #dtimes = (dtimes.astype("timedelta64[ms]")/(1e3 * 3600.)).astype('float64')  # to hours
+            
+            #model_shift_times = index_times + dtimes
+            
+            #   Assume that shifts go to 0 at edges of available comparison data
+            #   Such that shift times are well defined everywhere
+            for col_name, col in self.models[model_name].items():
+                #   Skip all NaN columns
+                if len(col.dropna() > 0) and (col_name != column):
+                
+                    #  This asserts "Actually, the column values occur at times
+                    #  delta_t, as we've calculated, and not at the original 
+                    #  model time. Using this, figure out what y-values are if 
+                    #  you regrid the data"
+                    #interim = np.interp(cumulative_time, delta_t, col.loc[self.data_index])
+                    
+                    interim = np.interp(delta_t, cumulative_time, col.loc[self.data_index])
+                    fig, ax = plt.subplots()
+                    ax.plot(cumulative_time, col.loc[self.data_index].to_numpy())
+                    ax.plot(cumulative_time, interim)
+                    ax.scatter(cumulative_time, self.data[col_name])
+                    
+                    # fig, ax = plt.subplots()
+                    # ax.plot(index_times, col, color='black', linewidth=2)
+                    # ax.plot(model_shift_times, col, color='blue')
+                    
+                    # indx = self._primary_df[('Juno', 'u_mag')].notna().to_numpy()
+                    # ax.plot(index_times[indx], self.data[col_name], color='red')
+                    
+                    #interim = np.interp(index_times, model_shift_times, col)
+                    
+                    
+                    self._primary_df[(model_name, col_name)].loc[self.data_index] = interim
+             
+        return 
     
     def ensemble(self, weights = None):
         """
