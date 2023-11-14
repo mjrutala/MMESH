@@ -270,13 +270,14 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
     #tie_points.insert(0, (0,0))  #  As long as open_begin = False
     #tie_points.append((len(query)-1, len(reference)-1))  #  As long as open_end=False
      
-    test_arr = np.zeros(len(query))
+    ref_abcissa_to_match_query = np.zeros(len(query))
+    
     for points1, points2 in zip(tie_points, tie_points[1:]):
-        #  Get the indices in test_arr that map to equivalent points in the reference
+        #  Get the indices in ref_abcissa_to_match_query that map to equivalent points in the reference
         reference_sample_indx = np.linspace(points1[1], points2[1]-1, points2[0]-points1[0]+1)
-        test_arr[points1[0]:points2[0]+1] = reference_sample_indx
+        ref_abcissa_to_match_query[points1[0]:points2[0]+1] = reference_sample_indx
      
-    interp_ref_basis = np.interp(test_arr, np.arange(0, len(test_arr)), shift_reference_df[basis_tag])
+    interp_ref_basis = np.interp(ref_abcissa_to_match_query, np.arange(0, len(ref_abcissa_to_match_query)), shift_reference_df[basis_tag])
     # test_df = pd.DataFrame(interp_ref_basis,  columns=['ref'], index=query_df.index)
     # test_df = find_Jumps(test_df, 'ref', sigma_cutoff, 2.0, resolution_width=0.0)
     # interp_ref_basis = np.roll(test_df['jumps'].to_numpy('float64'), 1) #  !!!! JUST A BANDAID
@@ -291,7 +292,7 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
                 temp_arr[i+1] = 1.0
     
     interp_ref_basis = temp_arr
-    interp_ref_metric = np.interp(test_arr, np.arange(0,len(test_arr)), shift_reference_df[metric_tag])
+    interp_ref_metric = np.interp(ref_abcissa_to_match_query, np.arange(0,len(ref_abcissa_to_match_query)), shift_reference_df[metric_tag])
     
     cm = confusion_matrix(query, interp_ref_basis, labels=[0,1])
     
@@ -317,8 +318,21 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
     #   That is, a positive delta_t means you add that number to the model
     #   datetime index to best match the data. Vice versa for negatives
     zeropoint = shift_reference_df.index[0]
-    delta_t = np.interp(test_arr, np.arange(0, len(test_arr)), (shift_reference_df.index - zeropoint).total_seconds()) - (shift_reference_df.index - zeropoint).total_seconds()
-    delta_t = pd.DataFrame(data=delta_t/3600., index=shift_reference_df.index, columns=['time_lag'])
+    cumulative_time = (shift_reference_df.index - zeropoint).total_seconds().to_numpy('float64')
+    delta_t = (np.interp(ref_abcissa_to_match_query, 
+                        np.arange(0, len(ref_abcissa_to_match_query)), 
+                        cumulative_time) - cumulative_time)/3600.
+    delta_t *= -1.0
+    
+    test1 = ref_abcissa_to_match_query #- np.arange(0, len(ref_abcissa_to_match_query))
+    test2 = delta_t + cumulative_time/3600.
+    
+    # fig, ax = plt.subplots()
+    # ax.plot((test2-np.min(test2))/(np.max(test2)-np.min(test2)), color='cyan', linewidth=4)
+    # ax.plot((test1-np.min(test1))/(np.max(test1)-np.min(test1)), color='orange')
+    # plt.show()
+    
+    delta_t = pd.DataFrame(data=delta_t, index=shift_reference_df.index, columns=['time_lag'])
     #delta_t = shift_reference_df.index - shift_reference_df.index[0]
     
     width_68 = np.percentile(delta_t, 84) - np.percentile(delta_t, 16)
@@ -341,9 +355,7 @@ def find_SolarWindDTW(query_df, reference_df, shift, basis_tag, metric_tag, tota
          'width_68': [width_68],
          'width_95': [width_95],
          'width_997': [width_997]}
-    
-   
-    
+
     return d, delta_t
 
 def find_TiePointsInJumps(alignment, open_end=False, open_begin=False):
