@@ -229,7 +229,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
     
     #   Encapsualted plotting calls for publishing
-    def plot_BothShiftMethods():
+    def plot_BothShiftMethodsTD():
         #   This TD initialization is not totally accurate
         #   Since we take the standard deviation after dropping NaNs in the 
         #   reference only-- would be better to drop all NaN rows among ref and
@@ -355,17 +355,17 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         #   Plug in the optimization equation
         traj0.optimize_Warp(optimization_eqn)
         
-        #   This should probably be in MMESH/trajectory class
-        for model_name in traj0.model_names:
-            constant_offset = traj0.best_shifts[model_name]['shift']
-            dynamic_offsets = traj0.model_shifts[model_name][str(int(constant_offset))]
-            traj0._primary_df[model_name, 'empirical_dtime'] = constant_offset + dynamic_offsets
+        # #   This should probably be in MMESH/trajectory class
+        # for model_name in traj0.model_names:
+        #     constant_offset = traj0.best_shifts[model_name]['shift']
+        #     dynamic_offsets = traj0.model_shifts[model_name][str(int(constant_offset))]
+        #     traj0._primary_df[model_name, 'empirical_dtime'] = constant_offset + dynamic_offsets
     
         with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
             traj0.plot_DynamicTimeWarping_Optimization()
             #traj0.plot_DynamicTimeWarping_TD()
         
-        plot_BothShiftMethods()
+        plot_BothShiftMethodsTD()
             
         # =============================================================================
         #             
@@ -377,6 +377,39 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         traj0._primary_df[('context', 'target_sun_earth_lat')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lat']
 
         trajectories.append(traj0)
+        
+        return traj0
+        
+        #  Testing shifting -- REMOVE WHEN DONE
+        # traj1 = traj0.copy()
+        # traj1.find_WarpStatistics('jumps', 'u_mag', shifts=[-30])
+        
+        fig, axs = plt.subplots(nrows=3, figsize=(6, 4.5))
+        axs[0].plot(traj0.models['Tao']['u_mag'])
+        axs[1].plot(traj0.models['HUXt']['u_mag'])
+        axs[2].plot(traj0.models['ENLIL']['u_mag'])
+        
+        traj0.shift_Models()
+        
+        axs[0].plot(traj0.models['Tao']['u_mag'])
+        axs[1].plot(traj0.models['HUXt']['u_mag'])
+        axs[2].plot(traj0.models['ENLIL']['u_mag'])
+        
+        plt.show()
+        
+        stat = TD.find_TaylorStatistics(traj0.models['Tao']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
+        print(stat)
+        stat = TD.find_TaylorStatistics(traj0.models['HUXt']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
+        print(stat)
+        stat = TD.find_TaylorStatistics(traj0.models['ENLIL']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
+        print(stat)
+        
+        fig = plt.figure(figsize=(6,4.5))
+        fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
+        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
+                  loc='lower left', mode='expand', markerscale=1.0)
+        plt.show()
+        traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
         
     mmesh0 = mmesh.MultiTrajectory(trajectories=trajectories)
     
@@ -391,6 +424,9 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     formula = "empirical_dtime ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     
     test = mmesh0.linear_regression(formula)
+    
+    
+    
     
     return traj0
 
