@@ -315,6 +315,7 @@ class Trajectory:
         self.model_shift_stats = {}
         self.model_shift_method = None
         self.best_shifts = {}
+        self.best_shift_functions = {}
         
         #self.model_shift_stats = {}
         #self.model_dtw_stats = {}
@@ -689,9 +690,6 @@ class Trajectory:
                 r_time_deltas = r_time_warped - r_time
 
                 #   Warp the reference (i.e., shifted model at basis tag)
-                #r_basis_warped = np.interp(reference_to_query_indx, np.arange(0,len(reference)), reference)
-                #r_metric_warped = np.interp(reference_to_query_indx, np.arange(0, len(reference)), shift_model_df[metric_tag].to_numpy('float64'))
-                
                 #   This DOES work to interpolate any model quantity! Finally!
                 #   I guess the confusing thing is that the resulting time 
                 #   series uses unwarped abcissa and warped ordinate
@@ -715,19 +713,6 @@ class Trajectory:
                                 temp_arr[i+1] = 1.0
                     r_basis_warped = temp_arr
                 
-                
-                # import matplotlib.pyplot as plt
-                # fig, ax = plt.subplots()
-                # ax.plot(q_time, query, color='black')
-                # ax.plot(q_time, reference*0.75, color='blue')
-                # ax.plot(q_time, r_basis_warped*0.75, color='cyan')
-                
-
-                # test = np.interp(r_time_deltas+r_time, r_time, reference)
-                # fig, ax = plt.subplots()
-                # ax.plot(q_time, r_basis_warped, color='cyan')
-                # ax.plot(r_time, test*0.75, color='red')
-                
                 cm = confusion_matrix(query, r_basis_warped, labels=[0,1])
                 
                 #  Block divide by zero errors from printing to console
@@ -740,8 +725,6 @@ class Trajectory:
                 
                 #   Get the Taylor statistics (r, sigma, rmse)
                 (r, sig), rmsd = TD.find_TaylorStatistics(r_metric_warped, self.data[metric_tag].to_numpy('float64'))
-                #r = scipy.stats.pearsonr(t1, t2)[0]
-                #sig = np.std(t1)
                 
                 if intermediate_plots == True:
                     dtwa.plot_DTWViews(self.data, shift_model_df, shift, alignment, basis_tag, metric_tag,
@@ -750,23 +733,8 @@ class Trajectory:
                 #  20231019: Alright, I'm 99% sure these are reporting shifts correctly
                 #   That is, a positive delta_t means you add that number to the model
                 #   datetime index to best match the data. Vice versa for negatives
-                #zeropoint = shift_reference_df.index[0]
-                #cumulative_time = (shift_reference_df.index - zeropoint).total_seconds().to_numpy('float64')
-                #delta_t = (np.interp(ref_abcissa_to_match_query, 
-                #                    np.arange(0, len(ref_abcissa_to_match_query)), 
-                #                    cumulative_time) - cumulative_time)/3600.
-                #delta_t *= -1.0
-                
-                # test1 = ref_abcissa_to_match_query #- np.arange(0, len(ref_abcissa_to_match_query))
-                # test2 = delta_t + cumulative_time/3600.
-                
-                # fig, ax = plt.subplots()
-                # ax.plot((test2-np.min(test2))/(np.max(test2)-np.min(test2)), color='cyan', linewidth=4)
-                # ax.plot((test1-np.min(test1))/(np.max(test1)-np.min(test1)), color='orange')
-                # plt.show()
                 
                 time_delta_df = pd.DataFrame(data=r_time_deltas, index=shift_model_df.index, columns=[str(shift)])
-                #delta_t = shift_reference_df.index - shift_reference_df.index[0]
                 
                 width_68 = np.percentile(r_time_deltas, 84) - np.percentile(r_time_deltas, 16)
                 width_95 = np.percentile(r_time_deltas, 97.5) - np.percentile(r_time_deltas, 2.5)
@@ -825,14 +793,16 @@ class Trajectory:
             
         #self.best_shifts = best_shifts
         self._dtw_optimization_equation = eqn
+        
+        return
     
-    def shift_Models(self, column='empirical_time_delta'):
+    def shift_Models(self, time_delta='empirical_time_delta', time_delta_sigma=None):
         """
         Shifts models by the specified column, expected to contain delta times in hours.
         Shifted models are only valid during the interval where data is present,
         and NaN outside this interval.
         
-        OVERWRITES CURRENT VALUES -- or returns new df? Hmmm...
+        OVERWRITES CURRENT VALUES
         """
         import matplotlib.pyplot as plt
         
@@ -842,27 +812,49 @@ class Trajectory:
         for model_name in self.model_names:
             
             time = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
-            time_deltas = self.models[model_name][column].to_numpy('float64')
+            time_deltas = self.models[model_name][time_delta].to_numpy('float64')
             
             def shift_function(arr):
-                return np.interp(time_deltas + time, time, arr)
+                #   Use the ORIGINAL time with this, not time + delta
+                if time_delta_sigma:
+                    n = 1000
+                    arr_perturb_list = []
+                    for i in range(n):
+                        time_deltas_perturb = np.random.normal(time_deltas, time_delta_sigma)
+                        arr_perturb_list.append(np.interp(time_deltas_perturb + time, time, arr))
+                    arr_shifted = np.mean(arr_perturb_list, axis=0)
+                    arr_shifted_sigma = np.std(arr_perturb_list, axis=0)
+                    output = (arr_shifted, arr_shifted_sigma)
+                else:
+                    arr_shifted = np.interp(time_deltas + time, time, arr)
+                    arr_shifted_sigma = None
+                    output = arr_shifted
+                return output
             
-            fig, axs = plt.subplots(nrows=len(self.models[model_name].columns)+1, sharex=True)
-            axs[-1].plot(self.models[model_name].index, time_deltas)
+            
+            #self.best_shift_functions[model_name] = shift_function
+            
+            #fig, axs = plt.subplots(nrows=len(self.models[model_name].columns)+1, sharex=True)
+            #axs[-1].plot(self.models[model_name].index, time_deltas)
             for i, (col_name, col) in enumerate(self.models[model_name].items()):
-                #   Skip all NaN columns
-                if len(col.dropna() > 0) and (col_name != column):
+                #   Skip columns of all NaNs and columns which don't appear
+                #   in list of tracked variables
+                if len(col.dropna() > 0) and (col_name in self.variables):
                     
-                    axs[i].plot(self.data.index, self.data[col_name], color='xkcd:light gray')
-                    axs[i].plot(self.models[model_name].index, col.to_numpy('float64'), linewidth=2)
+                    #axs[i].plot(self.data.index, self.data[col_name], color='xkcd:light gray')
+                    #axs[i].plot(self.models[model_name].index, col.to_numpy('float64'), linewidth=2)
                     
-                    temp = shift_function(col.to_numpy('float64'))
-                    self._primary_df.loc[:, (model_name, col_name)] = temp
+                    col_shifted = shift_function(col.to_numpy('float64'))
                     
-                    axs[i].plot(self.models[model_name].index, self.models[model_name][col_name].to_numpy('float64'), linewidth=1)
-
+                    if time_delta_sigma:
+                        self._primary_df.loc[:, (model_name, col_name)] = col_shifted[0]
+                        self._primary_df.loc[:, (model_name, col_name+'_sigma')] = col_shifted[1]
+                    else:
+                        self._primary_df.loc[:, (model_name, col_name)] = col_shifted
+                    
+                    #axs[i].plot(self.models[model_name].index, self.models[model_name][col_name].to_numpy('float64'), linewidth=1)
              
-        return 
+        return
     
     def ensemble(self, weights = None):
         """
@@ -891,6 +883,7 @@ class Trajectory:
         
         #weights_df = pd.DataFrame(columns = self.em_parameters)
         weights = dict.fromkeys(self.variables, 1.0/len(self.model_names))
+        print(weights)
         
         # if weights == None:
         #     for model in self.model_names:
