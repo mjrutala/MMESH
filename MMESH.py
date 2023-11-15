@@ -502,7 +502,7 @@ class Trajectory:
             if smooth_window.total_seconds() == 0.: smooth_window = dt.timedelta(hours=1)
             
             result[name] = smooth_window.total_seconds()/3600.
-            #print("Smoothing of {} hours yields a standard deviation of {} for {}".format(str(smooth_window), smooth_score, name))
+            print("Smoothing of {} hours yields a standard deviation of {} for {}".format(str(smooth_window), smooth_score, name))
             
         return result
             
@@ -574,7 +574,7 @@ class Trajectory:
         self.model_shift_method = 'constant'
         return self.model_shift_stats
     
-    def find_WarpStatistics(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
+    def find_WarpStatistics_old(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
         import sys
         import DTW_Application as dtwa
         import SWData_Analysis as swda
@@ -602,6 +602,200 @@ class Trajectory:
             times_df = pd.concat(time_deltas, axis='columns')
             self.model_shifts[model_name] = times_df
             self.model_shift_stats[model_name] = stats_df
+        
+        self.model_shift_method = 'dynamic'
+        return self.model_shift_stats
+    
+    def find_WarpStatistics(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
+        import scipy
+        import dtw
+        
+        import DTW_Application as dtwa
+        import plot_TaylorDiagram as TD
+        
+        from sklearn.metrics import confusion_matrix
+        
+        #   Sets the global slope limit at +/-4*24 hours-- i.e., the maximum 
+        #   deviation from nominal time is +/- 4 days
+        #   Since we shift the full model, it would be nice if this could be 
+        #   asymmetric, such that the combined shift cannot exceed |4| days
+        total_slope_limit = 4*24.  #  !!!!! Adjust, add as argument
+        
+        for model_name in self.model_names:
+            
+            #   Only compare where data exists
+            #   df_nonan = self._primary_df.dropna(subset=[(self.spacecraft_name, basis_tag)], axis='index')
+            
+            stats = []
+            time_deltas = []
+            
+            for shift in shifts:
+                 
+                window_args = {'window_size': total_slope_limit}
+                
+                # =============================================================================
+                #   Reindex the reference by the shifted amount, 
+                #   then reset the index to match the query
+                # ============================================================================= 
+                
+                shift_model_df = self.models[model_name].copy()
+                shift_model_df.index = shift_model_df.index + dt.timedelta(hours=float(shift))
+                shift_model_df = shift_model_df.reindex(self.data.index, method='nearest')        
+                 
+                reference = shift_model_df[basis_tag].to_numpy('float64')
+                query = self.data[basis_tag].to_numpy('float64') 
+                 
+                alignment = dtw.dtw(query, reference, keep_internals=True, 
+                                     step_pattern='symmetric2', open_end=False,
+                                     window_type='slantedband', window_args=window_args)
+                
+                def find_BinarizedTiePoints(alignment, open_end=False, open_begin=False):
+                    tie_points = []
+                    for unity_indx in np.where(alignment.query == 1.0)[0]:
+                        i1 = np.where(alignment.index1 == unity_indx)[0][0]
+                        tie_points.append((alignment.index1[i1], alignment.index2[i1]))
+                        
+                    for unity_indx in np.where(alignment.reference == 1.0)[0]:
+                        i2 = np.where(alignment.index2 == unity_indx)[0][0]
+                        tie_points.append((alignment.index1[i2], alignment.index2[i2]))
+                        
+                    #   If appropriate, add initial and final points as ties
+                    #   If DTW is performed w/o open_begin or open_end, then 
+                    #   the start and stop points are forced to match
+                    if open_begin == False:
+                        tie_points.insert(0, (0,0))
+                    if open_end == False:
+                        tie_points.append((alignment.N-1, alignment.M-1))
+                    
+                    return sorted(tie_points)
+                
+                #   List of tuples; each tuple matches query index (first) to 
+                #   reference index (second)
+                tie_points = find_BinarizedTiePoints(alignment)
+                
+                #   Map the reference to the query
+                reference_to_query_indx = np.zeros(len(reference))
+                for (iq_start, ir_start), (iq_stop, ir_stop) in zip(tie_points[:-1], tie_points[1:]):
+                    reference_to_query_indx[iq_start:iq_stop+1] = np.linspace(ir_start, ir_stop, (iq_stop-iq_start+1))
+                
+                #   Convert from indices to time units
+                q_time = (self.data.index - self.data.index[0]).to_numpy('timedelta64[s]').astype('float64') / 3600.
+                r_time = (shift_model_df.index - shift_model_df.index[0]).to_numpy('timedelta64[s]').astype('float64') / 3600.
+                
+                #   This should work to interpolate any model quantity to the 
+                #   warp which best aligns with data
+                r_time_warped = np.interp(reference_to_query_indx, np.arange(0,len(reference)), r_time)
+                r_time_deltas = r_time_warped - r_time
+
+                #   Warp the reference (i.e., shifted model at basis tag)
+                #r_basis_warped = np.interp(reference_to_query_indx, np.arange(0,len(reference)), reference)
+                #r_metric_warped = np.interp(reference_to_query_indx, np.arange(0, len(reference)), shift_model_df[metric_tag].to_numpy('float64'))
+                
+                #   This DOES work to interpolate any model quantity! Finally!
+                #   I guess the confusing thing is that the resulting time 
+                #   series uses unwarped abcissa and warped ordinate
+                def shift_function(arr):
+                    return np.interp(r_time_deltas+r_time, r_time, arr)
+                
+                r_basis_warped = np.interp(r_time_deltas+r_time, r_time, reference)
+                r_metric_warped = np.interp(r_time_deltas+r_time, r_time, shift_model_df[metric_tag].to_numpy('float64'))
+                
+                #   If the basis metric is binarized, the warping may intorduce
+                #   non-binary ordinates due to interpolation. Check for these
+                #   and replace them with binary values.
+                #   !!!! May not work with feature widths/implicit errors
+                if basis_tag.lower() == 'jumps':
+                    temp_arr = np.zeros(len(query))
+                    for i, (val1, val2) in enumerate(zip(r_basis_warped[0:-1], r_basis_warped[1:])):
+                        if val1 + val2 >= 1:
+                            if val1 > val2:
+                                temp_arr[i] = 1.0
+                            else:
+                                temp_arr[i+1] = 1.0
+                    r_basis_warped = temp_arr
+                
+                
+                # import matplotlib.pyplot as plt
+                # fig, ax = plt.subplots()
+                # ax.plot(q_time, query, color='black')
+                # ax.plot(q_time, reference*0.75, color='blue')
+                # ax.plot(q_time, r_basis_warped*0.75, color='cyan')
+                
+
+                # test = np.interp(r_time_deltas+r_time, r_time, reference)
+                # fig, ax = plt.subplots()
+                # ax.plot(q_time, r_basis_warped, color='cyan')
+                # ax.plot(r_time, test*0.75, color='red')
+                
+                cm = confusion_matrix(query, r_basis_warped, labels=[0,1])
+                
+                #  Block divide by zero errors from printing to console
+                #   Then get some confusion-matrix-based statistics
+                with np.errstate(divide='log'):
+                    accuracy = (cm[0,0] + cm[1,1])/(cm[0,0] + cm[1,0] + cm[0,1] + cm[1,1])
+                    precision = (cm[1,1])/(cm[0,1] + cm[1,1])
+                    recall = (cm[1,1])/(cm[1,0] + cm[1,1])
+                    f1_score = 2 * (precision * recall)/(precision + recall)
+                
+                #   Get the Taylor statistics (r, sigma, rmse)
+                (r, sig), rmsd = TD.find_TaylorStatistics(r_metric_warped, self.data[metric_tag].to_numpy('float64'))
+                #r = scipy.stats.pearsonr(t1, t2)[0]
+                #sig = np.std(t1)
+                
+                if intermediate_plots == True:
+                    dtwa.plot_DTWViews(self.data, shift_model_df, shift, alignment, basis_tag, metric_tag,
+                                  model_name = model_name, spacecraft_name = self.spacecraft_name)    
+                
+                #  20231019: Alright, I'm 99% sure these are reporting shifts correctly
+                #   That is, a positive delta_t means you add that number to the model
+                #   datetime index to best match the data. Vice versa for negatives
+                #zeropoint = shift_reference_df.index[0]
+                #cumulative_time = (shift_reference_df.index - zeropoint).total_seconds().to_numpy('float64')
+                #delta_t = (np.interp(ref_abcissa_to_match_query, 
+                #                    np.arange(0, len(ref_abcissa_to_match_query)), 
+                #                    cumulative_time) - cumulative_time)/3600.
+                #delta_t *= -1.0
+                
+                # test1 = ref_abcissa_to_match_query #- np.arange(0, len(ref_abcissa_to_match_query))
+                # test2 = delta_t + cumulative_time/3600.
+                
+                # fig, ax = plt.subplots()
+                # ax.plot((test2-np.min(test2))/(np.max(test2)-np.min(test2)), color='cyan', linewidth=4)
+                # ax.plot((test1-np.min(test1))/(np.max(test1)-np.min(test1)), color='orange')
+                # plt.show()
+                
+                time_delta_df = pd.DataFrame(data=r_time_deltas, index=shift_model_df.index, columns=[str(shift)])
+                #delta_t = shift_reference_df.index - shift_reference_df.index[0]
+                
+                width_68 = np.percentile(r_time_deltas, 84) - np.percentile(r_time_deltas, 16)
+                width_95 = np.percentile(r_time_deltas, 97.5) - np.percentile(r_time_deltas, 2.5)
+                width_997 = np.percentile(r_time_deltas, 99.85) - np.percentile(r_time_deltas, 0.15)
+                d = {'shift': [shift],
+                     'distance': [alignment.distance],
+                     'normalizeddistance': [alignment.normalizedDistance],
+                     'r': [r],
+                     'stddev': [sig],
+                     'rmsd': [rmsd],
+                     'true_negative': cm[0,0],
+                     'true_positive': cm[1,1],
+                     'false_negative': cm[1,0],
+                     'false_positive': cm[0,1],
+                     'accuracy': accuracy,
+                     'precision': precision,
+                     'recall': recall,
+                     'f1_score': f1_score,
+                     'width_68': [width_68],
+                     'width_95': [width_95],
+                     'width_997': [width_997]}
+                
+                stats.append(pd.DataFrame.from_dict(d))
+                time_deltas.append(time_delta_df)
+            
+            stats_df = pd.concat(stats, axis='index', ignore_index=True)
+            times_df = pd.concat(time_deltas, axis='columns')
+            self.model_shifts[model_name] = times_df
+            self.model_shift_stats[model_name] = stats_df
+            
         
         self.model_shift_method = 'dynamic'
         return self.model_shift_stats
