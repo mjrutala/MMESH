@@ -265,7 +265,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         
         for i, (model_name, ax) in enumerate(zip(traj0.model_names, axs)):
             
-            ax.hist(traj0.models[model_name]['empirical_dtime'].to_numpy(), 
+            ax.hist(traj0.models[model_name]['empirical_time_delta'].to_numpy(), 
                     range=(-120, 120), bins=40,
                     density=True, label=model_name, color=model_colors[model_name])
             ax.annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
@@ -376,7 +376,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         traj0.plot_SingleTimeseries('jumps', starttime, stoptime)
         
         #   Calculate a whole host of statistics
-        dtw_stats = traj0.find_WarpStatistics('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=True)
+        dtw_stats = traj0.find_WarpStatistics('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
         
         #return dtw_stats
         
@@ -417,17 +417,19 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         # # traj1 = traj0.copy()
         # # traj1.find_WarpStatistics('jumps', 'u_mag', shifts=[-30])
         
-        # fig, axs = plt.subplots(nrows=3, figsize=(6, 4.5))
-        # axs[0].plot(traj0.models['Tao']['u_mag'])
-        # axs[1].plot(traj0.models['HUXt']['u_mag'])
-        # axs[2].plot(traj0.models['ENLIL']['u_mag'])
+        fig, axs = plt.subplots(nrows=3, figsize=(6, 4.5))
+        axs[0].plot(traj0.models['Tao']['u_mag'], linewidth=2)
+        axs[1].plot(traj0.models['HUXt']['u_mag'], linewidth=2)
+        axs[2].plot(traj0.models['ENLIL']['u_mag'], linewidth=2)
         
-        # traj0.shift_Models()
+        traj0.shift_Models()
         
-        # axs[0].plot(traj0.models['Tao']['u_mag'])
-        # axs[1].plot(traj0.models['HUXt']['u_mag'])
-        # axs[2].plot(traj0.models['ENLIL']['u_mag'])
+        axs[0].plot(traj0.models['Tao']['u_mag'], linewidth=1)
+        axs[1].plot(traj0.models['HUXt']['u_mag'], linewidth=1)
+        axs[2].plot(traj0.models['ENLIL']['u_mag'], linewidth=1)
         
+        return traj0
+    
         # plt.show()
         
         # stat = TD.find_TaylorStatistics(traj0.models['Tao']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
@@ -454,7 +456,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     #       -  Running Mean SW Speed
     #   This should **ALL** ultimately go into the "Ensemble" class 
     # =============================================================================    
-    formula = "empirical_dtime ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
+    formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     
     test = mmesh0.linear_regression(formula)
     
@@ -485,8 +487,8 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         ax.plot(prediction_df.index, result['mean'], color='C0')
         ax.fill_between(prediction_df.index, result['obs_ci_lower'], result['obs_ci_upper'], color='C0', alpha=0.5)
         
-        ax.plot(traj0.models[model_name].index, traj0.models[model_name]['empirical_dtime'], color='black', linewidth=2)
-        ax.plot(traj0.models[model_name].index, traj0.models[model_name]['empirical_dtime'], color=model_colors[model_name], linewidth=1.5)
+        ax.plot(traj0.models[model_name].index, traj0.models[model_name]['empirical_time_delta'], color='black', linewidth=2)
+        ax.plot(traj0.models[model_name].index, traj0.models[model_name]['empirical_time_delta'], color=model_colors[model_name], linewidth=1.5)
 
         ax.annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
                     (0,1), xytext=(1,-1),
