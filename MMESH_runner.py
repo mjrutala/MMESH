@@ -411,40 +411,20 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
 
         trajectories.append(traj0)
         
-        # return traj0
-        
-        # #  Testing shifting -- REMOVE WHEN DONE
-        # # traj1 = traj0.copy()
-        # # traj1.find_WarpStatistics('jumps', 'u_mag', shifts=[-30])
-        
-        fig, axs = plt.subplots(nrows=3, figsize=(6, 4.5))
-        axs[0].plot(traj0.models['Tao']['u_mag'], linewidth=2)
-        axs[1].plot(traj0.models['HUXt']['u_mag'], linewidth=2)
-        axs[2].plot(traj0.models['ENLIL']['u_mag'], linewidth=2)
-        
         traj0.shift_Models()
+        traj0.ensemble()
         
-        axs[0].plot(traj0.models['Tao']['u_mag'], linewidth=1)
-        axs[1].plot(traj0.models['HUXt']['u_mag'], linewidth=1)
-        axs[2].plot(traj0.models['ENLIL']['u_mag'], linewidth=1)
+        traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
+        with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
+            fig = plt.figure(figsize=(6,4.5))
+            fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
+            ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
+                      loc='lower left', mode='expand', markerscale=1.0)
+            plt.show()
+
         
         return traj0
-    
-        # plt.show()
-        
-        # stat = TD.find_TaylorStatistics(traj0.models['Tao']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
-        # print(stat)
-        # stat = TD.find_TaylorStatistics(traj0.models['HUXt']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
-        # print(stat)
-        # stat = TD.find_TaylorStatistics(traj0.models['ENLIL']['u_mag'].loc[traj0.data_index], traj0.data['u_mag'])
-        # print(stat)
-        
-        # fig = plt.figure(figsize=(6,4.5))
-        # fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
-        # ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
-        #           loc='lower left', mode='expand', markerscale=1.0)
-        # plt.show()
-        # traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
+
         
     mmesh0 = mmesh.MultiTrajectory(trajectories=trajectories)
     
