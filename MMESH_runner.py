@@ -316,8 +316,6 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         traj0 = mmesh.Trajectory()
         traj0.addData(spacecraft_name, spacecraft.data)
         
-        # traj0.addTrajectory(x)
-        
         #  Read models and add to trajectory
         for model_name in model_names:
             model = read_SWModel.choose(model_name, spacecraft_name, 
@@ -386,12 +384,6 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
             return (f - np.min(f))/(np.max(f)-np.min(f))
         #   Plug in the optimization equation
         traj0.optimize_Warp(optimization_eqn)
-        
-        # #   This should probably be in MMESH/trajectory class
-        # for model_name in traj0.model_names:
-        #     constant_offset = traj0.best_shifts[model_name]['shift']
-        #     dynamic_offsets = traj0.model_shifts[model_name][str(int(constant_offset))]
-        #     traj0._primary_df[model_name, 'empirical_dtime'] = constant_offset + dynamic_offsets
     
         with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
             traj0.plot_DynamicTimeWarping_Optimization()
@@ -421,7 +413,6 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
             ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
                       loc='lower left', mode='expand', markerscale=1.0)
             plt.show()
-
         
         return traj0
 
