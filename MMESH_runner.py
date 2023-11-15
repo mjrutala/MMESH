@@ -325,12 +325,11 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         # =============================================================================
         #   Plot a Taylor Diagram of the unchanged models
         # =============================================================================
-        with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-            fig = plt.figure(figsize=(6,4.5))
-            fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
-            ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
-                      loc='lower left', mode='expand', markerscale=1.0)
-            plt.show()
+        fig = plt.figure(figsize=(6,4.5))
+        fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
+        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
+                  loc='lower left', mode='expand', markerscale=1.0)
+        plt.show()
         
         # =============================================================================
         #   Optimize the models via constant temporal shifting
@@ -347,16 +346,15 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
             constant_shift_dict[model_name] = (np.arccos(traj0.best_shifts[model_name]['r']), 
                                                traj0.best_shifts[model_name]['stddev'])
         
-        with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-            traj0.plot_ConstantTimeShifting_Optimization()
-            
-            fig = plt.figure(figsize=[6,4.5])
-            traj0.plot_ConstantTimeShifting_TD(fig=fig)
-            
-            extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted()) 
-            
-            for suffix in ['.png']:
-                plt.savefig('figures/' + 'test_TD', dpi=300, bbox_inches=extent)
+        traj0.plot_ConstantTimeShifting_Optimization()
+        
+        fig = plt.figure(figsize=[6,4.5])
+        traj0.plot_ConstantTimeShifting_TD(fig=fig)
+        
+        extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted()) 
+        
+        for suffix in ['.png']:
+            plt.savefig('figures/' + 'test_TD', dpi=300, bbox_inches=extent)
         
         # =============================================================================
         #   Optimize the models via dynamic time warping
@@ -385,9 +383,8 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         #   Plug in the optimization equation
         traj0.optimize_Warp(optimization_eqn)
     
-        with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-            traj0.plot_DynamicTimeWarping_Optimization()
-            #traj0.plot_DynamicTimeWarping_TD()
+        traj0.plot_DynamicTimeWarping_Optimization()
+        #traj0.plot_DynamicTimeWarping_TD()
         
         plot_BothShiftMethodsTD()
         plot_BestShiftWarpedTimeDistribution()
@@ -407,17 +404,17 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         traj0.ensemble()
         
         traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
-        with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-            fig = plt.figure(figsize=(6,4.5))
-            fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
-            ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
-                      loc='lower left', mode='expand', markerscale=1.0)
-            plt.show()
+       
+        fig = plt.figure(figsize=(6,4.5))
+        fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
+        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
+                  loc='lower left', mode='expand', markerscale=1.0)
+        plt.show()
         
-        return traj0
+        #return traj0
 
         
-    mmesh0 = mmesh.MultiTrajectory(trajectories=trajectories)
+    m_traj = mmesh.MultiTrajectory(trajectories=trajectories)
     
     # =============================================================================
     #    Compare output list of temporal shifts (and, maybe, running standard deviation or similar)
@@ -429,9 +426,9 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     # =============================================================================    
     formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     
-    test = mmesh0.linear_regression(formula)
+    test = m_traj.linear_regression(formula)
     
-    
+    return test
     
     
     #return traj0
