@@ -369,14 +369,16 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         # =============================================================================
         #   Binarize the data and models
         #   Previously used: # {'Tao':4, 'HUXt':2, 'ENLIL':2, 'Juno':6, 'Ulysses':12}   #  hours
-        smoothing_widths = traj0.optimize_ForBinarization('u_mag', threshold=1.0)
-        traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3)
+        smoothing_widths = traj0.optimize_ForBinarization('u_mag', threshold=1.1)  
+        traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3) #  !!!! sigma value can be changed
         
         traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
         traj0.plot_SingleTimeseries('jumps', starttime, stoptime)
         
         #   Calculate a whole host of statistics
-        dtw_stats = traj0.find_WarpStatistics('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
+        dtw_stats = traj0.find_WarpStatistics('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=True)
+        
+        #return dtw_stats
         
         #   Write an equation describing the optimization equation
         def optimization_eqn(df):
