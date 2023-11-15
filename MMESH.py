@@ -84,14 +84,14 @@ class MultiTrajectory:
         for model_name in self.model_names:
             
             d = {'datetime':[], 
-                 'empirical_dtime':[], 
+                 'empirical_time_delta':[], 
                  'solar_radio_flux':[], 
                  'target_sun_earth_lon':[], 
                  'target_sun_earth_lat':[], 
                  'u_mag_model':[]}
             
             for spacecraft_name, trajectory in self.trajectories.items():
-                d['empirical_dtime'].extend(trajectory.models[model_name]['empirical_dtime'])
+                d['empirical_time_delta'].extend(trajectory.models[model_name]['empirical_time_delta'])
                 d['u_mag_model'].extend(trajectory.models[model_name]['u_mag'])
                 
                 #   Need to write a better getter/setter for 'context'
@@ -144,7 +144,7 @@ class MultiTrajectory:
             fig, ax = plt.subplots(figsize=(6,2))
             ax.plot(training_df.index, result['mean'], color='C0')
             ax.fill_between(training_df.index, result['obs_ci_lower'], result['obs_ci_upper'], color='C0', alpha=0.5)
-            ax.plot(training_df.index, training_df['empirical_dtime'], color='black')
+            ax.plot(training_df.index, training_df['empirical_time_delta'], color='black')
             ax.set_xlabel('Date')
             ax.set_ylabel(r'$\Delta$ Time [hours]')
             ax.annotate(model_name, 
@@ -638,8 +638,9 @@ class Trajectory:
                 #   then reset the index to match the query
                 # ============================================================================= 
                 
+                #   !!!! WHY DOES THIS WORK WITH A MINUS?
                 shift_model_df = self.models[model_name].copy()
-                shift_model_df.index = shift_model_df.index + dt.timedelta(hours=float(shift))
+                shift_model_df.index = shift_model_df.index - dt.timedelta(hours=float(shift))
                 shift_model_df = shift_model_df.reindex(self.data.index, method='nearest')        
                  
                 reference = shift_model_df[basis_tag].to_numpy('float64')
@@ -819,13 +820,13 @@ class Trajectory:
             
             #   Apply the constant offset everywhere, but the dynamic ones only where data exist
             #   !!!! May want to reconsider this at some point
-            self._primary_df.loc[:, (model_name, 'empirical_dtime')] = constant_offset
-            self._primary_df.loc[self.data_index, (model_name, 'empirical_dtime')] += dynamic_offsets
+            self._primary_df.loc[:, (model_name, 'empirical_time_delta')] = constant_offset
+            self._primary_df.loc[self.data_index, (model_name, 'empirical_time_delta')] += dynamic_offsets
             
         #self.best_shifts = best_shifts
         self._dtw_optimization_equation = eqn
     
-    def shift_Models(self, column='empirical_dtime'):
+    def shift_Models(self, column='empirical_time_delta'):
         """
         Shifts models by the specified column, expected to contain delta times in hours.
         Shifted models are only valid during the interval where data is present,
@@ -835,60 +836,31 @@ class Trajectory:
         """
         import matplotlib.pyplot as plt
         
-        #index_times = (self._primary_df.index - self._primary_df.index[0])
-        #index_times = (index_times.to_numpy("timedelta64[ms]")/(1e3 * 3600.)).astype('float64')  # to hours
+        #   We're going to try to do this all with interpolation, rather than 
+        #   needing to shift the model dataframe by a constant first
         
         for model_name in self.model_names:
             
-            shift = self.best_shifts[model_name]['shift']
+            time = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
+            time_deltas = self.models[model_name][column].to_numpy('float64')
             
-            shift_model_df = self.models[model_name].copy()
-            shift_model_df.index = shift_model_df.index + dt.timedelta(hours=-shift)
-            shift_model_df = shift_model_df.reindex(self._primary_df.index, method='nearest')   
+            def shift_function(arr):
+                return np.interp(time_deltas + time, time, arr)
             
-            zeropoint = shift_model_df.index[0]
-            
-            cumulative_time = (self.data.index - zeropoint).total_seconds().to_numpy('float64')/3600.
-            
-            delta_t = self.model_shifts[model_name][str(int(shift))].to_numpy('float64') + (cumulative_time)
-            
-            #print(delta_t)
-            #print(cumulative_time)
-            
-            #dtimes = np.array([dt.timedelta(hours=t) for t in self.models[model_name][column]])
-            #dtimes = (dtimes.astype("timedelta64[ms]")/(1e3 * 3600.)).astype('float64')  # to hours
-            
-            #model_shift_times = index_times + dtimes
-            
-            #   Assume that shifts go to 0 at edges of available comparison data
-            #   Such that shift times are well defined everywhere
-            for col_name, col in self.models[model_name].items():
+            fig, axs = plt.subplots(nrows=len(self.models[model_name].columns)+1, sharex=True)
+            axs[-1].plot(self.models[model_name].index, time_deltas)
+            for i, (col_name, col) in enumerate(self.models[model_name].items()):
                 #   Skip all NaN columns
                 if len(col.dropna() > 0) and (col_name != column):
-                
-                    #  This asserts "Actually, the column values occur at times
-                    #  delta_t, as we've calculated, and not at the original 
-                    #  model time. Using this, figure out what y-values are if 
-                    #  you regrid the data"
-                    #interim = np.interp(cumulative_time, delta_t, col.loc[self.data_index])
                     
-                    interim = np.interp(delta_t, cumulative_time, col.loc[self.data_index])
-                    fig, ax = plt.subplots()
-                    ax.plot(cumulative_time, col.loc[self.data_index].to_numpy())
-                    ax.plot(cumulative_time, interim)
-                    ax.scatter(cumulative_time, self.data[col_name])
+                    axs[i].plot(self.data.index, self.data[col_name], color='xkcd:light gray')
+                    axs[i].plot(self.models[model_name].index, col.to_numpy('float64'), linewidth=2)
                     
-                    # fig, ax = plt.subplots()
-                    # ax.plot(index_times, col, color='black', linewidth=2)
-                    # ax.plot(model_shift_times, col, color='blue')
+                    temp = shift_function(col.to_numpy('float64'))
+                    self._primary_df.loc[:, (model_name, col_name)] = temp
                     
-                    # indx = self._primary_df[('Juno', 'u_mag')].notna().to_numpy()
-                    # ax.plot(index_times[indx], self.data[col_name], color='red')
-                    
-                    #interim = np.interp(index_times, model_shift_times, col)
-                    
-                    
-                    self._primary_df[(model_name, col_name)].loc[self.data_index] = interim
+                    axs[i].plot(self.models[model_name].index, self.models[model_name][col_name].to_numpy('float64'), linewidth=1)
+
              
         return 
     
