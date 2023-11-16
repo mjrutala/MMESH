@@ -417,9 +417,44 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         
         #return traj0
 
-        
+    
+    # =============================================================================
+    #   Initialize a MultiTrajecory object
+    #   !!!! N.B. This currently predicts at 'spacecraft', because that's easiest
+    #   with everything I've set up. We want predictions at 'planet' in the end, though
+    # =============================================================================
     m_traj = mmesh.MultiTrajectory(trajectories=trajectories)
     
+    #   Set up the prediction interval
+    original_spantime = stoptime - starttime
+    starttime_prediction = starttime - original_spantime
+    stoptime_prediction = stoptime + original_spantime
+    
+    #  Initialize a trajectory class afor the predictions
+    traj1 = mmesh.Trajectory()
+    
+    #  Read models and add to trajectory
+    for model_name in model_names:
+        model = read_SWModel.choose(model_name, spacecraft_name, 
+                                    starttime_prediction, stoptime_prediction, resolution='60Min')
+        traj1.addModel(model_name, model)
+     
+    #   Add Context (to be moved)
+    traj1._primary_df[('context', 'solar_radio_flux')] = mmesh.read_SolarRadioFlux(traj1._primary_df.index[0], traj1._primary_df.index[-1])['adjusted_flux'] 
+    
+    #   !!!! Need a version for planet prediction
+    sc_pred = spacecraftdata.SpacecraftData(spacecraft_name)
+    sc_pred.make_timeseries(traj1._primary_df.index[0], 
+                            traj1._primary_df.index[-1] + dt.timedelta(hours=1), 
+                            timedelta=dt.timedelta(hours=1))
+    pos_TSE_pred = sc_pred.find_StateToEarth()
+    traj1._primary_df[('context', 'target_sun_earth_lon')] = pos_TSE_pred.reindex(index=traj1._primary_df.index)['del_lon']
+    traj1._primary_df[('context', 'target_sun_earth_lat')] = pos_TSE_pred.reindex(index=traj1._primary_df.index)['del_lat']
+
+
+    
+    return traj1
+
     # =============================================================================
     #    Compare output list of temporal shifts (and, maybe, running standard deviation or similar)
     #    to physical parameters: 
@@ -428,13 +463,10 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     #       -  Running Mean SW Speed
     #   This should **ALL** ultimately go into the "Ensemble" class 
     # =============================================================================    
-    formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     
-    test = m_traj.linear_regression(formula)
     
-    #return traj0
-
-    #mmesh0.cast_intervals
+    
+    #m_traj.cast_intervals
     
     prediction_df = pd.DataFrame(index = pd.DatetimeIndex(np.arange(traj0._primary_df.index[0], traj0._primary_df.index[-1] + dt.timedelta(days=41), dt.timedelta(hours=1))))
     prediction_df['solar_radio_flux'] = mmesh.read_SolarRadioFlux(prediction_df.index[0], prediction_df.index[-1])['adjusted_flux']
