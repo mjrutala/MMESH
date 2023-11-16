@@ -817,11 +817,13 @@ class Trajectory:
             def shift_function(arr):
                 #   Use the ORIGINAL time with this, not time + delta
                 if time_delta_sigma:
-                    n = 1000
+                    time_delta_sigmas = self.models[model_name][time_delta_sigma].to_numpy('float64')
+                    n = int(1e4)
                     arr_perturb_list = []
                     for i in range(n):
-                        time_deltas_perturb = np.random.normal(time_deltas, time_delta_sigma)
+                        time_deltas_perturb = np.random.normal(time_deltas, time_delta_sigmas)
                         arr_perturb_list.append(np.interp(time_deltas_perturb + time, time, arr))
+
                     arr_shifted = np.mean(arr_perturb_list, axis=0)
                     arr_shifted_sigma = np.std(arr_perturb_list, axis=0)
                     output = (arr_shifted, arr_shifted_sigma)
