@@ -231,6 +231,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
     
     #   Encapsualted plotting calls for publishing
+    
     def plot_BothShiftMethodsTD():
         #   This TD initialization is not totally accurate
         #   Since we take the standard deviation after dropping NaNs in the 
@@ -400,16 +401,19 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
 
         trajectories.append(traj0)
         
-        traj0.shift_Models()
-        traj0.ensemble()
+        # =============================================================================
+        #   Uncomment this to perform a single-epoch ensemble
+        # =============================================================================
+        # traj0.shift_Models()
+        # traj0.ensemble()
         
-        traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
+        # traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
        
-        fig = plt.figure(figsize=(6,4.5))
-        fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
-        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
-                  loc='lower left', mode='expand', markerscale=1.0)
-        plt.show()
+        # fig = plt.figure(figsize=(6,4.5))
+        # fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
+        # ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
+        #           loc='lower left', mode='expand', markerscale=1.0)
+        # plt.show()
         
         #return traj0
 
@@ -427,9 +431,6 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     
     test = m_traj.linear_regression(formula)
-    
-    return test
-    
     
     #return traj0
 
@@ -467,6 +468,34 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     fig.supylabel(r'$\Delta$ Time [hours]')
     fig.savefig('figures/Paper/' + 'MLR_{}_withPredictions.png'.format('_'.join(traj0.model_names)), 
                 dpi=300)
+    plt.show()
+    
+    #fig, axs = plt.subplots(nrows=3, figsize=(6, 4.5), sharex=True, sharey=True)
+    for i, (model_name, ax) in enumerate(zip(traj0.model_names, axs)):
+        
+        forecast = test[model_name].get_prediction(prediction_df)
+        alpha_level = 0.32 
+        result = forecast.summary_frame(alpha_level)
+        
+        std = (result['obs_ci_upper'] - result['obs_ci_lower'])/2.
+        
+        s_mu = result['mean'].set_axis(prediction_df.index)
+        s_sig = std.set_axis(prediction_df.index)
+        
+        #   Prediction_df needs to be a full version of trajectory, with models
+        #   So that s_mu and s_sig can be added as mlr_time_delta and mlr_time_delta_sigma
+        #   For now, hacky add to traj0
+        
+        traj0._primary_df.loc[:, (model_name, 'mlr_time_delta')] = s_mu.loc[(s_mu.index >= traj0._primary_df.index[0]) & (s_mu.index <= traj0._primary_df.index[-1])]
+        traj0._primary_df.loc[:, (model_name, 'mlr_time_delta_sigma')] = s_sig.loc[(s_sig.index >= traj0._primary_df.index[0]) & (s_sig.index <= traj0._primary_df.index[-1])]
+        
+        # return prediction_df, result['mean'], std
+        # traj0._primary_df.loc[:, (model_name, 'mlr_time_delta')] = result['mean'].to_numpy('float64')
+        # traj0._primary_df.loc[:, (model_name, 'mlr_time_delta_sigma')] = std.to_numpy('float64')
+        
+        # return traj0, result['mean'], std
+    
+    traj0.shift_Models(time_delta='mlr_time_delta', time_delta_sigma='mlr_time_delta_sigma')
     
     
     
