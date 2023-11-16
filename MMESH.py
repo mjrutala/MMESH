@@ -368,13 +368,16 @@ class Trajectory:
         df = df[int_columns]
         
         if self._primary_df.empty:
-            new_keys = [self.model_names[-1]]
+            #new_keys = [self.model_names[-1]]
+            
+            df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
+            self._primary_df = df
         else:
 
             new_keys = [*self._primary_df.columns.levels[0], self.model_names[-1]]
             df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
 
-        self._primary_df = pd.concat([self._primary_df, df], axis=1)
+            self._primary_df = pd.concat([self._primary_df, df], axis=1)
     
     def addModel(self, model_name, model_df):
         self.model_names.append(model_name)
