@@ -451,9 +451,39 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     traj1._primary_df[('context', 'target_sun_earth_lon')] = pos_TSE_pred.reindex(index=traj1._primary_df.index)['del_lon']
     traj1._primary_df[('context', 'target_sun_earth_lat')] = pos_TSE_pred.reindex(index=traj1._primary_df.index)['del_lat']
 
-
+    #   Add prediction Trajectory as simulcast
+    m_traj.cast_intervals['simulcast'] = traj1
     
-    return traj1
+    formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
+    test = m_traj.linear_regression(formula)
+    
+    m_traj.cast_Models()
+    
+    m_traj.cast_intervals['simulcast'].ensemble()
+    
+    #   Example plot of shifted models with errors
+    fig, axs = plt.subplots(nrows=len(m_traj.cast_intervals['simulcast'].model_names), sharex=True)
+    
+    for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
+        model = m_traj.cast_intervals['simulcast'].models[model_name]
+        
+        axs[i].plot(m_traj.trajectories['Juno'].data.index, m_traj.trajectories['Juno'].data['u_mag'],
+                    color='xkcd:light gray')
+        
+        if 'u_mag_sigma' in model.columns:
+            axs[i].fill_between(model.index, 
+                                model['u_mag'] + model['u_mag_sigma'], 
+                                model['u_mag'] - model['u_mag_sigma'],
+                                alpha = 0.5, color=model_colors[model_name])
+        
+        axs[i].plot(model.index, model['u_mag'], color=model_colors[model_name])
+        
+        axs[i].annotate(model_name, (0,1), (1,-1), xycoords='axes fraction', textcoords='offset fontsize')
+    
+    plt.show()
+        
+    
+    return m_traj
 
     # =============================================================================
     #    Compare output list of temporal shifts (and, maybe, running standard deviation or similar)
@@ -466,7 +496,6 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     
     
     
-    #m_traj.cast_intervals
     
     prediction_df = pd.DataFrame(index = pd.DatetimeIndex(np.arange(traj0._primary_df.index[0], traj0._primary_df.index[-1] + dt.timedelta(days=41), dt.timedelta(hours=1))))
     prediction_df['solar_radio_flux'] = mmesh.read_SolarRadioFlux(prediction_df.index[0], prediction_df.index[-1])['adjusted_flux']
