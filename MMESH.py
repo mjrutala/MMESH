@@ -193,7 +193,7 @@ class MultiTrajectory:
                 self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta_sigma')] = s_sig
             
         for cast_interval_name, cast_interval in self.cast_intervals.items():
-            cast_interval.shift_Models(time_delta='mlr_time_delta', time_delta_sigma='mlr_time_delta_sigma')
+            cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma')
             
         return
         
@@ -345,6 +345,7 @@ class Trajectory:
         
         self.metric_tags = ['u_mag', 'p_dyn', 'n_tot', 'B_mag']
         self.variables =  ['u_mag', 'n_tot', 'p_dyn', 'B_mag']
+        self.variable_sigmas = ['u_mag_sigma', 'n_tot_sigma', 'p_dyn_sigma', 'B_mag_sigma']
         
         self.spacecraft_name = ''
         self.spacecraft_df = ''
@@ -407,6 +408,7 @@ class Trajectory:
     @models.setter
     def models(self, df):
         int_columns = list(set(df.columns).intersection(self.variables))
+        int_columns.extend(list(set(df.columns).intersection(self.variable_sigmas)))
         df = df[int_columns]
         
         if self._primary_df.empty:
@@ -841,11 +843,14 @@ class Trajectory:
         
         return
     
-    def shift_Models(self, time_delta='empirical_time_delta', time_delta_sigma=None):
+    def shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000):
         """
         Shifts models by the specified column, expected to contain delta times in hours.
         Shifted models are only valid during the interval where data is present,
         and NaN outside this interval.
+        
+        This can also be used to propagate arrival time errors by supplying 
+        time_delta_sigma with no time_delta (i.e., time_delta of zero)
         
         OVERWRITES CURRENT VALUES
         """
@@ -857,50 +862,53 @@ class Trajectory:
         for model_name in self.model_names:
             
             time = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
-            time_deltas = self.models[model_name][time_delta].to_numpy('float64')
             
+            #   If no time_delta_column is given, then set it to all zeros
+            if time_delta_column == None:
+                time_deltas = np.zeros(len(self.models[model_name]))
+            else:
+                time_deltas = self.models[model_name][time_delta_column].to_numpy('float64')
+            
+            #   If no time_delta_sigma_column is given
+            #   We don't want to do the whole Monte Carlo with zeros
+            if time_delta_sigma_column == None:
+                print("Setting time_delta_sigmas to zero")
+                time_delta_sigmas = np.zeros(len(self.models[model_name]))
+            else:
+                print("Using real time_delta_sigmas")
+                time_delta_sigmas = self.models[model_name][time_delta_sigma_column].to_numpy('float64')
+            
+            #   
             def shift_function(arr):
                 #   Use the ORIGINAL time with this, not time + delta
-                if time_delta_sigma:
-                    time_delta_sigmas = self.models[model_name][time_delta_sigma].to_numpy('float64')
-                    n = int(1e4)
+                if (time_delta_sigmas == 0.).all():
+                    arr_shifted = np.interp(time_deltas + time, time, arr)
+                    arr_shifted_sigma = arr_shifted * 0.
+                else:
                     arr_perturb_list = []
-                    for i in range(n):
-                        time_deltas_perturb = np.random.normal(time_deltas, time_delta_sigmas)
+                    r = np.random.default_rng()
+                    for i in range(n_mc):
+                        time_deltas_perturb = r.normal(time_deltas, time_delta_sigmas)
                         arr_perturb_list.append(np.interp(time_deltas_perturb + time, time, arr))
 
                     arr_shifted = np.mean(arr_perturb_list, axis=0)
                     arr_shifted_sigma = np.std(arr_perturb_list, axis=0)
-                    output = (arr_shifted, arr_shifted_sigma)
-                else:
-                    arr_shifted = np.interp(time_deltas + time, time, arr)
-                    arr_shifted_sigma = None
-                    output = arr_shifted
+                output = (arr_shifted, arr_shifted_sigma)
                 return output
-            
             
             #self.best_shift_functions[model_name] = shift_function
             
-            #fig, axs = plt.subplots(nrows=len(self.models[model_name].columns)+1, sharex=True)
-            #axs[-1].plot(self.models[model_name].index, time_deltas)
             for i, (col_name, col) in enumerate(self.models[model_name].items()):
                 #   Skip columns of all NaNs and columns which don't appear
                 #   in list of tracked variables
-                if len(col.dropna() > 0) and (col_name in self.variables):
-                    
-                    #axs[i].plot(self.data.index, self.data[col_name], color='xkcd:light gray')
-                    #axs[i].plot(self.models[model_name].index, col.to_numpy('float64'), linewidth=2)
+                #if len(col.dropna() > 0) and (col_name in self.variables):
+                if (col_name in self.variables):
                     
                     col_shifted = shift_function(col.to_numpy('float64'))
                     
-                    if time_delta_sigma:
-                        self._primary_df.loc[:, (model_name, col_name)] = col_shifted[0]
-                        self._primary_df.loc[:, (model_name, col_name+'_sigma')] = col_shifted[1]
-                    else:
-                        self._primary_df.loc[:, (model_name, col_name)] = col_shifted
+                    self._primary_df.loc[:, (model_name, col_name)] = col_shifted[0]
+                    self._primary_df.loc[:, (model_name, col_name+'_sigma')] = col_shifted[1]
                     
-                    #axs[i].plot(self.models[model_name].index, self.models[model_name][col_name].to_numpy('float64'), linewidth=1)
-             
         return
     
     def ensemble(self, weights = None):
@@ -930,8 +938,8 @@ class Trajectory:
         
         #weights_df = pd.DataFrame(columns = self.em_parameters)
         
-        weights = dict.fromkeys(self.variables, 1.0/len(self.model_names))
-        print(weights)
+        # weights = dict.fromkeys(self.variables, 1.0/len(self.model_names))
+        # print(weights)
         
         # if weights == None:
         #     for model in self.model_names:
@@ -944,11 +952,29 @@ class Trajectory:
         # if list/array, assign to dict in order
         # if none, make dict with even weights
         
+        #   Equal weights
+        
+        
+        #   Equal weights, but ignoring NaNs and Zeros
+        weights = np.zeros(np.shape(self.models[self.model_names[0]][self.variables]))
+        for model_name in self.model_names:
+            #   !!!! Add zero handling
+            weights += self.models[model_name][self.variables].notna().astype('float64').values
+        weights = 1.0/weights
+        
+        #   
         partials_list = []
         for model_name in self.model_names:
             df = self.models[model_name][self.variables].mul(weights, fill_value=0.)
+            
+            variable_sigmas = [v+'_sigma' for v in self.variables]
+            if set(variable_sigmas).issubset(set(self.models[model_name].columns)): #   If sigmas get added from start, get rid of this bit
+                
+                df[variable_sigmas] = self.models[model_name][variable_sigmas].mul(weights, fill_value=0.)
+                
             partials_list.append(df)
         
+        #   !!!! This doesn't add error properly
         ensemble = reduce(lambda a,b: a.add(b, fill_value=0.), partials_list)
         
         self.addModel('ensemble', ensemble)
