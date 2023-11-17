@@ -467,8 +467,8 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
         model = m_traj.cast_intervals['simulcast'].models[model_name]
         
-        axs[i].plot(m_traj.trajectories['Juno'].data.index, m_traj.trajectories['Juno'].data['u_mag'],
-                    color='xkcd:light gray')
+        axs[i].scatter(m_traj.trajectories['Juno'].data.index, m_traj.trajectories['Juno'].data['u_mag'],
+                       color='black', marker='o', s=2)
         
         if 'u_mag_sigma' in model.columns:
             axs[i].fill_between(model.index, 
