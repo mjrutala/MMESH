@@ -57,7 +57,9 @@ class MultiTrajectory:
         
         self.spacecraft_names = []
         self.trajectories = {}   #  dict of Instances of Trajectory class
-        self.cast_intervals = {}  #  ???? of Instances of Trajectory class
+        self.cast_intervals = {}    #  ???? of Instances of Trajectory class
+                                    #   i.e. hindcast, nowcast, forecase, simulcast
+                                    #   all relative to data span (although cound be between data spans)
         
         possible_models = []
         for trajectory in trajectories:
@@ -153,8 +155,48 @@ class MultiTrajectory:
                         textcoords='offset fontsize')
             plt.show()
             
-        return predictions_dict
+        self.predictions_dict = predictions_dict
             
+        return predictions_dict
+    
+    def cast_Models(self):
+        
+        #   For now, assume that we get a MLR prediction from linear_regression()
+        #   May want to retool this eventually to just add errors from shifts to models?
+        #   i.e., characterize arrival time error with DTW, average those distributions across all epochs, then propagate
+        #   without shifting?
+        
+        import statsmodels.api as sm
+        import statsmodels.formula.api as smf
+        import re
+        
+        for model_name in self.model_names:
+            
+            for cast_interval_name, cast_interval in self.cast_intervals.items():
+                cast_context_df = cast_interval._primary_df['context']
+                cast = self.predictions_dict[model_name].get_prediction(cast_context_df)
+                alpha_level = 0.05  #  alpha is 1-CI or 1-sigma_level
+                                    #  alpha = 0.05 gives 2sigma or 95%
+                                    #  alpha = 0.32 gives 1sigma or 68%
+                result = cast.summary_frame(alpha_level)
+                
+                print(self.predictions_dict[model_name].summary())
+                
+                #   !!!! N.B. Where data is present, the interval is smaller--
+                sig = (result['obs_ci_upper'] - result['obs_ci_lower'])/2.
+                
+                #   s_mu = shift_mu = mean shift
+                s_mu = result['mean'].set_axis(cast_interval.models[model_name].index)
+                s_sig = sig.set_axis(cast_interval.models[model_name].index)
+                
+                self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta')] = s_mu
+                self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta_sigma')] = s_sig
+            
+        for cast_interval_name, cast_interval in self.cast_intervals.items():
+            cast_interval.shift_Models(time_delta='mlr_time_delta', time_delta_sigma='mlr_time_delta_sigma')
+            
+        return
+        
     #   We want to characterize linear relationships independently and together
     #   Via single-target (for now) multiple linear regression
         
@@ -887,6 +929,7 @@ class Trajectory:
         from functools import reduce
         
         #weights_df = pd.DataFrame(columns = self.em_parameters)
+        
         weights = dict.fromkeys(self.variables, 1.0/len(self.model_names))
         print(weights)
         
