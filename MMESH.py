@@ -64,7 +64,7 @@ class MultiTrajectory:
         possible_models = []
         for trajectory in trajectories:
             self.spacecraft_names.append(trajectory.spacecraft_name)
-            self.trajectories[trajectory.spacecraft_name] = trajectory
+            self.trajectories[trajectory.trajectory_name] = trajectory
             possible_models += trajectory.model_names
         
         self.model_names = list(set(possible_models))
@@ -92,7 +92,7 @@ class MultiTrajectory:
                  'target_sun_earth_lat':[], 
                  'u_mag_model':[]}
             
-            for spacecraft_name, trajectory in self.trajectories.items():
+            for trajectory_name, trajectory in self.trajectories.items():
                 d['empirical_time_delta'].extend(trajectory.models[model_name]['empirical_time_delta'].loc[trajectory.data_index])
                 d['u_mag_model'].extend(trajectory.models[model_name]['u_mag'].loc[trajectory.data_index])
                 
@@ -145,17 +145,23 @@ class MultiTrajectory:
             predictions_dict[model_name] = mlr_fit
             
             import matplotlib.pyplot as plt
-            fig, ax = plt.subplots(figsize=(6,2))
-            ax.plot(training_df.index, result['mean'], color='C0')
-            ax.fill_between(training_df.index, result['obs_ci_lower'], result['obs_ci_upper'], color='C0', alpha=0.5)
-            ax.plot(training_df.index, training_df['empirical_time_delta'], color='black')
-            ax.set_xlabel('Date')
-            ax.set_ylabel(r'$\Delta$ Time [hours]')
-            ax.annotate(model_name, 
-                        (0,1), xytext=(1,-1),
-                        xycoords='axes fraction',
-                        textcoords='offset fontsize')
+            fig, axs = plt.subplots(figsize=(6,2), nrows=len(self.trajectories.keys()))
+            
+            for i, (trajectory_name, trajectory) in enumerate(self.trajectories.items()):
+                
+                axs[i].plot(training_df.index, result['mean'], color='C0')
+                axs[i].fill_between(training_df.index, result['obs_ci_lower'], result['obs_ci_upper'], color='C0', alpha=0.5)
+                axs[i].plot(training_df.index, training_df['empirical_time_delta'], color='black')
+                axs[i].set_xlim(trajectory.data_index[0], trajectory.data_index[-1])
+                axs[i].set_xlabel('Date')
+                axs[i].set_ylabel(r'$\Delta$ Time [hours]')
+                axs[i].annotate(model_name, 
+                                (0,1), xytext=(1,-1),
+                                xycoords='axes fraction',
+                                textcoords='offset fontsize')
             plt.show()
+            
+            print(training_df.index[0], training_df.index[-1])
             
         self.predictions_dict = predictions_dict
             
@@ -177,7 +183,7 @@ class MultiTrajectory:
             for cast_interval_name, cast_interval in self.cast_intervals.items():
                 cast_context_df = cast_interval._primary_df['context']
                 cast = self.predictions_dict[model_name].get_prediction(cast_context_df)
-                alpha_level = 0.05  #  alpha is 1-CI or 1-sigma_level
+                alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
                                     #  alpha = 0.05 gives 2sigma or 95%
                                     #  alpha = 0.32 gives 1sigma or 68%
                 result = cast.summary_frame(alpha_level)
@@ -343,11 +349,13 @@ class Trajectory:
     A given trajectory may correspond to 1 spacecraft but any number of models.
     """
     
-    def __init__(self):
+    def __init__(self, name=''):
         
         self.metric_tags = ['u_mag', 'p_dyn', 'n_tot', 'B_mag']
         self.variables =  ['u_mag', 'n_tot', 'p_dyn', 'B_mag']
         self.variable_sigmas = ['u_mag_sigma', 'n_tot_sigma', 'p_dyn_sigma', 'B_mag_sigma']
+        
+        self.trajectory_name = name
         
         self.spacecraft_name = ''
         self.spacecraft_df = ''
