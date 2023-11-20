@@ -93,15 +93,17 @@ class MultiTrajectory:
                  'u_mag_model':[]}
             
             for spacecraft_name, trajectory in self.trajectories.items():
-                d['empirical_time_delta'].extend(trajectory.models[model_name]['empirical_time_delta'])
-                d['u_mag_model'].extend(trajectory.models[model_name]['u_mag'])
+                d['empirical_time_delta'].extend(trajectory.models[model_name]['empirical_time_delta'].loc[trajectory.data_index])
+                d['u_mag_model'].extend(trajectory.models[model_name]['u_mag'].loc[trajectory.data_index])
                 
                 #   Need to write a better getter/setter for 'context'
-                d['solar_radio_flux'].extend(trajectory._primary_df[('context', 'solar_radio_flux')])
-                d['target_sun_earth_lon'].extend(trajectory._primary_df[('context', 'target_sun_earth_lon')])
-                d['target_sun_earth_lat'].extend(trajectory._primary_df[('context', 'target_sun_earth_lat')])
+                d['solar_radio_flux'].extend(trajectory._primary_df[('context', 'solar_radio_flux')].loc[trajectory.data_index])
+                d['target_sun_earth_lon'].extend(trajectory._primary_df[('context', 'target_sun_earth_lon')].loc[trajectory.data_index])
+                d['target_sun_earth_lat'].extend(trajectory._primary_df[('context', 'target_sun_earth_lat')].loc[trajectory.data_index])
                 
-                d['datetime'] = trajectory._primary_df.index
+                d['datetime'].extend(trajectory._primary_df.loc[trajectory.data_index].index)
+            
+            #return(d)
             
             training_df = pd.DataFrame.from_dict(d)
             training_df = training_df.set_index('datetime')
@@ -395,7 +397,10 @@ class Trajectory:
             new_keys = [self._primary_df.columns.levels[0], self.spacecraft_name]
             self._primary_df = pd.concat([self._primary_df, df], axis=1,
                                         keys=new_keys)
+        #   data_index is useful for statistical comparison between model and data
+        #   data_span is useful for propagating the models
         self.data_index = self.data.dropna(axis='index', how='all').index
+        self.data_span = np.arange(self.data_index[0], self.data_index[-1], dt.timedelta(hours=1))
     
     def addData(self, spacecraft_name, spacecraft_df):
         self.spacecraft_name = spacecraft_name
@@ -1180,12 +1185,18 @@ class Trajectory:
             shift_model_df = pd.concat([self.data, shift_model_df], axis=1,
                                         keys=[self.spacecraft_name, model_name])
             
-            (r, sig), rmsd = TD.find_TaylorStatistics(shift_model_df[(model_name, 'u_mag')], 
-                                                           shift_model_df[(self.spacecraft_name, 'u_mag')]) #self.model_shift_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'rmsd']]
+            fig, ax = TD.plot_TaylorDiagram(shift_model_df[(model_name, 'u_mag')], 
+                                            shift_model_df[(self.spacecraft_name, 'u_mag')], 
+                                            fig=fig, ax=ax, zorder=9, 
+                                            s=36, c=model_colors[model_name], marker=model_symbols[model_name],
+                                            label=model_name + ' ' + str(shift) + ' h')
             
-            ax.scatter(np.arccos(r), sig, zorder=10, 
-                        s=36, c=model_colors[model_name], marker=model_symbols[model_name],
-                        label=model_name + ' ' + str(shift) + ' h')
+            # (r, sig), rmsd = TD.find_TaylorStatistics(shift_model_df[(model_name, 'u_mag')], 
+            #                                                shift_model_df[(self.spacecraft_name, 'u_mag')]) #self.model_shift_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'rmsd']]
+            
+            # ax.scatter(np.arccos(r), sig, zorder=10, 
+            #             s=36, c=model_colors[model_name], marker=model_symbols[model_name],
+            #             label=model_name + ' ' + str(shift) + ' h')
         
         ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
         
