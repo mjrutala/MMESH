@@ -205,14 +205,24 @@ lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
     
 
 
-spacecraft_names = [#'Juno', 
-                    'Ulysses']
-spacecraft_spans = {#'Juno': (dt.datetime(2016, 5, 16), dt.datetime(2016, 6, 26)),
-                    'Ulysses': (dt.datetime(1991,12,8), dt.datetime(1992,2,2))}
+# spacecraft_names = [#'Juno', 
+#                     'Ulysses']
+# spacecraft_spans = {#'Juno': (dt.datetime(2016, 5, 16), dt.datetime(2016, 6, 26)),
+#                     'Ulysses_1': (dt.datetime(1991,12,8), dt.datetime(1992,2,2))}
+
+inputs = {}
+inputs['Ulysses_01'] = {'spacecraft_name':'Ulysses',
+                        'span':(dt.datetime(1991,12,8), dt.datetime(1992,2,2))}
+inputs['Ulysses_02'] = {'spacecraft_name':'Ulysses',
+                        'span':(dt.datetime(1997,8,14), dt.datetime(1998,4,16))}
+# inputs['Ulysses_03'] = {'spacecraft_name':'Ulysses',
+#                         'span':(dt.datetime(2003,10,24), dt.datetime(2004,6,22))}
+# inputs['Juno_01'] = {'spacecraft_name':'Juno',
+#                      'span':(dt.datetime(2016, 5, 16), dt.datetime(2016, 6, 26))}
 
 model_names = ['Tao', 'HUXt', 'ENLIL']
 
-def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
+def MMESH_run(data_dict, model_names):
     import string
     
     import sys
@@ -283,27 +293,23 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         plt.savefig('figures/Paper/' + 'TemporalShifts_{}_Total.png'.format('_'.join(traj0.model_names)), 
                     dpi=300)
         plt.show()
-        
-    
-    #spacecraft_names = ['Juno']  #, 'Ulysses'
-    #model_names = ['Tao', 'HUXt', 'ENLIL']
     
     trajectories = []
-    for spacecraft_name in spacecraft_names:
+    for key, val in data_dict.items():
         #   !!!! This whole pipline is currently (2023 11 03) sensitive to these
         #   input dates, but shouldn't be-- Optimization should not change based on input dates
         #   as long as the input dates span the whole of the spacecraft data being used
         #   since we should always be dropping NaN rows...
         # starttime = dt.datetime(2016, 5, 16) # dt.datetime(1997,8,14) # dt.datetime(1991,12,8) # 
         # stoptime = dt.datetime(2016, 6, 26) # dt.datetime(1998,1,1) # dt.datetime(1992,2,2) # 
-        starttime = spacecraft_spans[spacecraft_name][0]
-        stoptime = spacecraft_spans[spacecraft_name][1]
+        starttime = val['span'][0]
+        stoptime = val['span'][1]
         
         reference_frame = 'SUN_INERTIAL'
         observer = 'SUN'
         
         #  Load spacecraft data
-        spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
+        spacecraft = spacecraftdata.SpacecraftData(val['spacecraft_name'])
         spacecraft.read_processeddata(starttime, stoptime, resolution='60Min')
         pos_TSE = spacecraft.find_StateToEarth()
         
@@ -316,12 +322,12 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         stoptime = spacecraft.data.index[-1] + padding
         
         #  Initialize a trajectory class and add the spacecraft data
-        traj0 = mmesh.Trajectory()
-        traj0.addData(spacecraft_name, spacecraft.data)
+        traj0 = mmesh.Trajectory(name=key)
+        traj0.addData(val['spacecraft_name'], spacecraft.data)
         
         #  Read models and add to trajectory
         for model_name in model_names:
-            model = read_SWModel.choose(model_name, spacecraft_name, 
+            model = read_SWModel.choose(model_name, val['spacecraft_name'], 
                                         starttime, stoptime, resolution='60Min')
             traj0.addModel(model_name, model)
         
@@ -359,8 +365,6 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         for suffix in ['.png']:
             plt.savefig('figures/' + 'test_TD', dpi=300, bbox_inches=extent)
         
-        #return traj0
-        
         # =============================================================================
         #   Optimize the models via dynamic time warping
         #   Then plot:
@@ -382,8 +386,9 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         #return dtw_stats
         
         #   Write an equation describing the optimization equation
+        #   This can be played with
         def optimization_eqn(df):
-            f = 10*df['r'] + 2/df['width_68']  #  !!!! Tweak this
+            f = 10*df['r'] + 1/(0.5*df['width_68'])  #   normalize width so 24 hours == 1
             return (f - np.min(f))/(np.max(f)-np.min(f))
         #   Plug in the optimization equation
         traj0.optimize_Warp(optimization_eqn)
@@ -427,19 +432,21 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     #   !!!! N.B. This currently predicts at 'spacecraft', because that's easiest
     #   with everything I've set up. We want predictions at 'planet' in the end, though
     # =============================================================================
+    print(trajectories)
     m_traj = mmesh.MultiTrajectory(trajectories=trajectories)
     
     #   Set up the prediction interval
-    original_spantime = stoptime - starttime
-    starttime_prediction = starttime - original_spantime
-    stoptime_prediction = stoptime + original_spantime
+    #original_spantime = stoptime - starttime
+    starttime_prediction = dt.datetime(2016, 5, 1)  #  starttime - original_spantime
+    stoptime_prediction = dt.datetime(2017, 1, 1)  #  stoptime + original_spantime
+    target_prediction = 'Juno'
     
-    #  Initialize a trajectory class afor the predictions
+    #  Initialize a trajectory class for the predictions
     traj1 = mmesh.Trajectory()
     
     #  Read models and add to trajectory
     for model_name in model_names:
-        model = read_SWModel.choose(model_name, spacecraft_name, 
+        model = read_SWModel.choose(model_name, target_prediction, 
                                     starttime_prediction, stoptime_prediction, resolution='60Min')
         traj1.addModel(model_name, model)
      
@@ -447,7 +454,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     traj1._primary_df[('context', 'solar_radio_flux')] = mmesh.read_SolarRadioFlux(traj1._primary_df.index[0], traj1._primary_df.index[-1])['adjusted_flux'] 
     
     #   !!!! Need a version for planet prediction
-    sc_pred = spacecraftdata.SpacecraftData(spacecraft_name)
+    sc_pred = spacecraftdata.SpacecraftData(target_prediction)
     sc_pred.make_timeseries(traj1._primary_df.index[0], 
                             traj1._primary_df.index[-1] + dt.timedelta(hours=1), 
                             timedelta=dt.timedelta(hours=1))
@@ -468,11 +475,18 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     #   Example plot of shifted models with errors
     fig, axs = plt.subplots(nrows=len(m_traj.cast_intervals['simulcast'].model_names), sharex=True)
     
+    #  Load spacecraft data
+    spacecraft = spacecraftdata.SpacecraftData('Juno')
+    spacecraft.read_processeddata(starttime_prediction, stoptime_prediction, resolution='60Min')
+    
     for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
         model = m_traj.cast_intervals['simulcast'].models[model_name]
         
         #!!!!  Shouldn't be traj0.spacecraft_name...
-        axs[i].scatter(m_traj.trajectories[traj0.spacecraft_name].data.index, m_traj.trajectories[traj0.spacecraft_name].data['u_mag'],
+        # axs[i].scatter(m_traj.trajectories[traj0.trajectory_name].data.index, m_traj.trajectories[traj0.spacecraft_name].data['u_mag'],
+        #                color='black', marker='o', s=2)
+        
+        axs[i].scatter(spacecraft.data.index, spacecraft.data['u_mag'],
                        color='black', marker='o', s=2)
         
         if 'u_mag_sigma' in model.columns:
@@ -484,6 +498,10 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         axs[i].plot(model.index, model['u_mag'], color=model_colors[model_name])
         
         axs[i].annotate(model_name, (0,1), (1,-1), xycoords='axes fraction', textcoords='offset fontsize')
+    
+        (r, std), rmsd = TD.find_TaylorStatistics(model['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
+        
+        axs[i].annotate(str(r), (0,1), (1, -2), xycoords='axes fraction', textcoords='offset fontsize')
     
     plt.show()
         
