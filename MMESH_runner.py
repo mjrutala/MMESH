@@ -205,8 +205,10 @@ lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
     
 
 
-spacecraft_names = ['Juno']
-spacecraft_spans = {'Juno': (dt.datetime(2016, 5, 16), dt.datetime(2016, 6, 26))}
+spacecraft_names = [#'Juno', 
+                    'Ulysses']
+spacecraft_spans = {#'Juno': (dt.datetime(2016, 5, 16), dt.datetime(2016, 6, 26)),
+                    'Ulysses': (dt.datetime(1991,12,8), dt.datetime(1992,2,2))}
 
 model_names = ['Tao', 'HUXt', 'ENLIL']
 
@@ -357,6 +359,8 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         for suffix in ['.png']:
             plt.savefig('figures/' + 'test_TD', dpi=300, bbox_inches=extent)
         
+        #return traj0
+        
         # =============================================================================
         #   Optimize the models via dynamic time warping
         #   Then plot:
@@ -379,7 +383,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
         
         #   Write an equation describing the optimization equation
         def optimization_eqn(df):
-            f = df['r'] * 2/df['width_68']
+            f = 10*df['r'] + 2/df['width_68']  #  !!!! Tweak this
             return (f - np.min(f))/(np.max(f)-np.min(f))
         #   Plug in the optimization equation
         traj0.optimize_Warp(optimization_eqn)
@@ -456,7 +460,7 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     
     formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     test = m_traj.linear_regression(formula)
-    
+    #return test
     m_traj.cast_Models()
     
     m_traj.cast_intervals['simulcast'].ensemble()
@@ -467,7 +471,8 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
         model = m_traj.cast_intervals['simulcast'].models[model_name]
         
-        axs[i].scatter(m_traj.trajectories['Juno'].data.index, m_traj.trajectories['Juno'].data['u_mag'],
+        #!!!!  Shouldn't be traj0.spacecraft_name...
+        axs[i].scatter(m_traj.trajectories[traj0.spacecraft_name].data.index, m_traj.trajectories[traj0.spacecraft_name].data['u_mag'],
                        color='black', marker='o', s=2)
         
         if 'u_mag_sigma' in model.columns:
@@ -493,10 +498,6 @@ def MMESH_run(model_names, spacecraft_names, spacecraft_spans):
     #       -  Running Mean SW Speed
     #   This should **ALL** ultimately go into the "Ensemble" class 
     # =============================================================================    
-    
-    
-    
-    
     prediction_df = pd.DataFrame(index = pd.DatetimeIndex(np.arange(traj0._primary_df.index[0], traj0._primary_df.index[-1] + dt.timedelta(days=41), dt.timedelta(hours=1))))
     prediction_df['solar_radio_flux'] = mmesh.read_SolarRadioFlux(prediction_df.index[0], prediction_df.index[-1])['adjusted_flux']
     
