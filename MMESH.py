@@ -83,6 +83,7 @@ class MultiTrajectory:
         #   
         # =============================================================================
         predictions_dict = {}
+        nowcast_dict = {}
         for model_name in self.model_names:
             
             d = {'datetime':[], 
@@ -127,8 +128,10 @@ class MultiTrajectory:
             #                               'TSE_lat': pos_TSE_pred['del_lat']}, 
             #                               index=sc_pred.data.index)
             
-            mlr_fit = smf.ols(formula = formula, data=training_df).fit()
-            #print(mlr_fit.summary())
+            mlr_fit = smf.ols(formula = formula, data=training_df).fit()  #!!!! Does this have weights available?
+            #   We should weight by correlation coefficient to the original data
+            #   Either assign those weights in the input, if possible
+            #   OR do each MLR individually, then multiply coefficients by weights and add....
             
             # prediction_test = reg.get_prediction(exog=prediction_df, transform=True)
             # alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
@@ -141,29 +144,30 @@ class MultiTrajectory:
                                 #  alpha = 0.05 gives 2sigma or 95%
                                 #  alpha = 0.32 gives 1sigma or 68%
             result = nowcast.summary_frame(alpha_level)
+            result = result.set_index(training_df.index)
             
             predictions_dict[model_name] = mlr_fit
+            nowcast_dict[model_name] = result
             
-            import matplotlib.pyplot as plt
-            fig, axs = plt.subplots(figsize=(6,2), nrows=len(self.trajectories.keys()))
-            
-            for i, (trajectory_name, trajectory) in enumerate(self.trajectories.items()):
-                
-                axs[i].plot(training_df.index, result['mean'], color='C0')
-                axs[i].fill_between(training_df.index, result['obs_ci_lower'], result['obs_ci_upper'], color='C0', alpha=0.5)
-                axs[i].plot(training_df.index, training_df['empirical_time_delta'], color='black')
-                axs[i].set_xlim(trajectory.data_index[0], trajectory.data_index[-1])
-                axs[i].set_xlabel('Date')
-                axs[i].set_ylabel(r'$\Delta$ Time [hours]')
-                axs[i].annotate(model_name, 
-                                (0,1), xytext=(1,-1),
-                                xycoords='axes fraction',
-                                textcoords='offset fontsize')
-            plt.show()
+            # import matplotlib.pyplot as plt
+            # fig, axs = plt.subplots(figsize=(6,2), nrows=len(self.trajectories.keys()))
+            # for i, (trajectory_name, trajectory) in enumerate(self.trajectories.items()):
+            #     axs[i].plot(training_df.index, result['mean'], color='C0')
+            #     axs[i].fill_between(training_df.index, result['obs_ci_lower'], result['obs_ci_upper'], color='C0', alpha=0.5)
+            #     axs[i].plot(training_df.index, training_df['empirical_time_delta'], color='black')
+            #     axs[i].set_xlim(trajectory.data_index[0], trajectory.data_index[-1])
+            #     axs[i].set_xlabel('Date')
+            #     axs[i].set_ylabel(r'$\Delta$ Time [hours]')
+            #     axs[i].annotate(model_name, 
+            #                     (0,1), xytext=(1,-1),
+            #                     xycoords='axes fraction',
+            #                     textcoords='offset fontsize')
+            # plt.show()
             
             print(training_df.index[0], training_df.index[-1])
             
         self.predictions_dict = predictions_dict
+        self.nowcast_dict = nowcast_dict
             
         return predictions_dict
     
