@@ -86,7 +86,7 @@ def Tao(target, starttime, stoptime, basedir='', resolution=None):
     
     data = default_df
     
-    for filename in filenames:
+    for filename in sorted(filenames):
         #  Files downloaded from AMDA have a different order of columns than
         #  those directly from Chihiro Tao
         if 'fromamda' in filename:
@@ -310,7 +310,7 @@ def HUXt(target, starttime, stoptime, basedir='', resolution=None):
     column_headers = ['datetime', 'r', 'lon', 'u_mag', 'B_pol']
     
     data = default_df  
-    for filename in filenames:
+    for filename in sorted(filenames):
         
         file_data = pd.read_csv(full_path + filename, 
                              names=column_headers, 
@@ -417,7 +417,7 @@ def ENLIL(target, starttime, stoptime, basedir='', resolution=None):
                       'u_mag', 'B_mag', 'p_dyn', 'BP']
     data = pd.DataFrame(columns = column_headers + ['datetime'])
     
-    for filename in filenames:
+    for filename in sorted(filenames):
         
         #  In these files, the start date is hidden in a comment, so read the first few lines
         header = []
