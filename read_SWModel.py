@@ -13,6 +13,7 @@ import numpy as np
 import datetime as dt
 import copy
 import logging
+import glob
 
 from pathlib import Path
 
@@ -34,46 +35,51 @@ def Tao(target, starttime, stoptime, basedir='', resolution=None):
     target = target.lower().replace(' ', '')
     fullpath = Path(basedir) / 'models' / 'tao' / target
     
-    match target:
-        # case 'mars':
-        #     return(None)
-        # case 'jupiter':
-        #     return(None)
-        # case 'saturn':
-        #     return(None)
-        case 'voyager1':
-            filenames = ['swmhd_tao_voyager1_1978.txt',
-                         'swmhd_tao_voyager1_1979.txt']    
-        case 'voyager2':
-            filenames = ['swmhd_tao_voyager2_1978.txt',
-                         'swmhd_tao_voyager2_1979.txt',
-                         'swmhd_tao_voyager2_1980.txt']
-        case 'pioneer10':
-            filenames = ['swmhd_tao_pioneer10_1973.txt',
-                         'swmhd_tao_pioneer10_1974.txt']
-        case 'pioneer11':
-            filenames = ['swmhd_tao_pioneer11_1974.txt',
-                         'swmhd_tao_pioneer10_1975.txt',
-                         'swmhd_tao_pioneer10_1976.txt',
-                         'swmhd_tao_pioneer10_1977.txt',
-                         'swmhd_tao_pioneer10_1978.txt']
-        case 'ulysses':
-            filenames = ['swmhd_tao_ulysses_1991.txt',
-                         'swmhd_tao_ulysses_1992.txt',
-                         'swmhd_tao_ulysses_1997.txt',
-                         'swmhd_tao_ulysses_1998.txt',
-                         'swmhd_tao_ulysses_1999.txt',
-                         'swmhd_tao_ulysses_2003.txt',
-                         'swmhd_tao_ulysses_2004.txt']
-        case 'newhorizons':
-            filenames = ['swmhd_tao_newhorizons_2006-2007.txt']
-        case 'juno':
-            filenames = ['fromamda_tao_juno_2015.txt',
-                         'fromamda_tao_juno_2016.txt']
-        case _:
-            logging.warning('This version of the Tao SWMHD reader'
-                            'does not support ' + target + ' observations.')
-            return(default_df)
+    filenames = [g.split('/')[-1] for g in glob.glob(full_path + '*')]
+    if filenames == []:
+        logging.warning('This version of the ENLIL reader'
+                        ' does not support ' + target + ' observations.')
+        return(default_df)
+    # match target:
+    #     # case 'mars':
+    #     #     return(None)
+    #     # case 'jupiter':
+    #     #     return(None)
+    #     # case 'saturn':
+    #     #     return(None)
+    #     case 'voyager1':
+    #         filenames = ['swmhd_tao_voyager1_1978.txt',
+    #                      'swmhd_tao_voyager1_1979.txt']    
+    #     case 'voyager2':
+    #         filenames = ['swmhd_tao_voyager2_1978.txt',
+    #                      'swmhd_tao_voyager2_1979.txt',
+    #                      'swmhd_tao_voyager2_1980.txt']
+    #     case 'pioneer10':
+    #         filenames = ['swmhd_tao_pioneer10_1973.txt',
+    #                      'swmhd_tao_pioneer10_1974.txt']
+    #     case 'pioneer11':
+    #         filenames = ['swmhd_tao_pioneer11_1974.txt',
+    #                      'swmhd_tao_pioneer10_1975.txt',
+    #                      'swmhd_tao_pioneer10_1976.txt',
+    #                      'swmhd_tao_pioneer10_1977.txt',
+    #                      'swmhd_tao_pioneer10_1978.txt']
+    #     case 'ulysses':
+    #         filenames = ['swmhd_tao_ulysses_1991.txt',
+    #                      'swmhd_tao_ulysses_1992.txt',
+    #                      'swmhd_tao_ulysses_1997.txt',
+    #                      'swmhd_tao_ulysses_1998.txt',
+    #                      'swmhd_tao_ulysses_1999.txt',
+    #                      'swmhd_tao_ulysses_2003.txt',
+    #                      'swmhd_tao_ulysses_2004.txt']
+    #     case 'newhorizons':
+    #         filenames = ['swmhd_tao_newhorizons_2006-2007.txt']
+    #     case 'juno':
+    #         filenames = ['fromamda_tao_juno_2015.txt',
+    #                      'fromamda_tao_juno_2016.txt']
+    #     case _:
+    #         logging.warning('This version of the Tao SWMHD reader'
+    #                         'does not support ' + target + ' observations.')
+    #         return(default_df)
         
     #  This should put files in chronological order, useful for checking overalaps in the data
     filenames.sort()
@@ -139,39 +145,44 @@ def SWMFOH(target, starttime, stoptime, basedir='', resolution=None):
     model_path = 'models/swmf-oh/'
     full_path = basedir + model_path + target.lower() + '/'
     
-    match target.lower():
-        case 'jupiter':
-            filenames = ['vogt_swmf-oh_jupiter_2014.txt', 
-                         'vogt_swmf-oh_jupiter_2015.txt', 
-                         'vogt_swmf-oh_jupiter_2016.txt',
-                         'vogt_swmf-oh_jupiter_2017.txt',
-                         'vogt_swmf-oh_jupiter_2018.txt',
-                         'vogt_swmf-oh_jupiter_2019.txt',
-                         'vogt_swmf-oh_jupiter_2020.txt',
-                         'vogt_swmf-oh_jupiter_2021.txt',
-                         'vogt_swmf-oh_jupiter_2022.txt']
-        case 'juno':
-            filenames = ['vogt_swmf-oh_juno_2014.txt', 
-                         'vogt_swmf-oh_juno_2015.txt', 
-                         'vogt_swmf-oh_juno_2016.txt']
-        # case 'galileo':
-        #     filenames = []
-        # case 'cassini':
-        #     filenames = []
-        case 'mars':
-            filenames = ['vogt_swmf-oh_mars_2014.txt', 
-                         'vogt_swmf-oh_mars_2015.txt', 
-                         'vogt_swmf-oh_mars_2016.txt',
-                         'vogt_swmf-oh_mars_2017.txt',
-                         'vogt_swmf-oh_mars_2018.txt',
-                         'vogt_swmf-oh_mars_2019.txt',
-                         'vogt_swmf-oh_mars_2020.txt',
-                         'vogt_swmf-oh_mars_2021.txt',
-                         'vogt_swmf-oh_mars_2022.txt']
-        case _:
-            logging.warning(['This version of the SWMF-OH reader',
-                             ' does not support ' + target + ' observations.'])
-            return(default_df)
+    filenames = [g.split('/')[-1] for g in glob.glob(full_path + '*')]
+    if filenames == []:
+        logging.warning('This version of the ENLIL reader'
+                        ' does not support ' + target + ' observations.')
+        return(default_df)
+    # match target.lower():
+    #     case 'jupiter':
+    #         filenames = ['vogt_swmf-oh_jupiter_2014.txt', 
+    #                      'vogt_swmf-oh_jupiter_2015.txt', 
+    #                      'vogt_swmf-oh_jupiter_2016.txt',
+    #                      'vogt_swmf-oh_jupiter_2017.txt',
+    #                      'vogt_swmf-oh_jupiter_2018.txt',
+    #                      'vogt_swmf-oh_jupiter_2019.txt',
+    #                      'vogt_swmf-oh_jupiter_2020.txt',
+    #                      'vogt_swmf-oh_jupiter_2021.txt',
+    #                      'vogt_swmf-oh_jupiter_2022.txt']
+    #     case 'juno':
+    #         filenames = ['vogt_swmf-oh_juno_2014.txt', 
+    #                      'vogt_swmf-oh_juno_2015.txt', 
+    #                      'vogt_swmf-oh_juno_2016.txt']
+    #     # case 'galileo':
+    #     #     filenames = []
+    #     # case 'cassini':
+    #     #     filenames = []
+    #     case 'mars':
+    #         filenames = ['vogt_swmf-oh_mars_2014.txt', 
+    #                      'vogt_swmf-oh_mars_2015.txt', 
+    #                      'vogt_swmf-oh_mars_2016.txt',
+    #                      'vogt_swmf-oh_mars_2017.txt',
+    #                      'vogt_swmf-oh_mars_2018.txt',
+    #                      'vogt_swmf-oh_mars_2019.txt',
+    #                      'vogt_swmf-oh_mars_2020.txt',
+    #                      'vogt_swmf-oh_mars_2021.txt',
+    #                      'vogt_swmf-oh_mars_2022.txt']
+    #     case _:
+    #         logging.warning(['This version of the SWMF-OH reader',
+    #                          ' does not support ' + target + ' observations.'])
+    #         return(default_df)
         
     column_headers = ['year', 'month', 'day', 'hour', 
                       'X', 'Y', 'Z', 
@@ -264,31 +275,36 @@ def HUXt(target, starttime, stoptime, basedir='', resolution=None):
     model_path = 'models/HUXt/'
     full_path = basedir + model_path + target.replace(' ', '').lower() + '/'
     
-    match target.replace(' ','').lower():
-        case 'jupiter':
-            filenames = ['Jupiter_2016_Owens_HuxT.csv', 'Jupiter_2020_Owens_HuxT.csv']
-        case 'juno':
-            filenames = ['juno_2015001-2016001_HUXt.csv', 'juno_2016001-2017001_HUXt.csv']
-        case 'ulysses':
-            filenames = ['ulysses_1991001-1992001_HUXt.csv', 'ulysses_1992001-1993001_HUXt.csv',
-                         'ulysses_1997001-1998001_HUXt.csv', 'ulysses_1998001-1999001_HUXt.csv',
-                         'ulysses_1999001-2000001_HUXt.csv', 'ulysses_2003001-2004001_HUXt.csv',
-                         'ulysses_2004001-2005001_HUXt.csv']
-        case 'voyager1':
-            filenames = ['voyager1_1978001-1979001_HUXt.csv', 'voyager1_1979001-1980001_HUXt.csv']
-        case 'voyager2':
-            filenames = ['voyager2_1978001-1979001_HUXt.csv', 'voyager2_1979001-1980001_HUXt.csv',
-                         'voyager2_1980001-1981001_HUXt.csv']
-        case 'pioneer10':
-            filenames = ['pioneer10_1973001-1974001_HUXt.csv', 'pioneer10_1974001-1975001_HUXt.csv']
-        case 'pioneer11':
-            filenames = ['pioneer11_1974001-1975001_HUXt.csv', 'pioneer11_1975001-1976001_HUXt.csv',
-                         'pioneer11_1976001-1977001_HUXt.csv', 'pioneer11_1977001-1978001_HUXt.csv',
-                         'pioneer11_1978001-1979001_HUXt.csv', 'pioneer11_1979001-1980001_HUXt.csv']
-        case _:
-            logging.warning('This version of the HUXt reader'
-                            ' does not support ' + target + ' observations.')
-            return(default_df)
+    filenames = [g.split('/')[-1] for g in glob.glob(full_path + '*')]
+    if filenames == []:
+        logging.warning('This version of the ENLIL reader'
+                        ' does not support ' + target + ' observations.')
+        return(default_df)
+    # match target.replace(' ','').lower():
+    #     case 'jupiter':
+    #         filenames = ['Jupiter_2016_Owens_HuxT.csv', 'Jupiter_2020_Owens_HuxT.csv']
+    #     case 'juno':
+    #         filenames = ['juno_2015001-2016001_HUXt.csv', 'juno_2016001-2017001_HUXt.csv']
+    #     case 'ulysses':
+    #         filenames = ['ulysses_1991001-1992001_HUXt.csv', 'ulysses_1992001-1993001_HUXt.csv',
+    #                      'ulysses_1997001-1998001_HUXt.csv', 'ulysses_1998001-1999001_HUXt.csv',
+    #                      'ulysses_1999001-2000001_HUXt.csv', 'ulysses_2003001-2004001_HUXt.csv',
+    #                      'ulysses_2004001-2005001_HUXt.csv']
+    #     case 'voyager1':
+    #         filenames = ['voyager1_1978001-1979001_HUXt.csv', 'voyager1_1979001-1980001_HUXt.csv']
+    #     case 'voyager2':
+    #         filenames = ['voyager2_1978001-1979001_HUXt.csv', 'voyager2_1979001-1980001_HUXt.csv',
+    #                      'voyager2_1980001-1981001_HUXt.csv']
+    #     case 'pioneer10':
+    #         filenames = ['pioneer10_1973001-1974001_HUXt.csv', 'pioneer10_1974001-1975001_HUXt.csv']
+    #     case 'pioneer11':
+    #         filenames = ['pioneer11_1974001-1975001_HUXt.csv', 'pioneer11_1975001-1976001_HUXt.csv',
+    #                      'pioneer11_1976001-1977001_HUXt.csv', 'pioneer11_1977001-1978001_HUXt.csv',
+    #                      'pioneer11_1978001-1979001_HUXt.csv', 'pioneer11_1979001-1980001_HUXt.csv']
+    #     case _:
+    #         logging.warning('This version of the HUXt reader'
+    #                         ' does not support ' + target + ' observations.')
+    #         return(default_df)
     
     #  r [R_S], lon [radians], Umag [km/s], 
     column_headers = ['datetime', 'r', 'lon', 'u_mag', 'B_pol']
@@ -361,40 +377,37 @@ def ENLIL(target, starttime, stoptime, basedir='', resolution=None):
     model_path = 'models/enlil/'
     full_path = basedir + model_path + target + '/'
     
-    match target:
-        case 'earth':
-            filenames = ['ccmc_enlil_earth_20160509.txt',
-                         'ccmc_enlil_earth_20160606.txt']
-        case 'mars':
-            filenames = ['ccmc_enlil_mars_20160509.txt',
-                         'ccmc_enlil_mars_20160606.txt']
-        case 'jupiter':
-            filenames = ['ccmc_enlil_jupiter_20160509.txt', 
-                         'ccmc_enlil_jupiter_20160606.txt']
-        case 'stereoa':
-            filename = ['ccmc_enlil_stereoa_20160509.txt',
-                        'ccmc_enlil_stereoa_20160606.txt']
-        case 'stereob':
-            filename = ['ccmc_enlil_stereob_20160509.txt',
-                        'ccmc_enlil_stereob_20160606.txt']
-        case 'juno':
-            filenames = ['ccmc_enlil_juno_20160509.txt',
-                         'ccmc_enlil_juno_20160606.txt']
-        case 'ulysses':
-            filenames = ['ccmc_enlil_ulysses_19910105.txt', 'ccmc_enlil_ulysses_19910918.txt',
-                         'ccmc_enlil_ulysses_19911015.txt', 'ccmc_enlil_ulysses_19911111.txt',
-                         'ccmc_enlil_ulysses_19911208.txt', 'ccmc_enlil_ulysses_19920201.txt',
-                         'ccmc_enlil_ulysses_19920228.txt', 'ccmc_enlil_ulysses_19970618.txt',
-                         'ccmc_enlil_ulysses_19970715.txt', 'ccmc_enlil_ulysses_19970811.txt',
-                         'ccmc_enlil_ulysses_19970908.txt', 'ccmc_enlil_ulysses_19971005.txt',
-                         'ccmc_enlil_ulysses_19971101.txt', 'ccmc_enlil_ulysses_19971128.txt',
-                         'ccmc_enlil_ulysses_19971226.txt', 'ccmc_enlil_ulysses_19980122.txt',
-                         'ccmc_enlil_ulysses_19980218.txt', 'ccmc_enlil_ulysses_19980318.txt',
-                         'ccmc_enlil_ulysses_19980414.txt']
-        case _:
-            logging.warning('This version of the ENLIL reader'
-                            ' does not support ' + target + ' observations.')
-            return(default_df)
+    filenames = [g.split('/')[-1] for g in glob.glob(full_path + '*')]
+    if filenames == []:
+        logging.warning('This version of the ENLIL reader'
+                        ' does not support ' + target + ' observations.')
+        return(default_df)
+    # match target:
+    #     case 'earth':
+    #         filenames = [g.split('/')[-1] for g in glob.glob(full_path + '*')]
+
+    #     case 'mars':
+    #         filenames = ['ccmc_enlil_mars_20160509.txt',
+    #                      'ccmc_enlil_mars_20160606.txt']
+    #     case 'jupiter':
+    #         filenames = ['ccmc_enlil_jupiter_20160509.txt', 
+    #                      'ccmc_enlil_jupiter_20160606.txt']
+    #     case 'stereoa':
+    #         filename = ['ccmc_enlil_stereoa_20160509.txt',
+    #                     'ccmc_enlil_stereoa_20160606.txt']
+    #     case 'stereob':
+    #         filename = ['ccmc_enlil_stereob_20160509.txt',
+    #                     'ccmc_enlil_stereob_20160606.txt']
+    #     case 'juno':
+    #         filenames = ['ccmc_enlil_juno_20160509.txt',
+    #                      'ccmc_enlil_juno_20160606.txt']
+    #     case 'ulysses':
+    #         filenames = [g.split('/')[-1] for g in glob.glob(full_path + '*')]
+            
+    #     case _:
+    #         logging.warning('This version of the ENLIL reader'
+    #                         ' does not support ' + target + ' observations.')
+    #         return(default_df)
         
     #  NB switched labels from lon/lat to t/n-- should be the same?
     column_headers = ['time', 'R', 'Lat', 'Lon', 
