@@ -215,8 +215,8 @@ inputs['Ulysses_01'] = {'spacecraft_name':'Ulysses',
                         'span':(dt.datetime(1991,12,8), dt.datetime(1992,2,2))}
 inputs['Ulysses_02'] = {'spacecraft_name':'Ulysses',
                         'span':(dt.datetime(1997,8,14), dt.datetime(1998,4,16))}
-# inputs['Ulysses_03'] = {'spacecraft_name':'Ulysses',
-#                         'span':(dt.datetime(2003,10,24), dt.datetime(2004,6,22))}
+inputs['Ulysses_03'] = {'spacecraft_name':'Ulysses',
+                        'span':(dt.datetime(2003,10,24), dt.datetime(2004,6,22))}
 # inputs['Juno_01'] = {'spacecraft_name':'Juno',
 #                      'span':(dt.datetime(2016, 5, 16), dt.datetime(2016, 6, 26))}
 
@@ -279,7 +279,7 @@ def MMESH_run(data_dict, model_names):
         for i, (model_name, ax) in enumerate(zip(traj0.model_names, axs)):
             
             ax.hist(traj0.models[model_name]['empirical_time_delta'].to_numpy(), 
-                    range=(-120, 120), bins=40,
+                    range=(-192, 192), bins=192,
                     density=True, label=model_name, color=model_colors[model_name])
             ax.annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
                         (0,1), (1,-1), ha='left', va='center', 
@@ -291,6 +291,30 @@ def MMESH_run(data_dict, model_names):
         fig.supxlabel('Total Temporal Shifts [hours]')
         
         plt.savefig('figures/Paper/' + 'TemporalShifts_{}_Total.png'.format('_'.join(traj0.model_names)), 
+                    dpi=300)
+        plt.show()
+        #
+    def plot_TemporalShifts_All_Total():
+        fig, axs = plt.subplots(figsize=(3,4.5), nrows=len(m_traj.model_names))
+        plt.subplots_adjust(left=0.2, top=0.975 ,hspace=0.075)
+        for i, model_name in enumerate(sorted(m_traj.model_names)):
+            l = []
+            for traj_name, traj in m_traj.trajectories.items():
+                l.append(traj.models[model_name]['empirical_time_delta'])
+            
+            axs[i].hist(l, range=(-192, 192), bins=192,
+                    density=True, label=model_name,
+                    histtype='bar', stacked=True)
+            axs[i].annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
+                        (0,1), (1,-1), ha='left', va='center', 
+                        xycoords='axes fraction', textcoords='offset fontsize')
+    
+        #axs[i].set_yticks(ax.get_yticks(), (100.*np.array(ax.get_yticks())).astype('int64'))
+        
+        fig.supylabel('Percentage')
+        fig.supxlabel('Total Temporal Shifts [hours]')
+        
+        plt.savefig('figures/Paper/' + 'TemporalShifts_All_Total.png', 
                     dpi=300)
         plt.show()
     
@@ -505,6 +529,8 @@ def MMESH_run(data_dict, model_names):
     
     plt.show()
         
+    plot_TemporalShifts_All_Total()
+
     
     return m_traj
 
