@@ -32,10 +32,10 @@ default_df = pd.DataFrame(columns=['u_mag', 'n_tot', 'p_dyn', 'B_mag',
 def Tao(target, starttime, stoptime, basedir='', resolution=None):
     
     #  basedir is expected to be the folder /SolarWindEM
-    target = target.lower().replace(' ', '')
-    fullpath = Path(basedir) / 'models' / 'tao' / target
+    model_path = 'models/Tao/'
+    full_path = basedir + model_path + target.replace(' ', '').lower() + '/'
     
-    filenames = [g.split('/')[-1] for g in glob.glob(full_path + '*')]
+    filenames = [g.split('/')[-1] for g in glob.glob(full_path + '*.txt')]
     if filenames == []:
         logging.warning('This version of the ENLIL reader'
                         ' does not support ' + target + ' observations.')
@@ -111,7 +111,7 @@ def Tao(target, starttime, stoptime, basedir='', resolution=None):
                 df.drop(columns=['iyear', 'imonth', 'iday', 'stime'], inplace=True)
                 return(df)
             
-        file_data = pd.read_table(fullpath / filename, 
+        file_data = pd.read_table(Path(full_path) / filename, 
                              names=column_headers, 
                              comment='#', delim_whitespace=True)
         file_data = column_to_datetime(file_data) 
