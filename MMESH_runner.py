@@ -273,13 +273,13 @@ def MMESH_run(data_dict, model_names):
     def plot_BestShiftWarpedTimeDistribution():
         
         nmodels = len(traj0.model_names)
-        fig, axs = plt.subplots(nrows=nmodels, figsize=(3, 4.5), sharex=True, sharey=True)
+        fig, axs = plt.subplots(nrows=nmodels, figsize=(3,4.5), sharex=True, sharey=True)
         plt.subplots_adjust(left=0.2, top=0.975 ,hspace=0.075)
         
         for i, (model_name, ax) in enumerate(zip(traj0.model_names, axs)):
             
             ax.hist(traj0.models[model_name]['empirical_time_delta'].to_numpy(), 
-                    range=(-192, 192), bins=192,
+                    range=(-192, 192), bins=64,
                     density=True, label=model_name, color=model_colors[model_name])
             ax.annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
                         (0,1), (1,-1), ha='left', va='center', 
@@ -295,21 +295,19 @@ def MMESH_run(data_dict, model_names):
         plt.show()
         #
     def plot_TemporalShifts_All_Total():
-        fig, axs = plt.subplots(figsize=(3,4.5), nrows=len(m_traj.model_names))
+        fig, axs = plt.subplots(figsize=(3,4.5), nrows=len(m_traj.model_names), sharex=True, sharey=True)
         plt.subplots_adjust(left=0.2, top=0.975 ,hspace=0.075)
         for i, model_name in enumerate(sorted(m_traj.model_names)):
             l = []
             for traj_name, traj in m_traj.trajectories.items():
                 l.append(traj.models[model_name]['empirical_time_delta'])
             
-            axs[i].hist(l, range=(-192, 192), bins=192,
+            axs[i].hist(l, range=(-192, 192), bins=64,
                     density=True, label=model_name,
                     histtype='bar', stacked=True)
             axs[i].annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
                         (0,1), (1,-1), ha='left', va='center', 
                         xycoords='axes fraction', textcoords='offset fontsize')
-    
-        #axs[i].set_yticks(ax.get_yticks(), (100.*np.array(ax.get_yticks())).astype('int64'))
         
         fig.supylabel('Percentage')
         fig.supxlabel('Total Temporal Shifts [hours]')
@@ -317,6 +315,45 @@ def MMESH_run(data_dict, model_names):
         plt.savefig('figures/Paper/' + 'TemporalShifts_All_Total.png', 
                     dpi=300)
         plt.show()
+        
+    def plot_TimeDelta_Grid_AllTrajectories():
+        # =============================================================================
+        #   Plot the empirical time deltas, and the fits to each
+        # =============================================================================
+        fig, axs = plt.subplots(figsize=(9,6), nrows=len(m_traj.model_names), ncols=len(m_traj.trajectories), 
+                                sharex='col', sharey='row')
+        plt.subplots_adjust(bottom=0.075, left=0.075, top=0.975, right=0.975, 
+                            wspace=0.05, hspace=0.05)
+        for i, (traj_name, traj) in enumerate(m_traj.trajectories.items()):
+            for j, model_name in enumerate(traj.model_names):
+                
+                axs[j,i].plot(m_traj.nowcast_dict[model_name].index, 
+                              m_traj.nowcast_dict[model_name]['mean'], color='C0')
+                
+                axs[j,i].fill_between(m_traj.nowcast_dict[model_name].index, 
+                                      m_traj.nowcast_dict[model_name]['obs_ci_lower'], 
+                                      m_traj.nowcast_dict[model_name]['obs_ci_upper'], 
+                                      color='C0', alpha=0.5)
+                
+                axs[j,i].scatter(traj.models[model_name].loc[traj.data_index].index,
+                                 traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
+                                 color='black', marker='o', s=4)
+                
+                if i == 0:
+                    axs[j,i].set_ylabel(model_name)
+                
+                axs[j,i].set_xlim(traj.models[model_name].index[0], 
+                                  traj.models[model_name].index[-1])
+                
+        for i, ax in enumerate(axs.flatten()):
+            ax.annotate('({})'.format(string.ascii_lowercase[i]),
+                        (0,1), (1, -1), xycoords='axes fraction', textcoords='offset fontsize')
+        fig.supxlabel('Date')
+        fig.savefig('figures/Paper/' + 'TimeDelta_Grid_AllTrajectories.png', 
+                    dpi=300)
+        plt.plot()
+    
+    
     
     trajectories = []
     for key, val in data_dict.items():
@@ -398,7 +435,7 @@ def MMESH_run(data_dict, model_names):
         # =============================================================================
         #   Binarize the data and models
         #   Previously used: # {'Tao':4, 'HUXt':2, 'ENLIL':2, 'Juno':6, 'Ulysses':12}   #  hours
-        smoothing_widths = traj0.optimize_ForBinarization('u_mag', threshold=1.1)  
+        smoothing_widths = traj0.optimize_ForBinarization('u_mag', threshold=1.05)  
         traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3) #  !!!! sigma value can be changed
         
         traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
@@ -456,7 +493,6 @@ def MMESH_run(data_dict, model_names):
     #   !!!! N.B. This currently predicts at 'spacecraft', because that's easiest
     #   with everything I've set up. We want predictions at 'planet' in the end, though
     # =============================================================================
-    print(trajectories)
     m_traj = mmesh.MultiTrajectory(trajectories=trajectories)
     
     #   Set up the prediction interval
@@ -491,8 +527,10 @@ def MMESH_run(data_dict, model_names):
     
     formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     test = m_traj.linear_regression(formula)
-    #return test
+    
     m_traj.cast_Models()
+    
+    plot_TimeDelta_Grid_AllTrajectories()
     
     m_traj.cast_intervals['simulcast'].ensemble()
     
@@ -530,9 +568,17 @@ def MMESH_run(data_dict, model_names):
     plt.show()
         
     plot_TemporalShifts_All_Total()
-
     
     return m_traj
+
+
+
+
+
+
+
+
+
 
     # =============================================================================
     #    Compare output list of temporal shifts (and, maybe, running standard deviation or similar)
