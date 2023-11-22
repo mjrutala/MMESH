@@ -217,8 +217,8 @@ inputs['Ulysses_02'] = {'spacecraft_name':'Ulysses',
                         'span':(dt.datetime(1997,8,14), dt.datetime(1998,4,16))}
 inputs['Ulysses_03'] = {'spacecraft_name':'Ulysses',
                         'span':(dt.datetime(2003,10,24), dt.datetime(2004,6,22))}
-# inputs['Juno_01'] = {'spacecraft_name':'Juno',
-#                      'span':(dt.datetime(2016, 5, 16), dt.datetime(2016, 6, 26))}
+inputs['Juno_01'] = {'spacecraft_name':'Juno',
+                     'span':(dt.datetime(2016, 5, 16), dt.datetime(2016, 6, 26))}
 
 model_names = ['Tao', 'HUXt', 'ENLIL']
 
@@ -315,7 +315,80 @@ def MMESH_run(data_dict, model_names):
         plt.savefig('figures/Paper/' + 'TemporalShifts_All_Total.png', 
                     dpi=300)
         plt.show()
+    #
+    def plot_Correlations():
+        fig, axs = plt.subplots(figsize=(6,4.5), nrows=4, ncols=len(m_traj.model_names), sharex='col', sharey='row')
+        plt.subplots_adjust(bottom=0.1, left=0.1, top=0.99, right=0.99, 
+                            wspace=0.4, hspace=0.025)
+        for i, model_name in enumerate(m_traj.model_names):
+            invariant_param = 'empirical_time_delta'
+            variant_params = ['solar_radio_flux', 'target_sun_earth_lon', 'target_sun_earth_lat', 'u_mag']
+            model_stats = {key: [] for key in variant_params + [invariant_param]}
+            for k, (traj_name, traj) in enumerate(m_traj.trajectories.items()):
+                
+                #   Record individual trajectory info to calculate the overall stats
+                model_stats[invariant_param].extend(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index])
+                model_stats['solar_radio_flux'].extend(traj._primary_df.loc[traj.data_index, ('context', 'solar_radio_flux')])
+                model_stats['target_sun_earth_lon'].extend(traj._primary_df.loc[traj.data_index, ('context', 'target_sun_earth_lon')])
+                model_stats['target_sun_earth_lat'].extend(traj._primary_df.loc[traj.data_index, ('context', 'target_sun_earth_lat')])
+                model_stats['u_mag'].extend(traj.models[model_name]['u_mag'].loc[traj.data_index])
+                
+                axs[0,i].scatter(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
+                                 traj._primary_df.loc[traj.data_index, ('context', 'solar_radio_flux')],
+                                 marker='o', s=2, label=traj_name)
+                (r,sig), rmsd = TD.find_TaylorStatistics(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
+                                                         traj._primary_df.loc[traj.data_index, ('context', 'solar_radio_flux')])
+                axs[0,i].annotate('r = {}'.format(str(r)[0:6]), (1,1), (0.5,-k-1), 
+                                  xycoords='axes fraction', textcoords='offset fontsize',
+                                  ha='left', va='top', color='C'+str(k))
+                
+                axs[1,i].scatter(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
+                                 traj._primary_df.loc[traj.data_index, ('context', 'target_sun_earth_lon')],
+                                 marker='o', s=2, label=traj_name)
+                (r,sig), rmsd = TD.find_TaylorStatistics(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
+                                                         traj._primary_df.loc[traj.data_index, ('context', 'target_sun_earth_lon')])
+                axs[1,i].annotate('r = {}'.format(str(r)[0:6]), (1,1), (0.5,-k-1), 
+                                  xycoords='axes fraction', textcoords='offset fontsize',
+                                  ha='left', va='top', color='C'+str(k))
+                
+                axs[2,i].scatter(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
+                                 traj._primary_df.loc[traj.data_index, ('context', 'target_sun_earth_lat')],
+                                 marker='o', s=2, label=traj_name)
+                (r,sig), rmsd = TD.find_TaylorStatistics(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
+                                                         traj._primary_df.loc[traj.data_index, ('context', 'target_sun_earth_lat')])
+                axs[2,i].annotate('r = {}'.format(str(r)[0:6]), (1,1), (0.5,-k-1), 
+                                  xycoords='axes fraction', textcoords='offset fontsize',
+                                  ha='left', va='top', color='C'+str(k))
+                
+                axs[3,i].scatter(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
+                                 traj.models[model_name]['u_mag'].loc[traj.data_index],
+                                 marker='o', s=2, label=traj_name)      
+                (r,sig), rmsd = TD.find_TaylorStatistics(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
+                                                         traj.models[model_name]['u_mag'].loc[traj.data_index])
+                axs[3,i].annotate('r = {}'.format(str(r)[0:6]), (1,1), (0.5,-k-1), 
+                                  xycoords='axes fraction', textcoords='offset fontsize',
+                                  ha='left', va='top', color='C'+str(k))
+            
+            for ax_no, variant_param in enumerate(variant_params):
+                (r,sig), rmsd = TD.find_TaylorStatistics(model_stats[invariant_param], 
+                                                         model_stats[variant_param])
+                axs[ax_no,i].annotate('r = {:6.3f}'.format(r), (1,1), (0.5, 0), 
+                                    xycoords='axes fraction', textcoords='offset fontsize',
+                                    ha='left', va='top', color='black')
         
+        fig.supxlabel('Total Temporal Shifts (Constant Offsets + Dynamic Warping) [hours]')
+        axs[0,0].set_ylabel('Solar Radio Flux [SFU]')
+        axs[1,0].set_ylabel(r'TSE Heliolongitude [$\^{o}$]')
+        axs[2,0].set_ylabel(r'TSE Heliolatitude [$\^{o}$]')
+        axs[3,0].set_ylabel(r'Modeled SW Flow Speed [km/s]')
+        
+                
+        handles, labels = axs[0,0].get_legend_handles_labels()
+        fig.legend(handles, labels, ncols=4, markerscale=2,
+                   bbox_to_anchor=[0.15, 0.92, 0.7, .08], loc='lower left',
+                   mode="expand", borderaxespad=0.)
+        plt.show()
+    
     def plot_TimeDelta_Grid_AllTrajectories():
         # =============================================================================
         #   Plot the empirical time deltas, and the fits to each
@@ -357,12 +430,6 @@ def MMESH_run(data_dict, model_names):
     
     trajectories = []
     for key, val in data_dict.items():
-        #   !!!! This whole pipline is currently (2023 11 03) sensitive to these
-        #   input dates, but shouldn't be-- Optimization should not change based on input dates
-        #   as long as the input dates span the whole of the spacecraft data being used
-        #   since we should always be dropping NaN rows...
-        # starttime = dt.datetime(2016, 5, 16) # dt.datetime(1997,8,14) # dt.datetime(1991,12,8) # 
-        # stoptime = dt.datetime(2016, 6, 26) # dt.datetime(1998,1,1) # dt.datetime(1992,2,2) # 
         starttime = val['span'][0]
         stoptime = val['span'][1]
         
@@ -494,6 +561,8 @@ def MMESH_run(data_dict, model_names):
     #   with everything I've set up. We want predictions at 'planet' in the end, though
     # =============================================================================
     m_traj = mmesh.MultiTrajectory(trajectories=trajectories)
+    
+    plot_Correlations() 
     
     #   Set up the prediction interval
     #original_spantime = stoptime - starttime
