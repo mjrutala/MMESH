@@ -91,11 +91,11 @@ class MultiTrajectory:
                  'solar_radio_flux':[], 
                  'target_sun_earth_lon':[], 
                  'target_sun_earth_lat':[], 
-                 'u_mag_model':[]}
+                 'u_mag':[]}
             
             for trajectory_name, trajectory in self.trajectories.items():
                 d['empirical_time_delta'].extend(trajectory.models[model_name]['empirical_time_delta'].loc[trajectory.data_index])
-                d['u_mag_model'].extend(trajectory.models[model_name]['u_mag'].loc[trajectory.data_index])
+                d['u_mag'].extend(trajectory.models[model_name]['u_mag'].loc[trajectory.data_index])
                 
                 #   Need to write a better getter/setter for 'context'
                 d['solar_radio_flux'].extend(trajectory._primary_df[('context', 'solar_radio_flux')].loc[trajectory.data_index])
@@ -112,8 +112,9 @@ class MultiTrajectory:
             
             #   !!! Might need to allow different formulae for differen models...
             #   i.e. formula = formulae[model_name]
-            needed_columns = re.findall(r"[\w']+", formula)
-            training_df = training_df.dropna(subset=needed_columns, axis='index')
+            self.mlr_formula = formula
+            self.mlr_formula_terms = re.findall(r"[\w']+", formula)
+            training_df = training_df.dropna(subset=self.mlr_formula_terms, axis='index')
             
             #   Need to predict for spacecraft for comparison,
             #   then for Jupiter for cross-spacecraft comparison
@@ -185,21 +186,29 @@ class MultiTrajectory:
         for model_name in self.model_names:
             
             for cast_interval_name, cast_interval in self.cast_intervals.items():
-                cast_context_df = cast_interval._primary_df['context']
+                print(model_name)
+                #   Need all mlr_formula_terms to cast the model, so drop terms where they aren't present
+                cast_context_df = pd.concat([cast_interval.models[model_name], 
+                                            cast_interval._primary_df['context']],
+                                            axis='columns')
+                rhs_terms = list(set(self.mlr_formula_terms) - set(['empirical_time_delta']))
+                print(rhs_terms)
+                cast_context_df = cast_context_df.dropna(subset=rhs_terms, axis='index', how='any')
+                print(len(cast_context_df))
                 cast = self.predictions_dict[model_name].get_prediction(cast_context_df)
                 alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
                                     #  alpha = 0.05 gives 2sigma or 95%
                                     #  alpha = 0.32 gives 1sigma or 68%
                 result = cast.summary_frame(alpha_level)
-                
+                print(len(result))
                 print(self.predictions_dict[model_name].summary())
                 
                 #   !!!! N.B. Where data is present, the interval is smaller--
                 sig = (result['obs_ci_upper'] - result['obs_ci_lower'])/2.
                 
                 #   s_mu = shift_mu = mean shift
-                s_mu = result['mean'].set_axis(cast_interval.models[model_name].index)
-                s_sig = sig.set_axis(cast_interval.models[model_name].index)
+                s_mu = result['mean'].set_axis(cast_context_df.index)
+                s_sig = sig.set_axis(cast_context_df.index)
                 
                 self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta')] = s_mu
                 self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta_sigma')] = s_sig
