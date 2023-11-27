@@ -318,9 +318,12 @@ def MMESH_run(data_dict, model_names):
     #
     def plot_Correlations():
         fig, axs = plt.subplots(figsize=(6,4.5), nrows=4, ncols=len(m_traj.model_names), sharex='col', sharey='row')
-        plt.subplots_adjust(bottom=0.1, left=0.1, top=0.99, right=0.99, 
-                            wspace=0.4, hspace=0.025)
-        for i, model_name in enumerate(m_traj.model_names):
+        plt.subplots_adjust(bottom=0.1, left=0.1, top=0.92, right=0.90, 
+                            wspace=0.45, hspace=0.025)
+        for i, model_name in enumerate(sorted(m_traj.model_names)):
+            axs[0,i].set_xlabel(model_name)
+            axs[0,i].xaxis.set_label_position('top')
+            
             invariant_param = 'empirical_time_delta'
             variant_params = ['solar_radio_flux', 'target_sun_earth_lon', 'target_sun_earth_lat', 'u_mag']
             model_stats = {key: [] for key in variant_params + [invariant_param]}
@@ -338,7 +341,7 @@ def MMESH_run(data_dict, model_names):
                                  marker='o', s=2, label=traj_name)
                 (r,sig), rmsd = TD.find_TaylorStatistics(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
                                                          traj._primary_df.loc[traj.data_index, ('context', 'solar_radio_flux')])
-                axs[0,i].annotate('r = {}'.format(str(r)[0:6]), (1,1), (0.5,-k-1), 
+                axs[0,i].annotate('r={:6.2f}'.format(r), (1,1), (0.5,-k-1), 
                                   xycoords='axes fraction', textcoords='offset fontsize',
                                   ha='left', va='top', color='C'+str(k))
                 
@@ -347,7 +350,7 @@ def MMESH_run(data_dict, model_names):
                                  marker='o', s=2, label=traj_name)
                 (r,sig), rmsd = TD.find_TaylorStatistics(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
                                                          traj._primary_df.loc[traj.data_index, ('context', 'target_sun_earth_lon')])
-                axs[1,i].annotate('r = {}'.format(str(r)[0:6]), (1,1), (0.5,-k-1), 
+                axs[1,i].annotate('r={:6.2f}'.format(r), (1,1), (0.5,-k-1), 
                                   xycoords='axes fraction', textcoords='offset fontsize',
                                   ha='left', va='top', color='C'+str(k))
                 
@@ -356,7 +359,7 @@ def MMESH_run(data_dict, model_names):
                                  marker='o', s=2, label=traj_name)
                 (r,sig), rmsd = TD.find_TaylorStatistics(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
                                                          traj._primary_df.loc[traj.data_index, ('context', 'target_sun_earth_lat')])
-                axs[2,i].annotate('r = {}'.format(str(r)[0:6]), (1,1), (0.5,-k-1), 
+                axs[2,i].annotate('r={:6.2f}'.format(r), (1,1), (0.5,-k-1), 
                                   xycoords='axes fraction', textcoords='offset fontsize',
                                   ha='left', va='top', color='C'+str(k))
                 
@@ -365,28 +368,30 @@ def MMESH_run(data_dict, model_names):
                                  marker='o', s=2, label=traj_name)      
                 (r,sig), rmsd = TD.find_TaylorStatistics(traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
                                                          traj.models[model_name]['u_mag'].loc[traj.data_index])
-                axs[3,i].annotate('r = {}'.format(str(r)[0:6]), (1,1), (0.5,-k-1), 
+                axs[3,i].annotate('r={:6.2f}'.format(r), (1,1), (0.5,-k-1), 
                                   xycoords='axes fraction', textcoords='offset fontsize',
                                   ha='left', va='top', color='C'+str(k))
             
             for ax_no, variant_param in enumerate(variant_params):
                 (r,sig), rmsd = TD.find_TaylorStatistics(model_stats[invariant_param], 
                                                          model_stats[variant_param])
-                axs[ax_no,i].annotate('r = {:6.3f}'.format(r), (1,1), (0.5, 0), 
+                axs[ax_no,i].annotate('r={:6.2f}'.format(r), (1,1), (0.5, 0), 
                                     xycoords='axes fraction', textcoords='offset fontsize',
                                     ha='left', va='top', color='black')
         
         fig.supxlabel('Total Temporal Shifts (Constant Offsets + Dynamic Warping) [hours]')
-        axs[0,0].set_ylabel('Solar Radio Flux [SFU]')
-        axs[1,0].set_ylabel(r'TSE Heliolongitude [$\^{o}$]')
-        axs[2,0].set_ylabel(r'TSE Heliolatitude [$\^{o}$]')
-        axs[3,0].set_ylabel(r'Modeled SW Flow Speed [km/s]')
+        axs[0,0].set_ylabel('Solar Radio Flux' '\n' '[SFU]')
+        axs[1,0].set_ylabel(r'TSE Lon.' '\n' '[$^{o}$]')
+        axs[2,0].set_ylabel(r'TSE Lat.' '\n' '[$^{o}$]')
+        axs[3,0].set_ylabel(r'Modeled u$_{mag}$' '\n' '[km/s]')
         
                 
         handles, labels = axs[0,0].get_legend_handles_labels()
         fig.legend(handles, labels, ncols=4, markerscale=2,
-                   bbox_to_anchor=[0.15, 0.92, 0.7, .08], loc='lower left',
+                   bbox_to_anchor=[0.1, 0.96, 0.86, .04], loc='lower left',
                    mode="expand", borderaxespad=0.)
+        plt.savefig('figures/Paper/' + 'Correlations_AllModels_AllEpochs.png', 
+                    dpi=300)
         plt.show()
     
     def plot_TimeDelta_Grid_AllTrajectories():
@@ -594,7 +599,8 @@ def MMESH_run(data_dict, model_names):
     #   Add prediction Trajectory as simulcast
     m_traj.cast_intervals['simulcast'] = traj1
     
-    formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
+    #formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
+    formula = "empirical_time_delta ~ target_sun_earth_lat + u_mag"
     test = m_traj.linear_regression(formula)
     
     m_traj.cast_Models()
@@ -604,11 +610,15 @@ def MMESH_run(data_dict, model_names):
     m_traj.cast_intervals['simulcast'].ensemble()
     
     #   Example plot of shifted models with errors
-    fig, axs = plt.subplots(nrows=len(m_traj.cast_intervals['simulcast'].model_names), sharex=True)
+    #   And a TD
     
     #  Load spacecraft data
     spacecraft = spacecraftdata.SpacecraftData('Juno')
     spacecraft.read_processeddata(starttime_prediction, stoptime_prediction, resolution='60Min')
+    
+    
+    fig, axs = plt.subplots(nrows=len(m_traj.cast_intervals['simulcast'].model_names), sharex=True)
+    fig2, ax2 = TD.init_TaylorDiagram(np.std(spacecraft.data['u_mag']))
     
     for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
         model = m_traj.cast_intervals['simulcast'].models[model_name]
@@ -631,8 +641,17 @@ def MMESH_run(data_dict, model_names):
         axs[i].annotate(model_name, (0,1), (1,-1), xycoords='axes fraction', textcoords='offset fontsize')
     
         (r, std), rmsd = TD.find_TaylorStatistics(model['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
-        
+
         axs[i].annotate(str(r), (0,1), (1, -2), xycoords='axes fraction', textcoords='offset fontsize')
+        ax2.scatter(np.arccos(r), std, s=36, c=model_colors[model_name], 
+                    marker=model_symbols[model_name], label=model_name)
+        
+    fig.savefig('figures/Paper/' + 'Ensemble_TimeSeries_Juno.png', 
+                dpi=300)
+    
+    ax2.legend(ncols=4, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
+    fig2.savefig('figures/Paper/' + 'Ensemble_TD_JunoComparison.png', 
+                dpi=300)
     
     plt.show()
         
