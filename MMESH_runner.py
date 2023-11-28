@@ -299,21 +299,31 @@ def MMESH_run(data_dict, model_names):
         #
     def plot_TemporalShifts_All_Total():
         fig, axs = plt.subplots(figsize=(3,4.5), nrows=len(m_traj.model_names), sharex=True, sharey=True)
-        plt.subplots_adjust(left=0.2, top=0.975 ,hspace=0.075)
+        plt.subplots_adjust(left=0.2, top=0.975, right=0.7, hspace=0.075)
         for i, model_name in enumerate(sorted(m_traj.model_names)):
             l = []
+            c = []
+            n = []
             for traj_name, traj in m_traj.trajectories.items():
                 l.append(traj.models[model_name]['empirical_time_delta'])
+                c.append(spacecraft_colors[traj.spacecraft_name])
+                n.append(traj.spacecraft_name)
             
             axs[i].hist(l, range=(-192, 192), bins=64,
-                    density=True, label=model_name,
-                    histtype='bar', stacked=True)
+                    density=True,
+                    histtype='bar', stacked=True, color=c, label=n)
             axs[i].annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
                         (0,1), (1,-1), ha='left', va='center', 
                         xycoords='axes fraction', textcoords='offset fontsize')
         
+        
         fig.supylabel('Percentage')
         fig.supxlabel('Total Temporal Shifts [hours]')
+        
+        handles, labels = axs[0].get_legend_handles_labels()
+        fig.legend(handles, labels, ncols=1,
+                   bbox_to_anchor=[0.7, 0.975, 0.2, .5], loc='upper left',
+                   mode="expand", borderaxespad=0.)
         
         plt.savefig('figures/Paper/' + 'TemporalShifts_All_Total.png', 
                     dpi=300)
@@ -398,12 +408,23 @@ def MMESH_run(data_dict, model_names):
         plt.show()
     
     def plot_TimeDelta_Grid_AllTrajectories():
-        # =============================================================================
-        #   Plot the empirical time deltas, and the fits to each
-        # =============================================================================
+        """
+        Plot the empirical time deltas, and the fits to each
+
+        Returns
+        -------
+        None.
+
+        """
+        import matplotlib.dates as mdates
+        #   Loop over trajectories, getting length of data for plotting
+        length_list = []
+        for traj_name, traj in m_traj.trajectories.items():
+            length_list.append(len(traj.data))
+        
         fig, axs = plt.subplots(figsize=(9,6), nrows=len(m_traj.model_names), ncols=len(m_traj.trajectories), 
-                                sharex='col', sharey='row')
-        plt.subplots_adjust(bottom=0.075, left=0.075, top=0.975, right=0.975, 
+                                sharex='col', sharey='row', width_ratios=length_list)
+        plt.subplots_adjust(bottom=0.1, left=0.075, top=0.975, right=0.975, 
                             wspace=0.05, hspace=0.05)
         for i, (traj_name, traj) in enumerate(m_traj.trajectories.items()):
             for j, model_name in enumerate(traj.model_names):
@@ -423,8 +444,19 @@ def MMESH_run(data_dict, model_names):
                 if i == 0:
                     axs[j,i].set_ylabel(model_name)
                 
-                axs[j,i].set_xlim(traj.models[model_name].index[0], 
-                                  traj.models[model_name].index[-1])
+                # axs[j,i].set_xlim(traj.models[model_name].index[0], 
+                #                   traj.models[model_name].index[-1])
+                
+            tick_interval = 50
+            subtick_interval = 10
+            
+            axs[0,i].set_xlim(traj.models[model_name].index[0], 
+                              traj.models[model_name].index[-1])
+            axs[0,i].xaxis.set_major_locator(mdates.DayLocator(interval=tick_interval))
+            axs[0,i].xaxis.set_minor_locator(mdates.DayLocator(interval=subtick_interval))
+            
+            #axs[0,i].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
+            axs[0,i].xaxis.set_major_formatter(traj.timeseries_formatter(axs[0,i].get_xticks()))
                 
         for i, ax in enumerate(axs.flatten()):
             ax.annotate('({})'.format(string.ascii_lowercase[i]),
@@ -603,7 +635,8 @@ def MMESH_run(data_dict, model_names):
     m_traj.cast_intervals['simulcast'] = traj1
     
     #formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
-    formula = "empirical_time_delta ~ target_sun_earth_lat + u_mag"
+    #formula = "empirical_time_delta ~ target_sun_earth_lat + u_mag"
+    formula = "empirical_time_delta ~ target_sun_earth_lon + target_sun_earth_lat + u_mag"
     test = m_traj.linear_regression(formula)
     
     m_traj.cast_Models()
