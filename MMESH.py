@@ -186,22 +186,22 @@ class MultiTrajectory:
         for model_name in self.model_names:
             
             for cast_interval_name, cast_interval in self.cast_intervals.items():
-                print(model_name)
+                print("For model: {} ========================================".format(model_name))
+                print(self.predictions_dict[model_name].summary())
+                
                 #   Need all mlr_formula_terms to cast the model, so drop terms where they aren't present
                 cast_context_df = pd.concat([cast_interval.models[model_name], 
                                             cast_interval._primary_df['context']],
                                             axis='columns')
                 rhs_terms = list(set(self.mlr_formula_terms) - set(['empirical_time_delta']))
-                print(rhs_terms)
+                
                 cast_context_df = cast_context_df.dropna(subset=rhs_terms, axis='index', how='any')
-                print(len(cast_context_df))
+                
                 cast = self.predictions_dict[model_name].get_prediction(cast_context_df)
                 alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
                                     #  alpha = 0.05 gives 2sigma or 95%
                                     #  alpha = 0.32 gives 1sigma or 68%
                 result = cast.summary_frame(alpha_level)
-                print(len(result))
-                print(self.predictions_dict[model_name].summary())
                 
                 #   !!!! N.B. Where data is present, the interval is smaller--
                 sig = (result['obs_ci_upper'] - result['obs_ci_lower'])/2.
@@ -1364,6 +1364,36 @@ class Trajectory:
         ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
         ax.set_axisbelow(True)
         
+    def timeseries_formatter(self, ticks):
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        ticks = [mdates.num2date(t) for t in ticks]
+    
+        def date_formatter(tick, pos):
+            tick = mdates.num2date(tick)
+            tick_str = tick.strftime('%j')
+           
+            if (pos == 0):
+                tick_str += '\n' + tick.strftime('%d %b')
+                tick_str += '\n' + tick.strftime('%Y')
+            
+            try:
+                if (tick.month > ticks[pos-1].month):
+                    tick_str += '\n' + tick.strftime('%d %b')
+                
+            except:
+                print('FAILED')
+                print(tick.month)
+                print(pos-1)
+                print(ticks[pos-1])
+               
+            if (tick.year > ticks[pos-1].year):
+                tick_str += '\n' + tick.strftime('%d %b')
+                tick_str += '\n' + tick.strftime('%Y')
+           
+            return tick_str
+        return date_formatter
+
 
 def read_SolarRadioFlux(startdate, stopdate, sample_rate='60Min'):
     
