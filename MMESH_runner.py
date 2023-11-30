@@ -208,13 +208,13 @@ inputs = {}
 # inputs['Voyager1_01'] = {'spacecraft_name':'Voyager 1',
 #                          'span':(dt.datetime(1979, 1, 3), dt.datetime(1979, 5, 5))}
 inputs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
-                         'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
+                          'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
 inputs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
-                         'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
+                          'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
 inputs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
-                         'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
-# inputs['Juno_01']     = {'spacecraft_name':'Juno',
-#                          'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
+                          'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
+inputs['Juno_01']     = {'spacecraft_name':'Juno',
+                          'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
 
 model_names = ['Tao', 'HUXt', 'ENLIL']
 
@@ -275,7 +275,7 @@ def MMESH_run(data_dict, model_names):
         
         for i, (model_name, ax) in enumerate(zip(traj0.model_names, axs)):
             
-            ax.hist(traj0.models[model_name]['empirical_time_delta'].to_numpy(), 
+            ax.hist(traj0.models[model_name].loc[traj0.data_index, 'empirical_time_delta'].to_numpy(), 
                     range=(-192, 192), bins=64,
                     density=True, label=model_name, color=model_colors[model_name])
             ax.annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
@@ -299,7 +299,7 @@ def MMESH_run(data_dict, model_names):
             c = []
             n = []
             for traj_name, traj in m_traj.trajectories.items():
-                l.append(traj.models[model_name]['empirical_time_delta'])
+                l.append(traj.models[model_name].loc[traj.data_index, 'empirical_time_delta'])  #  Only when overlapping w/ data
                 c.append(spacecraft_colors[traj.spacecraft_name])
                 n.append(traj.trajectory_name)
             
@@ -417,7 +417,7 @@ def MMESH_run(data_dict, model_names):
             length_list.append(len(traj.data))
         
         fig, axs = plt.subplots(figsize=(9,6), nrows=len(m_traj.model_names), ncols=len(m_traj.trajectories), 
-                                sharex='col', sharey='row', width_ratios=length_list)
+                                sharex='col', sharey='row', width_ratios=length_list, squeeze=False)
         plt.subplots_adjust(bottom=0.1, left=0.075, top=0.975, right=0.975, 
                             wspace=0.05, hspace=0.05)
         for i, (traj_name, traj) in enumerate(m_traj.trajectories.items()):
@@ -544,9 +544,7 @@ def MMESH_run(data_dict, model_names):
         
         #   Calculate a whole host of statistics
         dtw_stats = traj0.find_WarpStatistics('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
-        
-        #return dtw_stats
-        
+
         #   Write an equation describing the optimization equation
         #   This can be played with
         def optimization_eqn(df):
@@ -560,6 +558,11 @@ def MMESH_run(data_dict, model_names):
         
         plot_BothShiftMethodsTD()
         plot_BestShiftWarpedTimeDistribution()
+        
+        #   See the effects of the Constant + DTW Shifts
+        # traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
+        # traj0.shift_Models(time_delta_column='empirical_time_delta')
+        # traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
             
         # =============================================================================
         #             
