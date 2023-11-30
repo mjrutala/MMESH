@@ -693,7 +693,7 @@ class Trajectory:
         #   deviation from nominal time is +/- 4 days
         #   Since we shift the full model, it would be nice if this could be 
         #   asymmetric, such that the combined shift cannot exceed |4| days
-        total_slope_limit = 4*24.  #  !!!!! Adjust, add as argument
+        total_slope_limit = 4*24.  #  !!!!! Adjust, add as argument !!!!!!!!!!!!!!! SHOULD BE DIVIDED BY 2???????????????
         
         for model_name in self.model_names:
             
@@ -705,7 +705,7 @@ class Trajectory:
             
             for shift in shifts:
                  
-                window_args = {'window_size': total_slope_limit}
+                window_args = {'window_size': total_slope_limit, 'constant_offset': shift}
                 
                 # =============================================================================
                 #   Reindex the reference by the shifted amount, 
@@ -714,15 +714,22 @@ class Trajectory:
                 
                 #   !!!! WHY DOES THIS WORK WITH A MINUS?
                 shift_model_df = self.models[model_name].copy()
-                shift_model_df.index = shift_model_df.index - dt.timedelta(hours=float(shift))
+                shift_model_df.index = shift_model_df.index + dt.timedelta(hours=float(shift))
                 shift_model_df = shift_model_df.reindex(self.data.index, method='nearest')        
                  
                 reference = shift_model_df[basis_tag].to_numpy('float64')
                 query = self.data[basis_tag].to_numpy('float64') 
-                 
+                
+                #   Custom window
+                def custom_window(iw, jw, query_size, reference_size, window_size, constant_offset):
+                    diagj = (iw * reference_size / query_size)
+                    return abs(jw - diagj - constant_offset) <= window_size
+                
                 alignment = dtw.dtw(query, reference, keep_internals=True, 
                                      step_pattern='symmetric2', open_end=False,
-                                     window_type='slantedband', window_args=window_args)
+                                     window_type=custom_window, window_args=window_args)
+                #alignment.plot(type="threeway")
+                #alignment.plot(type='density')
                 
                 def find_BinarizedTiePoints(alignment, open_end=False, open_begin=False):
                     tie_points = []
@@ -760,19 +767,19 @@ class Trajectory:
                 #   This should work to interpolate any model quantity to the 
                 #   warp which best aligns with data
                 r_time_warped = np.interp(reference_to_query_indx, np.arange(0,len(reference)), r_time)
-                r_time_deltas = r_time_warped - r_time
+                r_time_deltas = r_time - r_time_warped  #   !!!! changed from r_time_warped - r_time to current form MJR 2023/11/30
 
                 #   Warp the reference (i.e., shifted model at basis tag)
                 #   This DOES work to interpolate any model quantity! Finally!
                 #   I guess the confusing thing is that the resulting time 
                 #   series uses unwarped abcissa and warped ordinate
                 def shift_function(arr):
-                    return np.interp(r_time_deltas+r_time, r_time, arr)
+                    return np.interp(r_time - r_time_deltas, r_time, arr)
                 
-                r_basis_warped = np.interp(r_time_deltas+r_time, r_time, reference)
-                r_metric_warped = np.interp(r_time_deltas+r_time, r_time, shift_model_df[metric_tag].to_numpy('float64'))
+                r_basis_warped = shift_function(reference)
+                r_metric_warped = shift_function(shift_model_df[metric_tag].to_numpy('float64'))
                 
-                #   If the basis metric is binarized, the warping may intorduce
+                #   If the basis metric is binarized, the warping may introduce
                 #   non-binary ordinates due to interpolation. Check for these
                 #   and replace them with binary values.
                 #   !!!! May not work with feature widths/implicit errors
@@ -904,18 +911,19 @@ class Trajectory:
                 print("Using real time_delta_sigmas")
                 time_delta_sigmas = self.models[model_name][time_delta_sigma_column].to_numpy('float64')
             
-            #   
+            #   Now we're shifting based on the ordinate, not the abcissa,
+            #   so we have time - time_deltas, not +
             def shift_function(arr):
                 #   Use the ORIGINAL time with this, not time + delta
                 if (time_delta_sigmas == 0.).all():
-                    arr_shifted = np.interp(time_deltas + time, time, arr)
+                    arr_shifted = np.interp(time - time_deltas, time, arr)
                     arr_shifted_sigma = arr_shifted * 0.
                 else:
                     arr_perturb_list = []
                     r = np.random.default_rng()
                     for i in range(n_mc):
                         time_deltas_perturb = r.normal(time_deltas, time_delta_sigmas)
-                        arr_perturb_list.append(np.interp(time_deltas_perturb + time, time, arr))
+                        arr_perturb_list.append(np.interp(time - time_deltas_perturb, time, arr))
 
                     arr_shifted = np.mean(arr_perturb_list, axis=0)
                     arr_shifted_sigma = np.std(arr_perturb_list, axis=0)
@@ -1228,12 +1236,12 @@ class Trajectory:
         if fig == None:
             fig = plt.figure(figsize=[6,4.5])
             
-        gs = fig.add_gridspec(nrows=3, ncols=3, width_ratios=[1,1,1],
+        gs = fig.add_gridspec(nrows=len(self.model_names), ncols=3, width_ratios=[1,1,1],
                               left=0.1, bottom=0.1, right=0.95, top=0.95,
                               wspace=0.0, hspace=0.1)
         
-        axs0 = [fig.add_subplot(gs[y,0]) for y in range(3)]
-        axs1 = [fig.add_subplot(gs[y,2]) for y in range(3)]
+        axs0 = [fig.add_subplot(gs[y,0]) for y in range(len(self.model_names))]
+        axs1 = [fig.add_subplot(gs[y,2]) for y in range(len(self.model_names))]
         
         for i, (model_name, ax0, ax1) in enumerate(zip(self.model_names, axs0, axs1)):
             
