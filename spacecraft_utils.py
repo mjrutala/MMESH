@@ -79,56 +79,6 @@ lat_range = [-6.1, 6.1]
 #                   ' - ' + str(np.max(rlonlat[2,:])*180/np.pi) + 'deg.')
 #             print('------------------------------------------')      
 
-# def simpleHUXtRun(spacecraft_name, year):
-#     import time as benchmark_time
-    
-#     import sys
-#     sys.path.append('/Users/mrutala/projects/HUXt-DIAS/code/')
-#     import huxt as H
-#     import huxt_analysis as HA
-#     import huxt_inputs as Hin
-    
-#     runstart = dt.datetime(year, 1, 1)
-#     runend = dt.datetime(year+1, 1, 1)
-#     simtime = (runend-runstart).days * u.day
-#     r_min = 215 *u.solRad
-
-#     benchmark_starttime = benchmark_time.time()
-
-#     #download and process the OMNI data
-#     time, vcarr, bcarr = Hin.generate_vCarr_from_OMNI(runstart, runend)
-
-#     #!!!! Get spacecraft longitudes during this time span
-#     #  Or split up the time span dynamically so each HUXt run only needs to be ~2-4ish degrees lon.
-#     #  Then look into how sampling in 3D works (i.e., with latitude) -- hpopefully theres another easy sampler like sc_series...
-#     #  Then move this to read_model? Maybe with a renaming as well (Model class? models.py? ...)
-
-#     #set up the model, with (optional) time-dependent bpol boundary conditions
-#     model = Hin.set_time_dependent_boundary(vcarr, time, runstart, simtime, 
-#                                             r_min=r_min, r_max=1290*u.solRad, dt_scale=2.0, latitude=0*u.deg,
-#                                             bgrid_Carr = bcarr, lon_start=68*u.deg, lon_stop=72*u.deg, frame='sidereal')
-
-
-#     model.solve([])
-    
-#     benchmark_totaltime = benchmark_time.time() - benchmark_starttime
-#     print('Time elapsed in solving the model: {}'.format(benchmark_totaltime))
-    
-#     HA.plot(model, (0/4.)*simtime)
-#     HA.plot(model, (1/4.)*simtime)
-#     HA.plot(model, (2/4.)*simtime)
-#     HA.plot(model, (3/4.)*simtime)
-#     HA.plot(model, (4/4.)*simtime)
-
-#     sc_series = HA.get_observer_timeseries(model, observer=spacecraft_name)
-    
-#     filename = spacecraft_name + '_' + str(year) + '_' + 'HUXt.csv'
-#     print(filename)
-#     sc_series.to_csv(filename)
-    
-#     return(sc_series)
-
-
 def get_SpacecraftLifetimes():
     import spacecraftdata as SpacecraftData
     
