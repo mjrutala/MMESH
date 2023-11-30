@@ -633,7 +633,7 @@ def MMESH_run(data_dict, model_names):
     
     #formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     #formula = "empirical_time_delta ~ target_sun_earth_lat + u_mag"
-    formula = "empirical_time_delta ~ target_sun_earth_lon + target_sun_earth_lat + u_mag + solar_radio_flux"
+    formula = "empirical_time_delta ~ target_sun_earth_lon + target_sun_earth_lat + solar_radio_flux"
     test = m_traj.linear_regression(formula)
     
     m_traj.cast_Models()
@@ -693,86 +693,3 @@ def MMESH_run(data_dict, model_names):
     plot_TemporalShifts_All_Total()
     
     return m_traj
-
-
-
-
-
-
-
-
-
-
-    # =============================================================================
-    #    Compare output list of temporal shifts (and, maybe, running standard deviation or similar)
-    #    to physical parameters: 
-    #       -  T-S-E angle
-    #       -  Solar cycle phase
-    #       -  Running Mean SW Speed
-    #   This should **ALL** ultimately go into the "Ensemble" class 
-    # =============================================================================    
-    prediction_df = pd.DataFrame(index = pd.DatetimeIndex(np.arange(traj0._primary_df.index[0], traj0._primary_df.index[-1] + dt.timedelta(days=41), dt.timedelta(hours=1))))
-    prediction_df['solar_radio_flux'] = mmesh.read_SolarRadioFlux(prediction_df.index[0], prediction_df.index[-1])['adjusted_flux']
-    
-    sc_pred = spacecraftdata.SpacecraftData(spacecraft_name)
-    sc_pred.make_timeseries(prediction_df.index[0], 
-                            prediction_df.index[-1] + dt.timedelta(hours=1), 
-                            timedelta=dt.timedelta(hours=1))
-    pos_TSE_pred = sc_pred.find_StateToEarth()
-    prediction_df['target_sun_earth_lon'] = pos_TSE_pred.reindex(index=prediction_df.index)['del_lon']
-    
-    fig, axs = plt.subplots(nrows=3, figsize=(6, 4.5), sharex=True, sharey=True)
-    for i, (model_name, ax) in enumerate(zip(traj0.model_names, axs)):
-        
-        forecast = test[model_name].get_prediction(prediction_df)
-        alpha_level = 0.32 
-        result = forecast.summary_frame(alpha_level)
-        
-        ax.plot(prediction_df.index, result['mean'], color='C0')
-        ax.fill_between(prediction_df.index, result['obs_ci_lower'], result['obs_ci_upper'], color='C0', alpha=0.5)
-        
-        ax.plot(traj0.models[model_name].index, traj0.models[model_name]['empirical_time_delta'], color='black', linewidth=2)
-        ax.plot(traj0.models[model_name].index, traj0.models[model_name]['empirical_time_delta'], color=model_colors[model_name], linewidth=1.5)
-
-        ax.annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
-                    (0,1), xytext=(1,-1),
-                    xycoords='axes fraction',
-                    textcoords='offset fontsize')
-    
-    fig.supxlabel('Date')
-    fig.supylabel(r'$\Delta$ Time [hours]')
-    fig.savefig('figures/Paper/' + 'MLR_{}_withPredictions.png'.format('_'.join(traj0.model_names)), 
-                dpi=300)
-    plt.show()
-    
-    #fig, axs = plt.subplots(nrows=3, figsize=(6, 4.5), sharex=True, sharey=True)
-    for i, (model_name, ax) in enumerate(zip(traj0.model_names, axs)):
-        
-        forecast = test[model_name].get_prediction(prediction_df)
-        alpha_level = 0.32 
-        result = forecast.summary_frame(alpha_level)
-        
-        std = (result['obs_ci_upper'] - result['obs_ci_lower'])/2.
-        
-        s_mu = result['mean'].set_axis(prediction_df.index)
-        s_sig = std.set_axis(prediction_df.index)
-        
-        #   Prediction_df needs to be a full version of trajectory, with models
-        #   So that s_mu and s_sig can be added as mlr_time_delta and mlr_time_delta_sigma
-        #   For now, hacky add to traj0
-        
-        traj0._primary_df.loc[:, (model_name, 'mlr_time_delta')] = s_mu.loc[(s_mu.index >= traj0._primary_df.index[0]) & (s_mu.index <= traj0._primary_df.index[-1])]
-        traj0._primary_df.loc[:, (model_name, 'mlr_time_delta_sigma')] = s_sig.loc[(s_sig.index >= traj0._primary_df.index[0]) & (s_sig.index <= traj0._primary_df.index[-1])]
-        
-        # return prediction_df, result['mean'], std
-        # traj0._primary_df.loc[:, (model_name, 'mlr_time_delta')] = result['mean'].to_numpy('float64')
-        # traj0._primary_df.loc[:, (model_name, 'mlr_time_delta_sigma')] = std.to_numpy('float64')
-        
-        # return traj0, result['mean'], std
-    
-    traj0.shift_Models(time_delta='mlr_time_delta', time_delta_sigma='mlr_time_delta_sigma')
-    
-    
-    
-    return traj0 # prediction_df, result
-    
