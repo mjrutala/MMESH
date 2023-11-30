@@ -521,7 +521,7 @@ def SWModel_Parameter_Concatenator(running_dataframe, current_dataframe):
             
     return(output_df)
 
-def runHUXt(target, starttime, stoptime, basedir=''):
+def runHUXt(target, metakernel_paths, starttime, stoptime, basedir=''):
     '''
     We're going to run HUXt at relatively high temporal (and potentially 
     spatial) resolution, so it's essential that we run it over as little a 
@@ -576,58 +576,72 @@ def runHUXt(target, starttime, stoptime, basedir=''):
     reference_frame = 'SUN_INERTIAL' # HGI
     observer = 'SUN'
     
-    spacecraft = SpacecraftData.SpacecraftData(target)
-    spacecraft.make_timeseries(starttime, stoptime, dt.timedelta(hours=1))
-    spacecraft.find_state(reference_frame, observer, keep_kernels=True)  #  Keep kernels to find Earth's position later
+    #spacecraft = SpacecraftData.SpacecraftData(target)
+    #spacecraft.make_timeseries(starttime, stoptime, dt.timedelta(hours=1))
+    #spacecraft.find_state(reference_frame, observer, keep_kernels=True)  #  Keep kernels to find Earth's position later
     #spacecraft.find_subset(coord1_range=np.array(r_range)*sc.au_to_km, 
     #                       coord3_range=np.array(lat_range)*np.pi/180., 
     #                       transform='reclat')
     
-    positions = spacecraft.data[['x_pos', 'y_pos', 'z_pos']].to_numpy('float64')
-    r, lon, lat = zip(*[spice.reclat(list(pos)) for pos in positions])
-    spacecraft.data['r_pos'] = np.array(r)
-    spacecraft.data['lon_pos'] = np.array(lon) * (180/np.pi)
+    for metakernel_path in metakernel_paths: 
+        spice.furnsh(metakernel_path)
+    times = np.arange(starttime, stoptime, dt.timedelta(hours=1)).astype(dt.datetime)
+    etimes = spice.datetime2et(times)
+    pos_xyz, lt = spice.spkpos(target, etimes, reference_frame, 'None', observer)
+    
+    r, lon, lat = zip(*[spice.reclat(pos) for pos in pos_xyz])
+    lon = np.array(lon) * (180/np.pi)
+    
+    #positions = spacecraft.data[['x_pos', 'y_pos', 'z_pos']].to_numpy('float64')
+    #r, lon, lat = zip(*[spice.reclat(list(pos)) for pos in positions])
+    #spacecraft.data['r_pos'] = np.array(r)
+    #spacecraft.data['lon_pos'] = np.array(lon) * (180/np.pi)
     # spacecraft.data['lat_pos'] = np.array(lat) * (180/np.pi)
     
-    earth_pos, ltime = spice.spkpos('EARTH', spice.datetime2et(spacecraft.data.index), reference_frame, 'NONE', observer)
+    earth_pos, ltime = spice.spkpos('EARTH', etimes, reference_frame, 'NONE', observer)
     earth_r, earth_lon, earth_lat = zip(*[spice.reclat(pos) for pos in earth_pos])
-    spacecraft.data['earth_lon'] = np.array(earth_lon) * (180/np.pi)
+    earth_lon = np.array(earth_lon) * (180/np.pi)
+    #spacecraft.data['earth_lon'] = np.array(earth_lon) * (180/np.pi)
     
     # =========================================================================
     #   Find the the indices to split up the position into managable chunks
     #   N.B. this won't work for non-monotonic longitude arrays
     # =========================================================================
-    lon_range = spacecraft.data['lon_pos'][-1] - spacecraft.data['lon_pos'][0]
-    if lon_range < 0: lon_range += 360.
+    #lon_range = spacecraft.data['lon_pos'][-1] - spacecraft.data['lon_pos'][0]
+    lon = (lon + 360.) % 360.
+    earth_lon = (earth_lon + 360.) % 360.
+    lon_range = lon[-1] - lon[0]
+    if lon_range < 0:
+        lon_range += 360.
     
     lon_segments = np.ceil(lon_range/lon_limit)
     
     indx_list = []
     for i in range(int(lon_segments)):
-        i_step = spacecraft.data['lon_pos'][0] + ((lon_range/lon_segments) * i)
-        indx_list.append(np.argmin(abs(spacecraft.data['lon_pos'] - i_step)))
+        i_step = lon[0] + ((lon_range/lon_segments) * i)
+        indx_list.append(np.argmin(abs(lon - i_step)))
         
     start_indx = indx_list
-    stop_indx = indx_list[1:] + [len(spacecraft.data)]
+    stop_indx = indx_list[1:] + [len(etimes)]
     
     output_list = []
-    lon_start_arr = np.zeros(len(spacecraft.data))
-    lon_stop_arr = np.zeros(len(spacecraft.data))
+    lon_start_arr = np.zeros(len(etimes))
+    lon_stop_arr = np.zeros(len(etimes))
     for start, stop in zip(start_indx, stop_indx):
-        run_start = spacecraft.data.index[start]
-        run_stop = spacecraft.data.index[stop-1] + dt.timedelta(days=1)  #  HUXt ends runs a little early, seemingly
+        run_start = times[start]
+        run_stop = times[stop-1] + dt.timedelta(days=1)  #  HUXt ends runs a little early, seemingly
         run_time = (run_stop - run_start).days * u.day
         
         #  Find the bounding longitudes for this duration
-        lon_start = (np.min(spacecraft.data['lon_pos'][start:stop]) - spacecraft.data['earth_lon'][start] + 360) % 360.
-        lon_stop = (np.max(spacecraft.data['lon_pos'][start:stop]) - spacecraft.data['earth_lon'][start] + 360) % 360.
+        lon_start = (np.min(lon[start:stop]) - earth_lon[start] + 360) % 360.
+        lon_stop = (np.max(lon[start:stop]) - earth_lon[start] + 360) % 360.
         
         #  Fix the starting and stopping longitudes to the longitude values the model actually usesFi
         lon_start = lon_valid[np.where(lon_valid <= lon_start)[0][-1]] % 360.
         lon_stop = lon_valid[np.where(lon_valid >= lon_stop)[0][0]] % 360.
         
-        lon_start_arr[start:stop] = (lon_start + spacecraft.data['earth_lon'][start] + 360) % 360.
-        lon_stop_arr[start:stop] = (lon_stop + spacecraft.data['earth_lon'][start] + 360) % 360.
+        lon_start_arr[start:stop] = (lon_start + earth_lon[start] + 360) % 360.
+        lon_stop_arr[start:stop] = (lon_stop + earth_lon[start] + 360) % 360.
         
         r_min = 215 * u.solRad
         r_max = (10. * u.AU).to(u.solRad)
@@ -646,7 +660,7 @@ def runHUXt(target, starttime, stoptime, basedir=''):
         plt.show()
         
         spacecraft_df = HA.get_observer_timeseries(model, observer=target)
-        spacecraft_df['lon'] = (spacecraft_df['lon']*(180/np.pi) + spacecraft.data['earth_lon'][start] + 360) % 360.
+        spacecraft_df['lon'] = (spacecraft_df['lon']*(180/np.pi) + earth_lon[start] + 360) % 360.
         
         output_list.append(spacecraft_df)
         del model
