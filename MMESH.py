@@ -994,7 +994,7 @@ class Trajectory:
         for model_name in self.model_names:
             #   !!!! Add zero handling
             weights += self.models[model_name][self.variables].notna().astype('float64').values
-        weights = 1.0/weights
+        weights[np.where(weights > 0)] = 1.0/weights[np.where(weights > 0)]
         
         #   
         partials_list = []
