@@ -204,12 +204,6 @@ lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
 #     # formula = "total_dtimes ~ f10p7_flux + TSE_lat + TSE_lon" 
     
 
-
-# spacecraft_names = [#'Juno', 
-#                     'Ulysses']
-# spacecraft_spans = {#'Juno': (dt.datetime(2016, 5, 16), dt.datetime(2016, 6, 26)),
-#                     'Ulysses_1': (dt.datetime(1991,12,8), dt.datetime(1992,2,2))}
-
 inputs = {}
 # inputs['Voyager1_01'] = {'spacecraft_name':'Voyager 1',
 #                          'span':(dt.datetime(1979, 1, 3), dt.datetime(1979, 5, 5))}
@@ -219,8 +213,8 @@ inputs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
                          'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
 inputs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
                          'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
-inputs['Juno_01']     = {'spacecraft_name':'Juno',
-                         'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
+# inputs['Juno_01']     = {'spacecraft_name':'Juno',
+#                          'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
 
 model_names = ['Tao', 'HUXt', 'ENLIL']
 
@@ -307,11 +301,11 @@ def MMESH_run(data_dict, model_names):
             for traj_name, traj in m_traj.trajectories.items():
                 l.append(traj.models[model_name]['empirical_time_delta'])
                 c.append(spacecraft_colors[traj.spacecraft_name])
-                n.append(traj.spacecraft_name)
+                n.append(traj.trajectory_name)
             
-            axs[i].hist(l, range=(-192, 192), bins=64,
+            axs[i].hist(l, range=(-192, 192), bins=16,
                     density=True,
-                    histtype='bar', stacked=True, color=c, label=n)
+                    histtype='bar', stacked=True, label=n)
             axs[i].annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
                         (0,1), (1,-1), ha='left', va='center', 
                         xycoords='axes fraction', textcoords='offset fontsize')
@@ -322,7 +316,7 @@ def MMESH_run(data_dict, model_names):
         
         handles, labels = axs[0].get_legend_handles_labels()
         fig.legend(handles, labels, ncols=1,
-                   bbox_to_anchor=[0.7, 0.975, 0.2, .5], loc='upper left',
+                   bbox_to_anchor=[0.71, 0.8, 0.3, 0.5], loc='lower left',
                    mode="expand", borderaxespad=0.)
         
         plt.savefig('figures/Paper/' + 'TemporalShifts_All_Total.png', 
@@ -556,7 +550,7 @@ def MMESH_run(data_dict, model_names):
         #   Write an equation describing the optimization equation
         #   This can be played with
         def optimization_eqn(df):
-            f = 10*df['r'] + 1/(0.5*df['width_68'])  #   normalize width so 24 hours == 1
+            f = 2.0*df['r'] + 1/(0.5*df['width_68'])  #   normalize width so 24 hours == 1
             return (f - np.min(f))/(np.max(f)-np.min(f))
         #   Plug in the optimization equation
         traj0.optimize_Warp(optimization_eqn)
@@ -636,7 +630,7 @@ def MMESH_run(data_dict, model_names):
     
     #formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     #formula = "empirical_time_delta ~ target_sun_earth_lat + u_mag"
-    formula = "empirical_time_delta ~ target_sun_earth_lon + target_sun_earth_lat + u_mag"
+    formula = "empirical_time_delta ~ target_sun_earth_lon + target_sun_earth_lat + u_mag + solar_radio_flux"
     test = m_traj.linear_regression(formula)
     
     m_traj.cast_Models()
@@ -681,6 +675,8 @@ def MMESH_run(data_dict, model_names):
         axs[i].annotate(str(r), (0,1), (1, -2), xycoords='axes fraction', textcoords='offset fontsize')
         ax2.scatter(np.arccos(r), std, s=36, c=model_colors[model_name], 
                     marker=model_symbols[model_name], label=model_name)
+        
+        ax2.set_rlim([0, 45])
         
     fig.savefig('figures/Paper/' + 'Ensemble_TimeSeries_Juno.png', 
                 dpi=300)
