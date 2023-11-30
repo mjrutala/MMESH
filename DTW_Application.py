@@ -440,7 +440,7 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
         axs['A'].text(0.01, 1.02, 'Spacecraft: ' + spacecraft_name, 
                       va='bottom', ha='left', fontsize=10, color=spacecraft_color,
                       transform=axs['A'].transAxes)
-        axs['A'].text(0.75, 1.02, 'Input Reference lagged by ' + str(shift) + ' hours',
+        axs['A'].text(0.75, 1.02, 'Input Reference offset by ' + str(shift) + ' hours',
                       va='bottom', ha='left', fontsize=10,
                       transform=axs['A'].transAxes)
         
@@ -452,7 +452,7 @@ def plot_DTWViews(query_df, reference_df, shift, alignment, basis_tag, metric_ta
         axs['A'].set(xlim=[query_df.index[0], query_df.index[-1]], 
                      ylim=[reference_df.index[0], reference_df.index[-1]])
         
-        axs['A'].imshow(alignment.costMatrix, interpolation='None', origin='lower',
+        axs['A'].imshow(alignment.costMatrix.T, interpolation='None', origin='lower',
                         aspect='auto', 
                         extent=list(axs['A'].get_xlim())+list(axs['A'].get_ylim()))
         
