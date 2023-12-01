@@ -604,7 +604,7 @@ def MMESH_run(data_dict, model_names):
     #   Set up the prediction interval
     #original_spantime = stoptime - starttime
     starttime_prediction = dt.datetime(2016, 5, 1)  #  starttime - original_spantime
-    stoptime_prediction = dt.datetime(2017, 1, 1)  #  stoptime + original_spantime
+    stoptime_prediction = dt.datetime(2016, 7, 1)  #  stoptime + original_spantime
     target_prediction = 'Juno'
     
     #  Initialize a trajectory class for the predictions
@@ -648,9 +648,7 @@ def MMESH_run(data_dict, model_names):
     spacecraft = spacecraftdata.SpacecraftData('Juno')
     spacecraft.read_processeddata(starttime_prediction, stoptime_prediction, resolution='60Min')
     
-    
     fig, axs = plt.subplots(nrows=len(m_traj.cast_intervals['simulcast'].model_names), sharex=True)
-    
     
     for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
         model = m_traj.cast_intervals['simulcast'].models[model_name]
@@ -686,7 +684,7 @@ def MMESH_run(data_dict, model_names):
             model = m_traj.cast_intervals['simulcast'].models[model_name]
             
             r, std, rmsd = [], [], []
-            n_mc = int(1e1)
+            n_mc = int(1e3)
             rng = np.random.default_rng()
             
             fig_new, axs_new = plt.subplots(nrows=2, height_ratios=[2,1])
@@ -694,12 +692,18 @@ def MMESH_run(data_dict, model_names):
             for i_mc in range(n_mc):
                 y1 = rng.normal(model['u_mag'].loc[spacecraft.data.index], model['u_mag_sigma'].loc[spacecraft.data.index])
                 y2 = spacecraft.data['u_mag']
-                axs_new[0].plot(spacecraft.data.index, y1, alpha=1)
+                axs_new[0].plot(spacecraft.data.index, y1, alpha=0.01, color='gray')
                 axs_new[0].scatter(spacecraft.data.index, y2, color='black', marker='o', s=4)
                 (r_mc, std_mc), rmsd_mc = TD.find_TaylorStatistics(y1, y2)
                 r.append(r_mc)
                 std.append(std_mc)
                 rmsd.append(rmsd_mc)
+            
+            axs_new[0].plot(spacecraft.data.index, model['u_mag'].loc[spacecraft.data.index], color=model_colors[model_name])
+            axs_new[0].fill_between(spacecraft.data.index, 
+                                    model['u_mag'].loc[spacecraft.data.index] + model['u_mag_sigma'].loc[spacecraft.data.index], 
+                                    model['u_mag'].loc[spacecraft.data.index] - model['u_mag_sigma'].loc[spacecraft.data.index],
+                                    alpha = 0.5, color=model_colors[model_name], zorder=1000)
             
             (r_0, std_0), rmsd_0 = TD.find_TaylorStatistics(model['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
            
