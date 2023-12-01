@@ -207,16 +207,16 @@ lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
 inputs = {}
 # inputs['Voyager1_01'] = {'spacecraft_name':'Voyager 1',
 #                          'span':(dt.datetime(1979, 1, 3), dt.datetime(1979, 5, 5))}
-inputs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
-                          'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
-inputs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
-                          'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
-inputs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
-                          'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
+# inputs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
+#                           'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
+# inputs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
+#                           'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
+# inputs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
+#                           'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
 inputs['Juno_01']     = {'spacecraft_name':'Juno',
                           'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
 
-model_names = ['Tao', 'HUXt', 'ENLIL']
+model_names = ['Tao', 'HUXt']#, 'ENLIL']
 
 def MMESH_run(data_dict, model_names):
     import string
@@ -270,19 +270,19 @@ def MMESH_run(data_dict, model_names):
     def plot_BestShiftWarpedTimeDistribution():
         
         nmodels = len(traj0.model_names)
-        fig, axs = plt.subplots(nrows=nmodels, figsize=(3,4.5), sharex=True, sharey=True)
+        fig, axs = plt.subplots(nrows=nmodels, figsize=(3,4.5), sharex=True, sharey=True, squeeze=False)
         plt.subplots_adjust(left=0.2, top=0.975 ,hspace=0.075)
         
         for i, (model_name, ax) in enumerate(zip(traj0.model_names, axs)):
             
-            ax.hist(traj0.models[model_name].loc[traj0.data_index, 'empirical_time_delta'].to_numpy(), 
+            ax[0].hist(traj0.models[model_name].loc[traj0.data_index, 'empirical_time_delta'].to_numpy(), 
                     range=(-192, 192), bins=64,
                     density=True, label=model_name, color=model_colors[model_name])
-            ax.annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
+            ax[0].annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
                         (0,1), (1,-1), ha='left', va='center', 
                         xycoords='axes fraction', textcoords='offset fontsize')
 
-        ax.set_yticks(ax.get_yticks(), (100.*np.array(ax.get_yticks())).astype('int64'))
+        ax[0].set_yticks(ax[0].get_yticks(), (100.*np.array(ax[0].get_yticks())).astype('int64'))
         
         fig.supylabel('Percentage')
         fig.supxlabel('Total Temporal Shifts [hours]')
@@ -324,7 +324,7 @@ def MMESH_run(data_dict, model_names):
         plt.show()
     #
     def plot_Correlations():
-        fig, axs = plt.subplots(figsize=(6,4.5), nrows=4, ncols=len(m_traj.model_names), sharex='col', sharey='row')
+        fig, axs = plt.subplots(figsize=(6,4.5), nrows=4, ncols=len(m_traj.model_names), sharex='col', sharey='row', squeeze=False)
         plt.subplots_adjust(bottom=0.1, left=0.1, top=0.92, right=0.90, 
                             wspace=0.45, hspace=0.025)
         for i, model_name in enumerate(sorted(m_traj.model_names)):
@@ -641,7 +641,6 @@ def MMESH_run(data_dict, model_names):
     plot_TimeDelta_Grid_AllTrajectories()
     
     m_traj.cast_intervals['simulcast'].ensemble()
-    
     #   Example plot of shifted models with errors
     #   And a TD
     
@@ -651,7 +650,7 @@ def MMESH_run(data_dict, model_names):
     
     
     fig, axs = plt.subplots(nrows=len(m_traj.cast_intervals['simulcast'].model_names), sharex=True)
-    fig2, ax2 = TD.init_TaylorDiagram(np.std(spacecraft.data['u_mag']))
+    
     
     for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
         model = m_traj.cast_intervals['simulcast'].models[model_name]
@@ -676,17 +675,62 @@ def MMESH_run(data_dict, model_names):
         (r, std), rmsd = TD.find_TaylorStatistics(model['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
 
         axs[i].annotate(str(r), (0,1), (1, -2), xycoords='axes fraction', textcoords='offset fontsize')
-        ax2.scatter(np.arccos(r), std, s=36, c=model_colors[model_name], 
-                    marker=model_symbols[model_name], label=model_name)
-        
-        ax2.set_rlim([0, 45])
         
     fig.savefig('figures/Paper/' + 'Ensemble_TimeSeries_Juno.png', 
                 dpi=300)
     
-    ax2.legend(ncols=4, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
-    fig2.savefig('figures/Paper/' + 'Ensemble_TD_JunoComparison.png', 
-                dpi=300)
+    def plot_EnsembleTD_DTWMLR():
+        fig2, ax2 = TD.init_TaylorDiagram(np.std(spacecraft.data['u_mag']))
+        
+        for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
+            model = m_traj.cast_intervals['simulcast'].models[model_name]
+            
+            r, std, rmsd = [], [], []
+            n_mc = int(1e1)
+            rng = np.random.default_rng()
+            
+            fig_new, axs_new = plt.subplots(nrows=2, height_ratios=[2,1])
+            
+            for i_mc in range(n_mc):
+                y1 = rng.normal(model['u_mag'].loc[spacecraft.data.index], model['u_mag_sigma'].loc[spacecraft.data.index])
+                y2 = spacecraft.data['u_mag']
+                axs_new[0].plot(spacecraft.data.index, y1, alpha=1)
+                axs_new[0].scatter(spacecraft.data.index, y2, color='black', marker='o', s=4)
+                (r_mc, std_mc), rmsd_mc = TD.find_TaylorStatistics(y1, y2)
+                r.append(r_mc)
+                std.append(std_mc)
+                rmsd.append(rmsd_mc)
+            
+            (r_0, std_0), rmsd_0 = TD.find_TaylorStatistics(model['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
+           
+            axs_new[1].hist(r, color=model_colors[model_name])
+            axs_new[1].axvline(r_0, color='black')
+            
+            r_sig, std_sig, rmsd_sig = np.std(r), np.std(std), np.std(rmsd)
+            r, std, rmsd = np.mean(r), np.mean(std), np.mean(rmsd)
+            
+            # ax2.scatter(np.arccos(r), std, s=36, c=model_colors[model_name], 
+            #             marker=model_symbols[model_name], label=model_name)
+            
+            xerr = [[np.arccos(r-r_sig)-np.arccos(r)], [np.arccos(r)-np.arccos(r+r_sig)]]
+            yerr = [[std_sig], [std_sig]]
+            
+            ax2.errorbar(np.arccos(r), std, xerr=xerr, yerr=yerr,
+                         color=model_colors[model_name], alpha=0.6)
+            print('For {}: r = {} +/- {}, std = {} +/- {}'.format(model_name,
+                                                                  r, r_sig,
+                                                                  std, std_sig))
+            print('In radians, np.arccos(r) is: {} + {} - {}'.format(np.arccos(r), 
+                                                                     xerr[1], xerr[0]))
+            
+            ax2.set_rlim([0, 45])
+            
+        
+        ax2.legend(ncols=4, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
+        fig2.savefig('figures/Paper/' + 'Ensemble_TD_JunoComparison.png', 
+                     dpi=300)
+        
+    plot_EnsembleTD_DTWMLR()
     
     plt.show()
         
