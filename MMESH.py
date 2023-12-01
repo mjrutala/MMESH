@@ -11,8 +11,6 @@ import logging
 import numpy as np
 import pandas as pd
 
-#   To set up file
-SolarRadioFlux_filepath = '/Users/mrutala/Data/Sun/DRAO/penticton_radio_flux.csv'
 
 spacecraft_colors = {'Pioneer 10': '#F6E680',
                      'Pioneer 11': '#FFD485',
@@ -1399,22 +1397,3 @@ class Trajectory:
            
             return tick_str
         return date_formatter
-
-
-def read_SolarRadioFlux(startdate, stopdate, sample_rate='60Min'):
-    
-    # =============================================================================
-    # F10.7 Radio flux from the sun
-    # !!!! This needs a reader so this can be one line
-    # =============================================================================
-    column_headers = ('date', 'observed_flux', 'adjusted_flux',)
-    srf_df = pd.read_csv(SolarRadioFlux_filepath,
-                         header = 0, names = column_headers)
-    srf_df['date'] = [dt.datetime.strptime(d, '%Y-%m-%dT%H:%M:%S')
-                                for d in srf_df['date']]
-    srf_df = srf_df.set_index('date')
-    srf_df = srf_df.resample(sample_rate, origin='start_day').mean().interpolate(method='linear')
-
-    result = srf_df[(srf_df.index >= startdate) & (srf_df.index <= stopdate)]
-    
-    return result
