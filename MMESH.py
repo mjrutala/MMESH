@@ -997,34 +997,32 @@ class Trajectory:
         weights[np.where(weights > 0)] = 1.0/weights[np.where(weights > 0)]
         
         #   
+        variable_sigmas = [v+'_sigma' for v in self.variables]
+        
         partials_list = []
         for model_name in self.model_names:
             df = self.models[model_name][self.variables].mul(weights, fill_value=0.)
             
-            variable_sigmas = [v+'_sigma' for v in self.variables]
+            
             if set(variable_sigmas).issubset(set(self.models[model_name].columns)): #   If sigmas get added from start, get rid of this bit
                 
                 df[variable_sigmas] = self.models[model_name][variable_sigmas].mul(weights, fill_value=0.)
                 
             partials_list.append(df)
         
+        #   Empty dataframe of correct dimensions for ensemble
+        ensemble = partials_list[0].mul(0.)
+        
+        #   Sum weighted variables, and RSS weighted errors
+        for partial in partials_list:
+            ensemble.loc[:, self.variables] += partial.loc[:, self.variables]
+            ensemble.loc[:, variable_sigmas] += partial.loc[:, variable_sigmas]**2.
+            
+        ensemble.loc[:, variable_sigmas] = np.sqrt(ensemble.loc[:, variable_sigmas])
         #   !!!! This doesn't add error properly
-        ensemble = reduce(lambda a,b: a.add(b, fill_value=0.), partials_list)
+        # ensemble = reduce(lambda a,b: a.add(b, fill_value=0.), partials_list)
         
         self.addModel('ensemble', ensemble)
-        #return ensemble 
-    
-        # self.ensemble = pd.DataFrame(columns = self.em_parameters)
-        
-        # for model, model_df in self.model_dfs.items(): print(len(model_df))
-        
-        # for tag in self.em_parameters:
-        #     for model, model_df in self.model_dfs.items():
-                
-        #         self.ensemble[tag] = weights_df[tag][model] * model_df[tag]
-        
-        # print(weights_df.div(weights_df.sum()))
-        
         
     # =============================================================================
     #   Plotting stuff
