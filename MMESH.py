@@ -170,7 +170,7 @@ class MultiTrajectory:
             
         return predictions_dict
     
-    def cast_Models(self):
+    def cast_Models(self, with_error=True):
         
         #   For now, assume that we get a MLR prediction from linear_regression()
         #   May want to retool this eventually to just add errors from shifts to models?
@@ -210,10 +210,13 @@ class MultiTrajectory:
                 
                 self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta')] = s_mu
                 self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta_sigma')] = s_sig
-            
-        for cast_interval_name, cast_interval in self.cast_intervals.items():
-            cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma')
-            
+         
+        if with_error:
+            for cast_interval_name, cast_interval in self.cast_intervals.items():
+                cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma')
+        else:
+            for cast_interval_name, cast_interval in self.cast_intervals.items():
+                cast_interval.shift_Models(time_delta_column='mlr_time_delta')
         return
         
     #   We want to characterize linear relationships independently and together
@@ -391,12 +394,24 @@ class Trajectory:
         self._primary_df = pd.DataFrame()
         
     @property
-    def trajectory(self):
-        return self._trajectory
+    def context(self):
+        return self._primary_df['context']
     
-    @trajectory.setter
-    def trajectory(self, df):
-        self._trajectory = df.upper()
+    @context.setter
+    def context(self, df):
+        # int_columns = list(set(df.columns).intersection(self.variables))
+        # int_columns.extend(list(set(df.columns).intersection(self.variable_sigmas)))
+        # df = df[int_columns]
+        
+        if self._primary_df.empty:
+            df.columns = pd.MultiIndex.from_product([['context'], df.columns])
+            self._primary_df = df
+        else:
+            #   Get existing top-level columns names, and add 'context'
+            new_keys = [self._primary_df.columns.levels[0], 'context']
+            #df.columns = pd.MultiIndex.from_product([['context'], df.columns])
+
+            self._primary_df = pd.concat([self._primary_df, df], axis=1, keys=new_keys)
 
     @property
     def data(self):
@@ -891,7 +906,8 @@ class Trajectory:
         #   needing to shift the model dataframe by a constant first
         
         for model_name in self.model_names:
-            
+            print(type(self.models[model_name].index[0]))
+            print(type(self.models[model_name].index))
             time = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
             
             #   If no time_delta_column is given, then set it to all zeros
