@@ -528,12 +528,71 @@ class Trajectory:
         return (fig, ax)
     
     def binarize(self, parameter, smooth = 1, sigma = 3, reswidth=0.0):
-        from SWData_Analysis import find_Jumps
+        """
+
+        Parameters
+        ----------
+        dataframe : TYPE
+            Pandas DataFrame
+        tag : TYPE
+            Column name in dataframe in which you're trying to find the jump
+        smoothing_window : TYPE
+            Numerical length of time, in hours, to smooth the input dataframe
+        resolution_window : TYPE
+            Numerical length of time, in hours, to assign as a width for the jump
+
+        Returns
+        -------
+        A copy of dataframe, with the new column "jumps" appended.
+
+        """
+        #from SWData_Analysis import find_Jumps
         
         if type(smooth) != dict:
             smoothing_kernels = dict.fromkeys([self.spacecraft_name, *self.model_names], smooth)
         else:
             smoothing_kernels = smooth
+        
+        def find_Jumps(dataframe, tag, sigma_cutoff, smoothing_width, resolution_width=0.0):
+            halftimedelta = dt.timedelta(hours=0.5*smoothing_width)
+            half_rw = dt.timedelta(hours=0.5*resolution_width)
+            
+            output_tag = 'jumps'
+            
+            outdf = dataframe.copy()
+            
+            rolling_dataframe = dataframe.rolling(2*halftimedelta, min_periods=1, 
+                                                  center=True, closed='left')  
+            smooth = rolling_dataframe[tag].mean()
+            smooth_derivative = np.gradient(smooth, smooth.index.values.astype(np.float64))
+            
+            #  Take the z-score of the derivative of the smoothed input,
+            #  then normalize it based on a cutoff sigma
+            smooth_derivative_zscore = smooth_derivative / np.nanstd(smooth_derivative)
+            rough_jumps = np.where(smooth_derivative_zscore > sigma_cutoff, 1, 0)
+            
+            #!!!!!!!! NEED TO CATCH NO JUMPS!
+            if (rough_jumps == 0.).all():
+                print('No jumps in this time series! Must be quiescent solar wind conditions...')
+                plt.plot(smooth_derivative_zscore)
+                outdf[output_tag] = rough_jumps
+                return(dataframe)
+            
+            #  Separate out each jump into a list of indices
+            rough_jumps_indx = np.where(rough_jumps == 1)[0]
+            rough_jump_spans = np.split(rough_jumps_indx, np.where(np.diff(rough_jumps_indx) > 1)[0] + 1)
+            
+            #  Set the resolution (width) of the jump
+            jumps = np.zeros(len(rough_jumps))
+            for span in rough_jump_spans:
+                center_indx = np.mean(span)
+                center = dataframe.index[int(center_indx)]
+                span_width_indx = np.where((dataframe.index >= center - half_rw) &
+                                           (dataframe.index <= center + half_rw))
+                jumps[np.array(span_width_indx)+1] = 1  #  !!!!! Check +1 logic
+            
+            outdf[output_tag] = jumps
+            return(outdf)
         
         df = find_Jumps(self.data, parameter, sigma, smoothing_kernels[self.spacecraft_name])
         self._primary_df[self.spacecraft_name, 'jumps'] = df['jumps']
@@ -724,8 +783,6 @@ class Trajectory:
                 #   Reindex the reference by the shifted amount, 
                 #   then reset the index to match the query
                 # ============================================================================= 
-                
-                #   !!!! WHY DOES THIS WORK WITH A MINUS?
                 shift_model_df = self.models[model_name].copy()
                 shift_model_df.index = shift_model_df.index + dt.timedelta(hours=float(shift))
                 shift_model_df = shift_model_df.reindex(self.data.index, method='nearest')        
@@ -744,15 +801,18 @@ class Trajectory:
                 #alignment.plot(type="threeway")
                 #alignment.plot(type='density')
                 
-                def find_BinarizedTiePoints(alignment, open_end=False, open_begin=False):
+                def find_BinarizedTiePoints(alignment, query=True, reference=True,
+                                            open_end=False, open_begin=False):
                     tie_points = []
-                    for unity_indx in np.where(alignment.query == 1.0)[0]:
-                        i1 = np.where(alignment.index1 == unity_indx)[0][0]
-                        tie_points.append((alignment.index1[i1], alignment.index2[i1]))
-                        
-                    for unity_indx in np.where(alignment.reference == 1.0)[0]:
-                        i2 = np.where(alignment.index2 == unity_indx)[0][0]
-                        tie_points.append((alignment.index1[i2], alignment.index2[i2]))
+                    if query == True:
+                        for unity_indx in np.where(alignment.query == 1.0)[0]:
+                            i1 = np.where(alignment.index1 == unity_indx)[0][0]
+                            tie_points.append((alignment.index1[i1], alignment.index2[i1]))
+                    
+                    if reference == True:
+                        for unity_indx in np.where(alignment.reference == 1.0)[0]:
+                            i2 = np.where(alignment.index2 == unity_indx)[0][0]
+                            tie_points.append((alignment.index1[i2], alignment.index2[i2]))
                         
                     #   If appropriate, add initial and final points as ties
                     #   If DTW is performed w/o open_begin or open_end, then 
@@ -823,7 +883,56 @@ class Trajectory:
                     dtwa.plot_DTWViews(self.data, shift_model_df, shift, alignment, basis_tag, metric_tag,
                                   model_name = model_name, spacecraft_name = self.spacecraft_name)    
                 
-                #  20231019: Alright, I'm 99% sure these are reporting shifts correctly
+                #   New plotting function
+                import matplotlib.pyplot as plt
+                import matplotlib.dates as mdates
+                from matplotlib import collections  as mc
+                from matplotlib.patches import ConnectionPatch
+                
+                fig, axs = plt.subplots(nrows=3, height_ratios=[1,2,2], sharex=True)
+                
+                axs[0].plot(self.data.loc[self.data[basis_tag]!=0, basis_tag].index, 
+                            self.data.loc[self.data[basis_tag]!=0, basis_tag].values,
+                            linestyle='None', color=spacecraft_colors[self.spacecraft_name], marker='o', zorder=3)
+                
+                axs[0].plot(shift_model_df.loc[shift_model_df[basis_tag]!=0, basis_tag].index, 
+                            shift_model_df.loc[shift_model_df[basis_tag]!=0, basis_tag].values*2,
+                            linestyle='None', color=model_colors[model_name], marker='o', zorder=2)
+                
+                axs[0].set(ylim=[0.5,2.5], yticks=[1, 2], yticklabels=['Data', 'Model'])
+                
+                tie_points = find_BinarizedTiePoints(alignment, query=False)
+                connecting_lines = []
+                for point in tie_points:
+                    query_date = mdates.date2num(self.data.index[point[0]])
+                    reference_date = mdates.date2num(shift_model_df.index[point[1]])
+                    connecting_lines.append([(query_date, 1), (reference_date, 2)])
+
+                lc = mc.LineCollection(connecting_lines, 
+                                       linewidths=1, linestyles=":", color='gray', linewidth=2, zorder=1)
+                axs[0].add_collection(lc)
+                
+                axs[1].plot(self.data.index, self.data[metric_tag], color=spacecraft_colors[self.spacecraft_name])
+                axs[1].plot(shift_model_df.index, shift_model_df[metric_tag], color=model_colors[model_name])
+                
+                axs[2].plot(self.data.index, self.data[metric_tag], color=spacecraft_colors[self.spacecraft_name])
+                axs[2].plot(shift_model_df.index, r_metric_warped,  color=model_colors[model_name])
+                
+                for point in tie_points:
+                    query_date = mdates.date2num(self.data.index[point[0]])
+                    reference_date = mdates.date2num(shift_model_df.index[point[1]])
+                    #shift_date = mdates.date2num(shift_model_df.index[point[1]] + dt.timedelta(hours=r_time_deltas[point[1]]))
+                    
+                    xy_top = (reference_date, shift_model_df[metric_tag].iloc[point[1]])
+                    xy_bottom = (query_date, r_metric_warped[point[0]])
+                    
+                    con = ConnectionPatch(xyA=xy_top, xyB=xy_bottom, 
+                                          coordsA="data", coordsB="data",
+                                          axesA=axs[1], axesB=axs[2], color="gray", linewidth=2, linestyle=":")
+                    axs[2].add_artist(con)
+                plt.show()
+                
+                #   20231019: Alright, I'm 99% sure these are reporting shifts correctly
                 #   That is, a positive delta_t means you add that number to the model
                 #   datetime index to best match the data. Vice versa for negatives
                 
