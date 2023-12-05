@@ -14,6 +14,7 @@ import spacecraftdata
 import read_SWModel
 import matplotlib.pyplot as plt
 
+
 spacecraft_colors = {'Pioneer 10': '#F6E680',
                      'Pioneer 11': '#FFD485',
                      'Voyager 1' : '#FEC286',
@@ -207,16 +208,16 @@ lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
 inputs = {}
 # inputs['Voyager1_01'] = {'spacecraft_name':'Voyager 1',
 #                          'span':(dt.datetime(1979, 1, 3), dt.datetime(1979, 5, 5))}
-# inputs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
-#                           'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
-# inputs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
-#                           'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
-# inputs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
-#                           'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
+inputs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
+                          'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
+inputs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
+                          'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
+inputs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
+                          'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
 inputs['Juno_01']     = {'spacecraft_name':'Juno',
                           'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
 
-model_names = ['Tao', 'HUXt']#, 'ENLIL']
+model_names = ['Tao', 'HUXt', 'ENLIL']
 
 def MMESH_run(data_dict, model_names):
     import string
@@ -224,11 +225,13 @@ def MMESH_run(data_dict, model_names):
     import sys
     sys.path.append('/Users/mrutala/projects/SolarWindEM/')
     import MMESH as mmesh
+    import MMESH_context as mmesh_c
     import numpy as np
     import scipy.stats as scstats
     import scipy.optimize as optimize
     import matplotlib.pyplot as plt
     import plot_TaylorDiagram as TD
+    import copy
     
     import string
     
@@ -568,7 +571,7 @@ def MMESH_run(data_dict, model_names):
         #             
         # =============================================================================
         #   traj0.addContext()
-        srf = mmesh.read_SolarRadioFlux(traj0._primary_df.index[0], traj0._primary_df.index[-1])
+        srf = mmesh_c.read_SolarRadioFlux(traj0._primary_df.index[0], traj0._primary_df.index[-1])
         traj0._primary_df[('context', 'solar_radio_flux')] = srf['adjusted_flux']   
         traj0._primary_df[('context', 'target_sun_earth_lon')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lon']
         traj0._primary_df[('context', 'target_sun_earth_lat')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lat']
@@ -603,40 +606,36 @@ def MMESH_run(data_dict, model_names):
     
     #   Set up the prediction interval
     #original_spantime = stoptime - starttime
-    starttime_prediction = dt.datetime(2016, 5, 1)  #  starttime - original_spantime
-    stoptime_prediction = dt.datetime(2016, 7, 1)  #  stoptime + original_spantime
-    target_prediction = 'Juno'
+    prediction_starttime = dt.datetime(2016, 5, 22)  #  starttime - original_spantime
+    prediction_stoptime = dt.datetime(2016, 11, 1)  #  stoptime + original_spantime
+    prediction_target = 'Juno'
     
     #  Initialize a trajectory class for the predictions
     traj1 = mmesh.Trajectory()
     
+    fullfilepath = mmesh_c.make_PlanetaryContext_CSV(prediction_target, 
+                                                     prediction_starttime, 
+                                                     prediction_stoptime, 
+                                                     filepath='context_files/')
+    traj1.context = pd.read_csv(fullfilepath, index_col='datetime', parse_dates=True)
+    
     #  Read models and add to trajectory
     for model_name in model_names:
-        model = read_SWModel.choose(model_name, target_prediction, 
-                                    starttime_prediction, stoptime_prediction, resolution='60Min')
+        model = read_SWModel.choose(model_name, prediction_target, 
+                                    prediction_starttime, prediction_stoptime, resolution='60Min')
         traj1.addModel(model_name, model)
-     
-    #   Add Context (to be moved)
-    traj1._primary_df[('context', 'solar_radio_flux')] = mmesh.read_SolarRadioFlux(traj1._primary_df.index[0], traj1._primary_df.index[-1])['adjusted_flux'] 
-    
-    #   !!!! Need a version for planet prediction
-    sc_pred = spacecraftdata.SpacecraftData(target_prediction)
-    sc_pred.make_timeseries(traj1._primary_df.index[0], 
-                            traj1._primary_df.index[-1] + dt.timedelta(hours=1), 
-                            timedelta=dt.timedelta(hours=1))
-    pos_TSE_pred = sc_pred.find_StateToEarth()
-    traj1._primary_df[('context', 'target_sun_earth_lon')] = pos_TSE_pred.reindex(index=traj1._primary_df.index)['del_lon']
-    traj1._primary_df[('context', 'target_sun_earth_lat')] = pos_TSE_pred.reindex(index=traj1._primary_df.index)['del_lat']
+        
+    traj1_backup =  copy.deepcopy(traj1)
 
     #   Add prediction Trajectory as simulcast
     m_traj.cast_intervals['simulcast'] = traj1
     
     #formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     #formula = "empirical_time_delta ~ target_sun_earth_lat + u_mag"
-    formula = "empirical_time_delta ~ target_sun_earth_lon + target_sun_earth_lat + solar_radio_flux"
+    formula = "empirical_time_delta ~ target_sun_earth_lat + solar_radio_flux + u_mag"
     test = m_traj.linear_regression(formula)
     
-    m_traj.cast_Models()
+    m_traj.cast_Models(with_error=True)
     
     plot_TimeDelta_Grid_AllTrajectories()
     
@@ -644,21 +643,18 @@ def MMESH_run(data_dict, model_names):
     #   Example plot of shifted models with errors
     #   And a TD
     
+    #  FOR TESTING ACCURACY
     #  Load spacecraft data
     spacecraft = spacecraftdata.SpacecraftData('Juno')
-    spacecraft.read_processeddata(starttime_prediction, stoptime_prediction, resolution='60Min')
+    spacecraft.read_processeddata(prediction_starttime, prediction_stoptime, resolution='60Min')
     
     fig, axs = plt.subplots(nrows=len(m_traj.cast_intervals['simulcast'].model_names), sharex=True)
     
     for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
         model = m_traj.cast_intervals['simulcast'].models[model_name]
-        
-        #!!!!  Shouldn't be traj0.spacecraft_name...
-        # axs[i].scatter(m_traj.trajectories[traj0.trajectory_name].data.index, m_traj.trajectories[traj0.spacecraft_name].data['u_mag'],
-        #                color='black', marker='o', s=2)
-        
+
         axs[i].scatter(spacecraft.data.index, spacecraft.data['u_mag'],
-                       color='black', marker='o', s=2)
+                        color='black', marker='o', s=2)
         
         if 'u_mag_sigma' in model.columns:
             axs[i].fill_between(model.index, 
@@ -668,13 +664,23 @@ def MMESH_run(data_dict, model_names):
         
         axs[i].plot(model.index, model['u_mag'], color=model_colors[model_name])
         
+        #   Overplot the original model, skipping the ensemble
+        if model_name in traj1_backup.model_names:
+            
+            axs[i].plot(traj1_backup.models[model_name].index, 
+                        traj1_backup.models[model_name]['u_mag'], 
+                        color='gray')
+        
         axs[i].annotate(model_name, (0,1), (1,-1), xycoords='axes fraction', textcoords='offset fontsize')
     
         (r, std), rmsd = TD.find_TaylorStatistics(model['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
 
-        axs[i].annotate(str(r), (0,1), (1, -2), xycoords='axes fraction', textcoords='offset fontsize')
+        #axs[i].annotate(str(r), (0,1), (1, -2), xycoords='axes fraction', textcoords='offset fontsize')
         
-    fig.savefig('figures/Paper/' + 'Ensemble_TimeSeries_Juno.png', 
+    filename = 'Ensemble_TimeSeries_{}_{}-{}.png'.format(prediction_target.lower().capitalize(),
+                                                         prediction_starttime.strftime('%Y%m%dT%H%M%S'),
+                                                         prediction_stoptime.strftime('%Y%m%dT%H%M%S'))
+    fig.savefig('figures/Paper/' + filename, 
                 dpi=300)
     
     def plot_EnsembleTD_DTWMLR():
@@ -713,21 +719,21 @@ def MMESH_run(data_dict, model_names):
             r_sig, std_sig, rmsd_sig = np.std(r), np.std(std), np.std(rmsd)
             r, std, rmsd = np.mean(r), np.mean(std), np.mean(rmsd)
             
-            # ax2.scatter(np.arccos(r), std, s=36, c=model_colors[model_name], 
-            #             marker=model_symbols[model_name], label=model_name)
+            ax2.scatter(np.arccos(r), std, s=36, c=model_colors[model_name], 
+                        marker=model_symbols[model_name], label=model_name)
             
             xerr = [[np.arccos(r-r_sig)-np.arccos(r)], [np.arccos(r)-np.arccos(r+r_sig)]]
             yerr = [[std_sig], [std_sig]]
             
-            ax2.errorbar(np.arccos(r), std, xerr=xerr, yerr=yerr,
-                         color=model_colors[model_name], alpha=0.6)
+            # ax2.errorbar(np.arccos(r), std, xerr=xerr, yerr=yerr,
+            #              color=model_colors[model_name], alpha=0.6)
             print('For {}: r = {} +/- {}, std = {} +/- {}'.format(model_name,
                                                                   r, r_sig,
                                                                   std, std_sig))
             print('In radians, np.arccos(r) is: {} + {} - {}'.format(np.arccos(r), 
                                                                      xerr[1], xerr[0]))
             
-            ax2.set_rlim([0, 45])
+            ax2.set_rlim([0, 50])
             
         
         ax2.legend(ncols=4, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
