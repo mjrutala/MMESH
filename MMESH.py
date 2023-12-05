@@ -972,14 +972,11 @@ class Trajectory:
         return self.model_shift_stats
     
     def optimize_Warp(self, eqn):
-        
-        #best_shifts = {}
         for model_name in self.model_names:
             
             form = eqn(self.model_shift_stats[model_name])
             
             best_shift_indx = np.argmax(form)
-            #shift = dtw_stats[model_name].iloc[best_shift_indx][['shift']]
             self.best_shifts[model_name] = self.model_shift_stats[model_name].iloc[best_shift_indx]
             
             #   Add the new shift times to the model dataframe
@@ -993,7 +990,6 @@ class Trajectory:
             self._primary_df.loc[:, (model_name, 'empirical_time_delta')] = constant_offset
             self._primary_df.loc[self.data_index, (model_name, 'empirical_time_delta')] += dynamic_offsets
             
-        #self.best_shifts = best_shifts
         self._dtw_optimization_equation = eqn
         
         return
