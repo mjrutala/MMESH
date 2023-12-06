@@ -163,7 +163,7 @@ class MultiTrajectory:
             #                     textcoords='offset fontsize')
             # plt.show()
             
-            print(training_df.index[0], training_df.index[-1])
+            #print(training_df.index[0], training_df.index[-1])
             
         self.predictions_dict = predictions_dict
         self.nowcast_dict = nowcast_dict
@@ -366,7 +366,7 @@ class Trajectory:
     def __init__(self, name=''):
         from types import SimpleNamespace
         d = {'data_color': '', 'data_marker': '',
-             'model_colors': {}, 'model_markers': {}}
+             'model_colors': {'ensemble': 'xkcd:cyan'}, 'model_markers': {'ensemble': 'o'}}
         self.plotparams = SimpleNamespace(**d)
         
         self.metric_tags = ['u_mag', 'p_dyn', 'n_tot', 'B_mag']
@@ -1086,9 +1086,9 @@ class Trajectory:
     
     def shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000):
         
-        result = _shift_Models(time_delta_column=time_delta_column, 
-                               time_delta_sigma_column=time_delta_sigma_column,
-                               n_mc=n_mc)
+        result = self._shift_Models(time_delta_column=time_delta_column, 
+                                    time_delta_sigma_column=time_delta_sigma_column,
+                                    n_mc=n_mc)
         self._primary_df = result
     
     def _shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000):
@@ -1111,8 +1111,6 @@ class Trajectory:
         shifted_primary_df = copy.deepcopy(self._primary_df)
         
         for model_name in self.model_names:
-            print(type(self.models[model_name].index[0]))
-            print(type(self.models[model_name].index))
             time = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
             
             #   If no time_delta_column is given, then set it to all zeros
@@ -1566,7 +1564,6 @@ class Trajectory:
         
         if fig == None:
             fig = plt.figure(figsize=(6,4.5))
-        print(ref_std)
         fig, ax = TD.init_TaylorDiagram(ref_std, fig=fig)
 
         for model_name in self.model_names:
