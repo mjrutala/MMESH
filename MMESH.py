@@ -364,6 +364,10 @@ class Trajectory:
     """
     
     def __init__(self, name=''):
+        from types import SimpleNamespace
+        d = {'data_color': '', 'data_marker': '',
+             'model_colors': {}, 'model_markers': {}}
+        self.plotparams = SimpleNamespace(**d)
         
         self.metric_tags = ['u_mag', 'p_dyn', 'n_tot', 'B_mag']
         self.variables =  ['u_mag', 'n_tot', 'p_dyn', 'B_mag']
@@ -389,6 +393,8 @@ class Trajectory:
         #self.model_dtw_times = {}
         
         #self.trajectory = pd.Dataframe(index=index)
+        
+        
         
         self._data = None
         self._primary_df = pd.DataFrame()
@@ -464,6 +470,7 @@ class Trajectory:
     
     def addModel(self, model_name, model_df):
         self.model_names.append(model_name)
+        #self.model_names = sorted(self.model_names)
         self.models = model_df
 
     def baseline(self):
@@ -1004,34 +1011,37 @@ class Trajectory:
         fig, axs = plt.subplots(nrows=3, ncols=len(self.model_names), 
                                 figsize=(6, 4.5), height_ratios=[1,2,2],
                                 sharex=True, sharey='row')
-        plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, 
+        plt.subplots_adjust(left=0.1, bottom=0.2, right=0.99, top=0.95, 
                             wspace=0.1, hspace=0.0)
         
         for model_name, ax_col in zip(self.model_names, axs.T):
             
-            ax_col[0].plot(self.data.loc[self.data[basis_tag]!=0, basis_tag].index, 
-                           self.data.loc[self.data[basis_tag]!=0, basis_tag].values,
-                           linestyle='None', color=spacecraft_colors[self.spacecraft_name], marker='o', zorder=3)
+            ax_col[0].scatter(self.data.loc[self.data[basis_tag]!=0, basis_tag].index, 
+                              self.data.loc[self.data[basis_tag]!=0, basis_tag].values,
+                              color=self.plotparams.data_color, edgecolors='black',
+                              marker=self.plotparams.data_marker, s=32,
+                              zorder=3)
         
-            ax_col[0].plot(self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].index, 
-                           self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].values*2,
-                           linestyle='None', color=model_colors[model_name], marker='o', marker=model_symbol[model_name], 
-                           zorder=2)
+            ax_col[0].scatter(self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].index, 
+                              self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].values*2,
+                              color=self.plotparams.model_colors[model_name], edgecolors='black',
+                              marker=self.plotparams.model_markers[model_name], s=32,
+                              zorder=2)
             
             ax_col[0].set(ylim=[0.5,2.5], yticks=[1, 2], yticklabels=['Data', 'Model'])
             
-            ax_col[1].plot(self.data.index, self.data[metric_tag], 
-                           linestyle='None', color=spacecraft_colors[self.spacecraft_name])
-            ax_col[2].plot(self.data.index, self.data[metric_tag], 
-                           linestyle='None', color=spacecraft_colors[self.spacecraft_name])
+            ax_col[1].scatter(self.data.index, self.data[metric_tag], 
+                              color=self.plotparams.data_color, marker=self.plotparams.data_marker, s=1)
+            ax_col[2].scatter(self.data.index, self.data[metric_tag], 
+                              color=self.plotparams.data_color, marker=self.plotparams.data_marker, s=1)
             
             ax_col[1].plot(self.models[model_name].index, self.models[model_name][metric_tag],
-                           color=model_colors[model_name])
+                           color=self.plotparams.model_colors[model_name])
 
             temp_shift = self._shift_Models(time_delta_column='empirical_time_delta')
             #   !!!!! Make shift return just models, that's all it changes...
             ax_col[2].plot(temp_shift.index, temp_shift[(model_name, metric_tag)],
-                           color=model_colors[model_name])                                     
+                           color=self.plotparams.model_colors[model_name])                                     
                                                  
             connections_basis = []
             connections_metric = []
@@ -1054,15 +1064,22 @@ class Trajectory:
                 con = ConnectionPatch(xyA=pair3, xyB=pair4, 
                                      coordsA="data", coordsB="data",
                                      axesA=ax_col[1], axesB=ax_col[2],
-                                     color="gray", linewidth=1, linestyle=":", alpha=0.8, zorder=5)
+                                     color="gray", linewidth=1.5, linestyle=":", alpha=0.8, zorder=5)
                 ax_col[2].add_artist(con)
             
             lc = mc.LineCollection(connections_basis, 
-                                   linewidths=1, linestyles=":", color='gray', linewidth=2, zorder=1)
+                                   linewidths=1.5, linestyles=":", color='gray', linewidth=1.5, zorder=1)
             ax_col[0].add_collection(lc)
+        
+            ax_col[0].annotate('Model: {}'.format(model_name), 
+                        (0.5, 1), xytext=(0, 0.1), va='bottom', ha='center',
+                        xycoords='axes fraction', textcoords='offset fontsize')
         
         #axs[0,0].locator_params(nbins=3, axis='x')
         axs[0,0].xaxis.set_major_formatter(self.timeseries_formatter(axs[0,0].get_xticks()))
+        
+        fig.supxlabel('Date')
+        fig.supylabel(r'Solar Wind Flow Speed ($u_{mag}$) [km/s]')
 
         plt.show()
         return
