@@ -1003,8 +1003,9 @@ class Trajectory:
         
         fig, axs = plt.subplots(nrows=3, ncols=len(self.model_names), 
                                 figsize=(6, 4.5), height_ratios=[1,2,2],
-                                sharex=True, sharey=True)
-        plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.0)
+                                sharex=True, sharey='row')
+        plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, 
+                            wspace=0.1, hspace=0.0)
         
         for model_name, ax_col in zip(self.model_names, axs.T):
             
@@ -1014,51 +1015,55 @@ class Trajectory:
         
             ax_col[0].plot(self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].index, 
                            self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].values*2,
-                           linestyle='None', color=model_colors[model_name], marker='o', zorder=2)
-            
-            connecting_lines = []
-            for index, value in self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].items():
-                pair1 = (mdates.date2num(index), 2)
-                pair2 = (mdates.date2num(index + dt.timedelta(hours=self.models[model_name].loc[index, 'empirical_time_delta'])), 1)
-                
-                connecting_lines.append([pair1, pair2])
-            
-            lc = mc.LineCollection(connecting_lines, 
-                                   linewidths=1, linestyles=":", color='gray', linewidth=2, zorder=1)
-            ax_col[0].add_collection(lc)
+                           linestyle='None', color=model_colors[model_name], marker='o', marker=model_symbol[model_name], 
+                           zorder=2)
             
             ax_col[0].set(ylim=[0.5,2.5], yticks=[1, 2], yticklabels=['Data', 'Model'])
             
+            ax_col[1].plot(self.data.index, self.data[metric_tag], 
+                           linestyle='None', color=spacecraft_colors[self.spacecraft_name])
+            ax_col[2].plot(self.data.index, self.data[metric_tag], 
+                           linestyle='None', color=spacecraft_colors[self.spacecraft_name])
             
-        # tie_points = find_BinarizedTiePoints(alignment, query=False)
-        # connecting_lines = []
-        # for point in tie_points:
-        #     query_date = mdates.date2num(self.data.index[point[0]])
-        #     reference_date = mdates.date2num(shift_model_df.index[point[1]])
-        #     connecting_lines.append([(query_date, 1), (reference_date, 2)])
+            ax_col[1].plot(self.models[model_name].index, self.models[model_name][metric_tag],
+                           color=model_colors[model_name])
 
-        # lc = mc.LineCollection(connecting_lines, 
-        #                        linewidths=1, linestyles=":", color='gray', linewidth=2, zorder=1)
-        # axs[0].add_collection(lc)
-        
-        # axs[1].plot(self.data.index, self.data[metric_tag], color=spacecraft_colors[self.spacecraft_name])
-        # axs[1].plot(shift_model_df.index, shift_model_df[metric_tag], color=model_colors[model_name])
-        
-        # axs[2].plot(self.data.index, self.data[metric_tag], color=spacecraft_colors[self.spacecraft_name])
-        # axs[2].plot(shift_model_df.index, r_metric_warped,  color=model_colors[model_name])
-        
-        # for point in tie_points:
-        #     query_date = mdates.date2num(self.data.index[point[0]])
-        #     reference_date = mdates.date2num(shift_model_df.index[point[1]])
-        #     #shift_date = mdates.date2num(shift_model_df.index[point[1]] + dt.timedelta(hours=r_time_deltas[point[1]]))
+            temp_shift = self._shift_Models(time_delta_column='empirical_time_delta')
+            #   !!!!! Make shift return just models, that's all it changes...
+            ax_col[2].plot(temp_shift.index, temp_shift[(model_name, metric_tag)],
+                           color=model_colors[model_name])                                     
+                                                 
+            connections_basis = []
+            connections_metric = []
+            for index, value in self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].items():
+                
+                shift_index = index + dt.timedelta(hours=self.models[model_name].loc[index, 'empirical_time_delta'])
+                
+                pair1 = (mdates.date2num(index), 2)
+                pair2 = (mdates.date2num(shift_index), 1)
+                
+                #   For the shifted abcissa (y) value, just take the unshifted y value
+                #   Shifts only change x, not y, so the y value should not change
+                #   And this saves having to interpolate
+                pair3 = (mdates.date2num(index), self.models[model_name].loc[index, metric_tag])
+                pair4 = (mdates.date2num(shift_index), self.models[model_name].loc[index, metric_tag])
+
+                connections_basis.append([pair1, pair2])
+                connections_metric.append([pair3, pair4])
+                
+                con = ConnectionPatch(xyA=pair3, xyB=pair4, 
+                                     coordsA="data", coordsB="data",
+                                     axesA=ax_col[1], axesB=ax_col[2],
+                                     color="gray", linewidth=1, linestyle=":", alpha=0.8, zorder=5)
+                ax_col[2].add_artist(con)
             
-        #     xy_top = (reference_date, shift_model_df[metric_tag].iloc[point[1]])
-        #     xy_bottom = (query_date, r_metric_warped[point[0]])
-            
-        #     con = ConnectionPatch(xyA=xy_top, xyB=xy_bottom, 
-        #                           coordsA="data", coordsB="data",
-        #                           axesA=axs[1], axesB=axs[2], color="gray", linewidth=2, linestyle=":")
-        #     axs[2].add_artist(con)
+            lc = mc.LineCollection(connections_basis, 
+                                   linewidths=1, linestyles=":", color='gray', linewidth=2, zorder=1)
+            ax_col[0].add_collection(lc)
+        
+        #axs[0,0].locator_params(nbins=3, axis='x')
+        axs[0,0].xaxis.set_major_formatter(self.timeseries_formatter(axs[0,0].get_xticks()))
+
         plt.show()
         return
     
