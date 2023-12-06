@@ -555,6 +555,7 @@ def MMESH_run(data_dict, model_names):
             return (f - np.min(f))/(np.max(f)-np.min(f))
         #   Plug in the optimization equation
         traj0.optimize_Warp(optimization_eqn)
+        traj0.plot_OptimizedOffset('jumps', 'u_mag')
     
         traj0.plot_DynamicTimeWarping_Optimization()
         #traj0.plot_DynamicTimeWarping_TD()
