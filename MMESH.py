@@ -796,8 +796,8 @@ class Trajectory:
                     return abs(jw - diagj - constant_offset) <= window_size
                 
                 alignment = dtw.dtw(query, reference, keep_internals=True, 
-                                     step_pattern='symmetric2', open_end=False,
-                                     window_type=custom_window, window_args=window_args)
+                                    step_pattern='symmetric2', open_end=False,
+                                    window_type=custom_window, window_args=window_args)
                 #alignment.plot(type="threeway")
                 #alignment.plot(type='density')
                 
@@ -883,54 +883,55 @@ class Trajectory:
                     dtwa.plot_DTWViews(self.data, shift_model_df, shift, alignment, basis_tag, metric_tag,
                                   model_name = model_name, spacecraft_name = self.spacecraft_name)    
                 
-                #   New plotting function
-                import matplotlib.pyplot as plt
-                import matplotlib.dates as mdates
-                from matplotlib import collections  as mc
-                from matplotlib.patches import ConnectionPatch
-                
-                fig, axs = plt.subplots(nrows=3, height_ratios=[1,2,2], sharex=True)
-                
-                axs[0].plot(self.data.loc[self.data[basis_tag]!=0, basis_tag].index, 
-                            self.data.loc[self.data[basis_tag]!=0, basis_tag].values,
-                            linestyle='None', color=spacecraft_colors[self.spacecraft_name], marker='o', zorder=3)
-                
-                axs[0].plot(shift_model_df.loc[shift_model_df[basis_tag]!=0, basis_tag].index, 
-                            shift_model_df.loc[shift_model_df[basis_tag]!=0, basis_tag].values*2,
-                            linestyle='None', color=model_colors[model_name], marker='o', zorder=2)
-                
-                axs[0].set(ylim=[0.5,2.5], yticks=[1, 2], yticklabels=['Data', 'Model'])
-                
-                tie_points = find_BinarizedTiePoints(alignment, query=False)
-                connecting_lines = []
-                for point in tie_points:
-                    query_date = mdates.date2num(self.data.index[point[0]])
-                    reference_date = mdates.date2num(shift_model_df.index[point[1]])
-                    connecting_lines.append([(query_date, 1), (reference_date, 2)])
-
-                lc = mc.LineCollection(connecting_lines, 
-                                       linewidths=1, linestyles=":", color='gray', linewidth=2, zorder=1)
-                axs[0].add_collection(lc)
-                
-                axs[1].plot(self.data.index, self.data[metric_tag], color=spacecraft_colors[self.spacecraft_name])
-                axs[1].plot(shift_model_df.index, shift_model_df[metric_tag], color=model_colors[model_name])
-                
-                axs[2].plot(self.data.index, self.data[metric_tag], color=spacecraft_colors[self.spacecraft_name])
-                axs[2].plot(shift_model_df.index, r_metric_warped,  color=model_colors[model_name])
-                
-                for point in tie_points:
-                    query_date = mdates.date2num(self.data.index[point[0]])
-                    reference_date = mdates.date2num(shift_model_df.index[point[1]])
-                    #shift_date = mdates.date2num(shift_model_df.index[point[1]] + dt.timedelta(hours=r_time_deltas[point[1]]))
+                    #   New plotting function
+                    import matplotlib.pyplot as plt
+                    import matplotlib.dates as mdates
+                    from matplotlib import collections  as mc
+                    from matplotlib.patches import ConnectionPatch
                     
-                    xy_top = (reference_date, shift_model_df[metric_tag].iloc[point[1]])
-                    xy_bottom = (query_date, r_metric_warped[point[0]])
+                    fig, axs = plt.subplots(nrows=3, height_ratios=[1,2,2], sharex=True, figsize=(2, 4.5))
+                    plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.0)
                     
-                    con = ConnectionPatch(xyA=xy_top, xyB=xy_bottom, 
-                                          coordsA="data", coordsB="data",
-                                          axesA=axs[1], axesB=axs[2], color="gray", linewidth=2, linestyle=":")
-                    axs[2].add_artist(con)
-                plt.show()
+                    axs[0].plot(self.data.loc[self.data[basis_tag]!=0, basis_tag].index, 
+                                self.data.loc[self.data[basis_tag]!=0, basis_tag].values,
+                                linestyle='None', color=spacecraft_colors[self.spacecraft_name], marker='o', zorder=3)
+                    
+                    axs[0].plot(shift_model_df.loc[shift_model_df[basis_tag]!=0, basis_tag].index, 
+                                shift_model_df.loc[shift_model_df[basis_tag]!=0, basis_tag].values*2,
+                                linestyle='None', color=model_colors[model_name], marker='o', zorder=2)
+                    
+                    axs[0].set(ylim=[0.5,2.5], yticks=[1, 2], yticklabels=['Data', 'Model'])
+                    
+                    tie_points = find_BinarizedTiePoints(alignment, query=False)
+                    connecting_lines = []
+                    for point in tie_points:
+                        query_date = mdates.date2num(self.data.index[point[0]])
+                        reference_date = mdates.date2num(shift_model_df.index[point[1]])
+                        connecting_lines.append([(query_date, 1), (reference_date, 2)])
+    
+                    lc = mc.LineCollection(connecting_lines, 
+                                           linewidths=1, linestyles=":", color='gray', linewidth=2, zorder=1)
+                    axs[0].add_collection(lc)
+                    
+                    axs[1].plot(self.data.index, self.data[metric_tag], color=spacecraft_colors[self.spacecraft_name])
+                    axs[1].plot(shift_model_df.index, shift_model_df[metric_tag], color=model_colors[model_name])
+                    
+                    axs[2].plot(self.data.index, self.data[metric_tag], color=spacecraft_colors[self.spacecraft_name])
+                    axs[2].plot(shift_model_df.index, r_metric_warped,  color=model_colors[model_name])
+                    
+                    for point in tie_points:
+                        query_date = mdates.date2num(self.data.index[point[0]])
+                        reference_date = mdates.date2num(shift_model_df.index[point[1]])
+                        #shift_date = mdates.date2num(shift_model_df.index[point[1]] + dt.timedelta(hours=r_time_deltas[point[1]]))
+                        
+                        xy_top = (reference_date, shift_model_df[metric_tag].iloc[point[1]])
+                        xy_bottom = (query_date, r_metric_warped[point[0]])
+                        
+                        con = ConnectionPatch(xyA=xy_top, xyB=xy_bottom, 
+                                              coordsA="data", coordsB="data",
+                                              axesA=axs[1], axesB=axs[2], color="gray", linewidth=2, linestyle=":")
+                        axs[2].add_artist(con)
+                    plt.show()
                 
                 #   20231019: Alright, I'm 99% sure these are reporting shifts correctly
                 #   That is, a positive delta_t means you add that number to the model
@@ -967,7 +968,6 @@ class Trajectory:
             self.model_shifts[model_name] = times_df
             self.model_shift_stats[model_name] = stats_df
             
-        
         self.model_shift_method = 'dynamic'
         return self.model_shift_stats
     
@@ -994,7 +994,82 @@ class Trajectory:
         
         return
     
+    def plot_OptimizedOffset(self, basis_tag, metric_tag):
+        #   New plotting function
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        from matplotlib import collections  as mc
+        from matplotlib.patches import ConnectionPatch
+        
+        fig, axs = plt.subplots(nrows=3, ncols=len(self.model_names), 
+                                figsize=(6, 4.5), height_ratios=[1,2,2],
+                                sharex=True, sharey=True)
+        plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.0)
+        
+        for model_name, ax_col in zip(self.model_names, axs.T):
+            
+            ax_col[0].plot(self.data.loc[self.data[basis_tag]!=0, basis_tag].index, 
+                           self.data.loc[self.data[basis_tag]!=0, basis_tag].values,
+                           linestyle='None', color=spacecraft_colors[self.spacecraft_name], marker='o', zorder=3)
+        
+            ax_col[0].plot(self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].index, 
+                           self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].values*2,
+                           linestyle='None', color=model_colors[model_name], marker='o', zorder=2)
+            
+            connecting_lines = []
+            for index, value in self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].items():
+                pair1 = (mdates.date2num(index), 2)
+                pair2 = (mdates.date2num(index + dt.timedelta(hours=self.models[model_name].loc[index, 'empirical_time_delta'])), 1)
+                
+                connecting_lines.append([pair1, pair2])
+            
+            lc = mc.LineCollection(connecting_lines, 
+                                   linewidths=1, linestyles=":", color='gray', linewidth=2, zorder=1)
+            ax_col[0].add_collection(lc)
+            
+            ax_col[0].set(ylim=[0.5,2.5], yticks=[1, 2], yticklabels=['Data', 'Model'])
+            
+            
+        # tie_points = find_BinarizedTiePoints(alignment, query=False)
+        # connecting_lines = []
+        # for point in tie_points:
+        #     query_date = mdates.date2num(self.data.index[point[0]])
+        #     reference_date = mdates.date2num(shift_model_df.index[point[1]])
+        #     connecting_lines.append([(query_date, 1), (reference_date, 2)])
+
+        # lc = mc.LineCollection(connecting_lines, 
+        #                        linewidths=1, linestyles=":", color='gray', linewidth=2, zorder=1)
+        # axs[0].add_collection(lc)
+        
+        # axs[1].plot(self.data.index, self.data[metric_tag], color=spacecraft_colors[self.spacecraft_name])
+        # axs[1].plot(shift_model_df.index, shift_model_df[metric_tag], color=model_colors[model_name])
+        
+        # axs[2].plot(self.data.index, self.data[metric_tag], color=spacecraft_colors[self.spacecraft_name])
+        # axs[2].plot(shift_model_df.index, r_metric_warped,  color=model_colors[model_name])
+        
+        # for point in tie_points:
+        #     query_date = mdates.date2num(self.data.index[point[0]])
+        #     reference_date = mdates.date2num(shift_model_df.index[point[1]])
+        #     #shift_date = mdates.date2num(shift_model_df.index[point[1]] + dt.timedelta(hours=r_time_deltas[point[1]]))
+            
+        #     xy_top = (reference_date, shift_model_df[metric_tag].iloc[point[1]])
+        #     xy_bottom = (query_date, r_metric_warped[point[0]])
+            
+        #     con = ConnectionPatch(xyA=xy_top, xyB=xy_bottom, 
+        #                           coordsA="data", coordsB="data",
+        #                           axesA=axs[1], axesB=axs[2], color="gray", linewidth=2, linestyle=":")
+        #     axs[2].add_artist(con)
+        plt.show()
+        return
+    
     def shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000):
+        
+        result = _shift_Models(time_delta_column=time_delta_column, 
+                               time_delta_sigma_column=time_delta_sigma_column,
+                               n_mc=n_mc)
+        self._primary_df = result
+    
+    def _shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000):
         """
         Shifts models by the specified column, expected to contain delta times in hours.
         Shifted models are only valid during the interval where data is present,
@@ -1006,9 +1081,12 @@ class Trajectory:
         OVERWRITES CURRENT VALUES
         """
         import matplotlib.pyplot as plt
+        import copy
         
         #   We're going to try to do this all with interpolation, rather than 
         #   needing to shift the model dataframe by a constant first
+        
+        shifted_primary_df = copy.deepcopy(self._primary_df)
         
         for model_name in self.model_names:
             print(type(self.models[model_name].index[0]))
@@ -1059,10 +1137,10 @@ class Trajectory:
                     
                     col_shifted = shift_function(col.to_numpy('float64'))
                     
-                    self._primary_df.loc[:, (model_name, col_name)] = col_shifted[0]
-                    self._primary_df.loc[:, (model_name, col_name+'_sigma')] = col_shifted[1]
+                    shifted_primary_df.loc[:, (model_name, col_name)] = col_shifted[0]
+                    shifted_primary_df.loc[:, (model_name, col_name+'_sigma')] = col_shifted[1]
                     
-        return
+        return shifted_primary_df
     
     def ensemble(self, weights = None):
         """
