@@ -26,20 +26,18 @@ spacecraft_markers = {'Pioneer 10': 'o',
                       'Voyager 1' : 'o',
                       'Voyager 2' : 'o',
                       'Ulysses'   : 'o',
-                     ' Juno'      : 'o'}
+                      'Juno'      : 'o'}
 
 model_colors = {'Tao'    : '#C59FE5',
                 'HUXt'   : '#A0A5E4',
                 'SWMF-OH': '#98DBEB',
                 'MSWIM2D': '#A9DBCA',
-                'ENLIL'  : '#DCED96',
-                'ensemble': '#55FFFF'}
+                'ENLIL'  : '#DCED96'}
 model_markers = {'Tao'    : 'v',
                 'HUXt'   : '*',
                 'SWMF-OH': '^',
                 'MSWIM2D': 'd',
-                'ENLIL'  : 'h',
-                'ensemble': 'o'}
+                'ENLIL'  : 'h'}
 
 r_range = np.array((4.9, 5.5))  #  [4.0, 6.4]
 lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
@@ -259,14 +257,14 @@ def MMESH_run(data_dict, model_names):
         fig, ax = TD.init_TaylorDiagram(np.nanstd(traj0.data['u_mag']), fig=fig)
         for model_name in traj0.model_names:
             TD.plot_TaylorDiagram(traj0.models[model_name]['u_mag'].loc[traj0.data_index], traj0.data['u_mag'], ax=ax,
-                                  s=32, c='black', marker=model_symbols[model_name],
+                                  s=32, c='black', marker=traj0.plotparams.model_markers[model_name],
                                   label=r'{}'.format(model_name))
             ax.scatter(*constant_shift_dict[model_name],
-                       s=32, facecolors=model_colors[model_name], marker=model_symbols[model_name],
+                       s=32, facecolors=traj0.plotparams.model_colors[model_name], marker=traj0.plotparams.model_markers[model_name],
                        edgecolors='black', linewidths=0.5,
                        label=r'{} + Cons.'.format(model_name))
             ax.scatter(np.arccos(traj0.best_shifts[model_name]['r']), traj0.best_shifts[model_name]['stddev'],
-                       s=32, c=model_colors[model_name], marker=model_symbols[model_name],
+                       s=32, c=traj0.plotparams.model_colors[model_name], marker=traj0.plotparams.model_markers[model_name],
                        label=r'{} + DTW'.format(model_name))
             
         ax.legend(ncols=3, bbox_to_anchor=[0.0,-0.02,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
@@ -303,19 +301,20 @@ def MMESH_run(data_dict, model_names):
         #
     def plot_TemporalShifts_All_Total():
         fig, axs = plt.subplots(figsize=(3,4.5), nrows=len(m_traj.model_names), sharex=True, sharey=True)
-        plt.subplots_adjust(left=0.2, top=0.975, right=0.7, hspace=0.075)
+        plt.subplots_adjust(left=0.2, top=0.8, right=1.0, hspace=0.075)
         for i, model_name in enumerate(sorted(m_traj.model_names)):
             l = []
             c = []
             n = []
             for traj_name, traj in m_traj.trajectories.items():
                 l.append(traj.models[model_name].loc[traj.data_index, 'empirical_time_delta'])  #  Only when overlapping w/ data
-                c.append(spacecraft_colors[traj.spacecraft_name])
+                c.append(traj.plotparams.data_color)
                 n.append(traj.trajectory_name)
             
-            axs[i].hist(l, range=(-192, 192), bins=16,
-                    density=True,
-                    histtype='bar', stacked=True, label=n)
+            axs[i].hist(l, range=(-120, 120), bins=20,
+                        density=True,
+                        histtype='barstacked', stacked=True, label=n,
+                        color=c)
             axs[i].annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
                         (0,1), (1,-1), ha='left', va='center', 
                         xycoords='axes fraction', textcoords='offset fontsize')
@@ -325,8 +324,8 @@ def MMESH_run(data_dict, model_names):
         fig.supxlabel('Total Temporal Shifts [hours]')
         
         handles, labels = axs[0].get_legend_handles_labels()
-        fig.legend(handles, labels, ncols=1,
-                   bbox_to_anchor=[0.71, 0.8, 0.3, 0.5], loc='lower left',
+        fig.legend(handles, labels, ncols=2,
+                   bbox_to_anchor=[0.2, 0.8, 0.8, 0.2], loc='lower left',
                    mode="expand", borderaxespad=0.)
         
         plt.savefig('figures/Paper/' + 'TemporalShifts_All_Total.png', 
@@ -637,6 +636,9 @@ def MMESH_run(data_dict, model_names):
                                     prediction_starttime, prediction_stoptime, resolution='60Min')
         traj1.addModel(model_name, model)
         
+        traj1.plotparams.model_colors[model_name] = model_colors[model_name]  #  Optional
+        traj1.plotparams.model_markers[model_name] = model_markers[model_name]  #  Optional
+        
     traj1_backup =  copy.deepcopy(traj1)
 
     #   Add prediction Trajectory as simulcast
@@ -672,9 +674,9 @@ def MMESH_run(data_dict, model_names):
             axs[i].fill_between(model.index, 
                                 model['u_mag'] + model['u_mag_sigma'], 
                                 model['u_mag'] - model['u_mag_sigma'],
-                                alpha = 0.5, color=model_colors[model_name])
+                                alpha = 0.5, color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name])
         
-        axs[i].plot(model.index, model['u_mag'], color=model_colors[model_name])
+        axs[i].plot(model.index, model['u_mag'], color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name])
         
         #   Overplot the original model, skipping the ensemble
         if model_name in traj1_backup.model_names:
@@ -717,22 +719,22 @@ def MMESH_run(data_dict, model_names):
                 std.append(std_mc)
                 rmsd.append(rmsd_mc)
             
-            axs_new[0].plot(spacecraft.data.index, model['u_mag'].loc[spacecraft.data.index], color=model_colors[model_name])
+            axs_new[0].plot(spacecraft.data.index, model['u_mag'].loc[spacecraft.data.index], color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name])
             axs_new[0].fill_between(spacecraft.data.index, 
                                     model['u_mag'].loc[spacecraft.data.index] + model['u_mag_sigma'].loc[spacecraft.data.index], 
                                     model['u_mag'].loc[spacecraft.data.index] - model['u_mag_sigma'].loc[spacecraft.data.index],
-                                    alpha = 0.5, color=model_colors[model_name], zorder=1000)
+                                    alpha = 0.5, color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name], zorder=1000)
             
             (r_0, std_0), rmsd_0 = TD.find_TaylorStatistics(model['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
            
-            axs_new[1].hist(r, color=model_colors[model_name])
+            axs_new[1].hist(r, color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name])
             axs_new[1].axvline(r_0, color='black')
             
             r_sig, std_sig, rmsd_sig = np.std(r), np.std(std), np.std(rmsd)
             r, std, rmsd = np.mean(r), np.mean(std), np.mean(rmsd)
             
-            ax2.scatter(np.arccos(r), std, s=36, c=model_colors[model_name], 
-                        marker=model_symbols[model_name], label=model_name)
+            ax2.scatter(np.arccos(r), std, s=36, c=traj0.plotparams.model_colors[model_name], 
+                        marker=traj0.plotparams.model_markers[model_name], label=model_name)
             
             xerr = [[np.arccos(r-r_sig)-np.arccos(r)], [np.arccos(r)-np.arccos(r+r_sig)]]
             yerr = [[std_sig], [std_sig]]
