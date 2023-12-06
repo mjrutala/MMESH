@@ -21,13 +21,20 @@ spacecraft_colors = {'Pioneer 10': '#F6E680',
                      'Voyager 2' : '#FEAC86',
                      'Ulysses'   : '#E6877E',
                      'Juno'      : '#D8696D'}
+spacecraft_markers = {'Pioneer 10': 'o',
+                      'Pioneer 11': 'o',
+                      'Voyager 1' : 'o',
+                      'Voyager 2' : 'o',
+                      'Ulysses'   : 'o',
+                     ' Juno'      : 'o'}
+
 model_colors = {'Tao'    : '#C59FE5',
                 'HUXt'   : '#A0A5E4',
                 'SWMF-OH': '#98DBEB',
                 'MSWIM2D': '#A9DBCA',
                 'ENLIL'  : '#DCED96',
                 'ensemble': '#55FFFF'}
-model_symbols = {'Tao'    : 'v',
+model_markers = {'Tao'    : 'v',
                 'HUXt'   : '*',
                 'SWMF-OH': '^',
                 'MSWIM2D': 'd',
@@ -217,7 +224,7 @@ inputs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
 inputs['Juno_01']     = {'spacecraft_name':'Juno',
                           'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
 
-model_names = ['Tao', 'HUXt', 'ENLIL']
+model_names = ['ENLIL', 'HUXt', 'Tao']
 
 def MMESH_run(data_dict, model_names):
     import string
@@ -463,8 +470,6 @@ def MMESH_run(data_dict, model_names):
                     dpi=300)
         plt.plot()
     
-    
-    
     trajectories = []
     for key, val in data_dict.items():
         starttime = val['span'][0]
@@ -490,11 +495,17 @@ def MMESH_run(data_dict, model_names):
         traj0 = mmesh.Trajectory(name=key)
         traj0.addData(val['spacecraft_name'], spacecraft.data)
         
+        traj0.plotparams.data_color = spacecraft_colors[val['spacecraft_name']]  #  Optional
+        traj0.plotparams.data_marker = spacecraft_markers[val['spacecraft_name']]  #  Optional
+        
         #  Read models and add to trajectory
         for model_name in model_names:
             model = read_SWModel.choose(model_name, val['spacecraft_name'], 
                                         starttime, stoptime, resolution='60Min')
             traj0.addModel(model_name, model)
+            
+            traj0.plotparams.model_colors[model_name] = model_colors[model_name]  #  Optional
+            traj0.plotparams.model_markers[model_name] = model_markers[model_name]  #  Optional
         
         # =============================================================================
         #   Plot a Taylor Diagram of the unchanged models
