@@ -248,8 +248,10 @@ def MMESH_run(data_dict, model_names):
     
     plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
     
-    #   Encapsualted plotting calls for publishing
+    #basefilepath = '/Users/mrutala/projects/MMESH/paper/figures/'
+    basefilepath = '/Users/mrutala/presentations/AGU2023/Figures/'
     
+    #   Encapsualted plotting calls for publishing
     def plot_BothShiftMethodsTD():
         #   This TD initialization is not totally accurate
         #   Since we take the standard deviation after dropping NaNs in the 
@@ -570,8 +572,8 @@ def MMESH_run(data_dict, model_names):
         #   Plug in the optimization equation
         traj0.optimize_Warp(optimization_eqn)
         
-        filepath = 'Paper/Figures/OptimizedDTWOffset_{}_{}.png'.format(traj0.trajectory_name, '-'.join(traj0.model_names))
-        traj0.plot_OptimizedOffset('jumps', 'u_mag', filepath=filepath)
+        filename = basefilepath+'/OptimizedDTWOffset_{}_{}.png'.format(traj0.trajectory_name, '-'.join(traj0.model_names))
+        traj0.plot_OptimizedOffset('jumps', 'u_mag', filepath=filename, presentation=True)
     
         traj0.plot_DynamicTimeWarping_Optimization()
         #traj0.plot_DynamicTimeWarping_TD()
