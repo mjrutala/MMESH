@@ -1019,8 +1019,8 @@ class Trajectory:
         
         fig, axs = plt.subplots(nrows=3, ncols=len(model_names), 
                                 figsize=figsize, height_ratios=[1,2,2],
-                                sharex=True, sharey='row')
-        plt.subplots_adjust(left=0.1, bottom=0.2, right=0.99, top=0.95, 
+                                sharex=True, sharey='row', squeeze=False)
+        plt.subplots_adjust(left=0.1, bottom=0.2, right=0.95, top=0.95, 
                             wspace=0.1, hspace=0.0)
         
         for model_name, ax_col in zip(model_names, axs.T):
@@ -1079,10 +1079,30 @@ class Trajectory:
             lc = mc.LineCollection(connections_basis, 
                                    linewidths=1.5, linestyles=":", color='gray', linewidth=1.5, zorder=1)
             ax_col[0].add_collection(lc)
-        
+            
+            #   Plot Model and Data Sources, color-coded
+            label_box = dict(facecolor=self.plotparams.model_colors[model_name], 
+                                   edgecolor=self.plotparams.model_colors[model_name], 
+                                   pad=0.1, boxstyle='round')
             ax_col[0].annotate('Model: {}'.format(model_name), 
-                        (0.5, 1), xytext=(0, 0.1), va='bottom', ha='center',
-                        xycoords='axes fraction', textcoords='offset fontsize')
+                               (0.0, 1), xytext=(0, 0.1), va='bottom', ha='left',
+                               xycoords='axes fraction', textcoords='offset fontsize',
+                               bbox=label_bbox)
+            label_box = dict(facecolor=self.plotparams.data_color, 
+                                   edgecolor=self.plotparams.data_color, 
+                                   pad=0.1, boxstyle='round')
+            ax_col[0].annotate('Data: {}'.format(self.spacecraft_name),
+                               (1.0, 1), xytext=(0, 0.1), va='bottom', ha='right',
+                               xycoords='axes fraction', textcoords='offset fontsize',
+                               bbox=label_bbox)
+
+        
+        axs[1,-1].annotate('Original Model', 
+                           (1,0.5), xytext=(0.1,0), va='center', ha='left',
+                           xycoords='axes fraction', textcoords='offset fontsize')
+        axs[2,-1].annotate('DTW Shifted Model',
+                           (1,0.5), xytext=(0.1,0), va='center', ha='left',
+                           xycoords='axes fraction', textcoords='offset fontsize')
         
         #axs[0,0].locator_params(nbins=3, axis='x')
         axs[0,0].xaxis.set_major_formatter(self.timeseries_formatter(axs[0,0].get_xticks()))
