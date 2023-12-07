@@ -301,7 +301,7 @@ def MMESH_run(data_dict, model_names):
         #
     def plot_TemporalShifts_All_Total():
         fig, axs = plt.subplots(figsize=(3,4.5), nrows=len(m_traj.model_names), sharex=True, sharey=True)
-        plt.subplots_adjust(left=0.2, top=0.8, right=1.0, hspace=0.075)
+        plt.subplots_adjust(left=0.2, top=0.8, right=0.95, hspace=0.075)
         for i, model_name in enumerate(sorted(m_traj.model_names)):
             l = []
             c = []
@@ -311,10 +311,11 @@ def MMESH_run(data_dict, model_names):
                 c.append(traj.plotparams.data_color)
                 n.append(traj.trajectory_name)
             
+            #  Hacky
+            c = ['#5d9dd5', '#447abc', '#4034f4', '#75036b']
             axs[i].hist(l, range=(-120, 120), bins=20,
                         density=True,
-                        histtype='barstacked', stacked=True, label=n,
-                        color=c)
+                        histtype='barstacked', stacked=True, label=n, color=c)
             axs[i].annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
                         (0,1), (1,-1), ha='left', va='center', 
                         xycoords='axes fraction', textcoords='offset fontsize')
@@ -325,7 +326,7 @@ def MMESH_run(data_dict, model_names):
         
         handles, labels = axs[0].get_legend_handles_labels()
         fig.legend(handles, labels, ncols=2,
-                   bbox_to_anchor=[0.2, 0.8, 0.8, 0.2], loc='lower left',
+                   bbox_to_anchor=[0.2, 0.8, 0.75, 0.2], loc='lower left',
                    mode="expand", borderaxespad=0.)
         
         plt.savefig('figures/Paper/' + 'TemporalShifts_All_Total.png', 
@@ -427,7 +428,7 @@ def MMESH_run(data_dict, model_names):
         
         fig, axs = plt.subplots(figsize=(9,6), nrows=len(m_traj.model_names), ncols=len(m_traj.trajectories), 
                                 sharex='col', sharey='row', width_ratios=length_list, squeeze=False)
-        plt.subplots_adjust(bottom=0.1, left=0.075, top=0.975, right=0.975, 
+        plt.subplots_adjust(bottom=0.125, left=0.12, top=0.975, right=0.975, 
                             wspace=0.05, hspace=0.05)
         for i, (traj_name, traj) in enumerate(m_traj.trajectories.items()):
             for j, model_name in enumerate(traj.model_names):
@@ -464,7 +465,8 @@ def MMESH_run(data_dict, model_names):
         for i, ax in enumerate(axs.flatten()):
             ax.annotate('({})'.format(string.ascii_lowercase[i]),
                         (0,1), (1, -1), xycoords='axes fraction', textcoords='offset fontsize')
-        fig.supxlabel('Date')
+        fig.supxlabel('Date [DOY, DD MM, YYYY]')
+        fig.supylabel('Timing Uncertainty [hours]')
         fig.savefig('figures/Paper/' + 'TimeDelta_Grid_AllTrajectories.png', 
                     dpi=300)
         plt.plot()
@@ -565,7 +567,9 @@ def MMESH_run(data_dict, model_names):
             return (f - np.min(f))/(np.max(f)-np.min(f))
         #   Plug in the optimization equation
         traj0.optimize_Warp(optimization_eqn)
-        traj0.plot_OptimizedOffset('jumps', 'u_mag')
+        
+        filepath = 'Paper/Figures/OptimizedDTWOffset_{}_{}.png'.format(traj0.trajectory_name, '-'.join(traj0.model_names))
+        traj0.plot_OptimizedOffset('jumps', 'u_mag', filepath=filepath)
     
         traj0.plot_DynamicTimeWarping_Optimization()
         #traj0.plot_DynamicTimeWarping_TD()
@@ -654,6 +658,7 @@ def MMESH_run(data_dict, model_names):
     plot_TimeDelta_Grid_AllTrajectories()
     
     m_traj.cast_intervals['simulcast'].ensemble()
+
     #   Example plot of shifted models with errors
     #   And a TD
     
@@ -670,10 +675,10 @@ def MMESH_run(data_dict, model_names):
         axs[i].scatter(spacecraft.data.index, spacecraft.data['u_mag'],
                         color='black', marker='o', s=2)
         
-        if 'u_mag_sigma' in model.columns:
+        if 'u_mag_pos_unc' in model.columns:
             axs[i].fill_between(model.index, 
-                                model['u_mag'] + model['u_mag_sigma'], 
-                                model['u_mag'] - model['u_mag_sigma'],
+                                model['u_mag'] + model['u_mag_pos_unc'], 
+                                model['u_mag'] - model['u_mag_neg_unc'],
                                 alpha = 0.5, color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name])
         
         axs[i].plot(model.index, model['u_mag'], color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name])
@@ -694,6 +699,8 @@ def MMESH_run(data_dict, model_names):
     filename = 'Ensemble_TimeSeries_{}_{}-{}.png'.format(prediction_target.lower().capitalize(),
                                                          prediction_starttime.strftime('%Y%m%dT%H%M%S'),
                                                          prediction_stoptime.strftime('%Y%m%dT%H%M%S'))
+    fig.supxlabel('Date [YYYY-MM]')
+    fig.supylabel(r'Solar Wind Flow Speed $|u_{SW}| [km/s]$')
     fig.savefig('figures/Paper/' + filename, 
                 dpi=300)
     
@@ -709,43 +716,59 @@ def MMESH_run(data_dict, model_names):
             
             fig_new, axs_new = plt.subplots(nrows=2, height_ratios=[2,1])
             
-            for i_mc in range(n_mc):
-                y1 = rng.normal(model['u_mag'].loc[spacecraft.data.index], model['u_mag_sigma'].loc[spacecraft.data.index])
-                y2 = spacecraft.data['u_mag']
-                axs_new[0].plot(spacecraft.data.index, y1, alpha=0.01, color='gray')
-                axs_new[0].scatter(spacecraft.data.index, y2, color='black', marker='o', s=4)
-                (r_mc, std_mc), rmsd_mc = TD.find_TaylorStatistics(y1, y2)
-                r.append(r_mc)
-                std.append(std_mc)
-                rmsd.append(rmsd_mc)
+            # for i_mc in range(n_mc):
+            #     y1 = rng.normal(model['u_mag'].loc[spacecraft.data.index], model['u_mag_sigma'].loc[spacecraft.data.index])
+            #     y2 = spacecraft.data['u_mag']
+            #     axs_new[0].plot(spacecraft.data.index, y1, alpha=0.01, color='gray')
+            #     axs_new[0].scatter(spacecraft.data.index, y2, color='black', marker='o', s=4)
+            #     (r_mc, std_mc), rmsd_mc = TD.find_TaylorStatistics(y1, y2)
+            #     r.append(r_mc)
+            #     std.append(std_mc)
+            #     rmsd.append(rmsd_mc)
             
             axs_new[0].plot(spacecraft.data.index, model['u_mag'].loc[spacecraft.data.index], color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name])
             axs_new[0].fill_between(spacecraft.data.index, 
-                                    model['u_mag'].loc[spacecraft.data.index] + model['u_mag_sigma'].loc[spacecraft.data.index], 
-                                    model['u_mag'].loc[spacecraft.data.index] - model['u_mag_sigma'].loc[spacecraft.data.index],
+                                    model['u_mag'].loc[spacecraft.data.index] + model['u_mag_pos_unc'].loc[spacecraft.data.index], 
+                                    model['u_mag'].loc[spacecraft.data.index] - model['u_mag_neg_unc'].loc[spacecraft.data.index],
                                     alpha = 0.5, color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name], zorder=1000)
             
             (r_0, std_0), rmsd_0 = TD.find_TaylorStatistics(model['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
-           
-            axs_new[1].hist(r, color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name])
-            axs_new[1].axvline(r_0, color='black')
             
-            r_sig, std_sig, rmsd_sig = np.std(r), np.std(std), np.std(rmsd)
-            r, std, rmsd = np.mean(r), np.mean(std), np.mean(rmsd)
+            #  Baseline, compared to unshifted models
+            if model_name != 'ensemble':
+                model_bl = traj1_backup.models[model_name]
+                (r_bl, std_bl), rmsd_bl = TD.find_TaylorStatistics(model_bl['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
             
-            ax2.scatter(np.arccos(r), std, s=36, c=traj0.plotparams.model_colors[model_name], 
+            print('----------------------------------------')
+            print(model_name)
+            print('r       = {}'.format(r_0))
+            print('std_dev = {}'.format(std_0))
+            print('rmsd    = {}'.format(rmsd_0))
+            if model_name != 'ensemble':
+                print('Compared to unshifted baselines of:')
+                print('r       = {}'.format(r_bl))
+                print('std_dev = {}'.format(std_bl))
+                print('rmsd    = {}'.format(rmsd_bl))
+            
+            # axs_new[1].hist(r, color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name])
+            # axs_new[1].axvline(r_0, color='black')
+            
+            # r_sig, std_sig, rmsd_sig = np.std(r), np.std(std), np.std(rmsd)
+            # r, std, rmsd = np.mean(r), np.mean(std), np.mean(rmsd)
+            
+            ax2.scatter(np.arccos(r_0), std_0, s=36, c=traj0.plotparams.model_colors[model_name], 
                         marker=traj0.plotparams.model_markers[model_name], label=model_name)
             
-            xerr = [[np.arccos(r-r_sig)-np.arccos(r)], [np.arccos(r)-np.arccos(r+r_sig)]]
-            yerr = [[std_sig], [std_sig]]
+            # xerr = [[np.arccos(r-r_sig)-np.arccos(r)], [np.arccos(r)-np.arccos(r+r_sig)]]
+            # yerr = [[std_sig], [std_sig]]
             
             # ax2.errorbar(np.arccos(r), std, xerr=xerr, yerr=yerr,
             #              color=model_colors[model_name], alpha=0.6)
-            print('For {}: r = {} +/- {}, std = {} +/- {}'.format(model_name,
-                                                                  r, r_sig,
-                                                                  std, std_sig))
-            print('In radians, np.arccos(r) is: {} + {} - {}'.format(np.arccos(r), 
-                                                                     xerr[1], xerr[0]))
+            # print('For {}: r = {} +/- {}, std = {} +/- {}'.format(model_name,
+            #                                                       r, r_sig,
+            #                                                       std, std_sig))
+            # print('In radians, np.arccos(r) is: {} + {} - {}'.format(np.arccos(r), 
+            #                                                          xerr[1], xerr[0]))
             
             ax2.set_rlim([0, 50])
             
