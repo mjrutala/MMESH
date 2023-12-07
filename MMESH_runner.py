@@ -224,6 +224,8 @@ inputs['Juno_01']     = {'spacecraft_name':'Juno',
 
 model_names = ['ENLIL', 'HUXt', 'Tao']
 
+
+
 def MMESH_run(data_dict, model_names):
     import string
     
@@ -232,17 +234,17 @@ def MMESH_run(data_dict, model_names):
     import MMESH as mmesh
     import MMESH_context as mmesh_c
     import numpy as np
-    import scipy.stats as scstats
-    import scipy.optimize as optimize
-    import matplotlib.pyplot as plt
+    #import scipy.stats as scstats
+    #import scipy.optimize as optimize
+    #import matplotlib.pyplot as plt
     import plot_TaylorDiagram as TD
     import copy
     
-    import string
+    #import string
     
-    from sklearn.linear_model import LinearRegression
+    #from sklearn.linear_model import LinearRegression
     
-    from numpy.polynomial import Polynomial
+    #from numpy.polynomial import Polynomial
     
     plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
     
