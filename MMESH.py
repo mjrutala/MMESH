@@ -371,7 +371,7 @@ class Trajectory:
         
         self.metric_tags = ['u_mag', 'p_dyn', 'n_tot', 'B_mag']
         self.variables =  ['u_mag', 'n_tot', 'p_dyn', 'B_mag']
-        self.variable_sigmas = ['u_mag_sigma', 'n_tot_sigma', 'p_dyn_sigma', 'B_mag_sigma']
+        self.variables_unc = [var+'_pos_unc' for var in self.variables] + [var+'_neg_unc' for var in self.variables]
         
         self.trajectory_name = name
         
@@ -453,7 +453,7 @@ class Trajectory:
     @models.setter
     def models(self, df):
         int_columns = list(set(df.columns).intersection(self.variables))
-        int_columns.extend(list(set(df.columns).intersection(self.variable_sigmas)))
+        int_columns.extend(list(set(df.columns).intersection(self.variables_unc)))
         df = df[int_columns]
         
         if self._primary_df.empty:
@@ -1001,20 +1001,29 @@ class Trajectory:
         
         return
     
-    def plot_OptimizedOffset(self, basis_tag, metric_tag):
+    def plot_OptimizedOffset(self, basis_tag, metric_tag, filepath='', presentation=False):
         #   New plotting function
         import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
         from matplotlib import collections  as mc
         from matplotlib.patches import ConnectionPatch
         
-        fig, axs = plt.subplots(nrows=3, ncols=len(self.model_names), 
-                                figsize=(6, 4.5), height_ratios=[1,2,2],
+        #   Shrink size for presentations to increase label size
+        if presentation:
+            figsize = (4, 3)
+        else:
+            figsize = (6, 4.5)
+        
+        #   Optionally, choose which models get plotted
+        model_names = ['HUXt']
+        
+        fig, axs = plt.subplots(nrows=3, ncols=len(model_names), 
+                                figsize=figsize, height_ratios=[1,2,2],
                                 sharex=True, sharey='row')
         plt.subplots_adjust(left=0.1, bottom=0.2, right=0.99, top=0.95, 
                             wspace=0.1, hspace=0.0)
         
-        for model_name, ax_col in zip(self.model_names, axs.T):
+        for model_name, ax_col in zip(model_names, axs.T):
             
             ax_col[0].scatter(self.data.loc[self.data[basis_tag]!=0, basis_tag].index, 
                               self.data.loc[self.data[basis_tag]!=0, basis_tag].values,
@@ -1080,7 +1089,8 @@ class Trajectory:
         
         fig.supxlabel('Date')
         fig.supylabel(r'Solar Wind Flow Speed ($u_{mag}$) [km/s]')
-
+        
+        fig.savefig(filepath, dpi=300)
         plt.show()
         return
     
@@ -1130,11 +1140,12 @@ class Trajectory:
             
             #   Now we're shifting based on the ordinate, not the abcissa,
             #   so we have time - time_deltas, not +
-            def shift_function(arr):
+            def shift_function(arr, col_name=''):
                 #   Use the ORIGINAL time with this, not time + delta
                 if (time_delta_sigmas == 0.).all():
                     arr_shifted = np.interp(time - time_deltas, time, arr)
-                    arr_shifted_sigma = arr_shifted * 0.
+                    arr_shifted_pos_unc = arr_shifted * 0.
+                    arr_shifted_neg_unc = arr_shifted * 0.
                 else:
                     arr_perturb_list = []
                     r = np.random.default_rng()
@@ -1144,8 +1155,34 @@ class Trajectory:
 
                     arr_shifted = np.mean(arr_perturb_list, axis=0)
                     arr_shifted_sigma = np.std(arr_perturb_list, axis=0)
-                output = (arr_shifted, arr_shifted_sigma)
+                    
+                    arr_shifted = np.percentile(arr_perturb_list, 50, axis=0)
+                    arr_shifted_pos_unc = np.percentile(arr_perturb_list, 84, axis=0) - arr_shifted
+                    arr_shifted_neg_unc = arr_shifted - np.percentile(arr_perturb_list, 16, axis=0)
+                    
+                    # if col_name == 'u_mag':
+                    #     fig, ax = plt.subplots()
+                    #     ax.hist(np.array(arr_perturb_list)[:,0], range=[100, 900], bins=800)
+                    #     ax.axvline(arr_shifted[0], color='black')
+                    #     ax.axvline(arr_shifted[0] + arr_shifted_sigma[0], color='gray')
+                    #     ax.axvline(arr_shifted[0] - arr_shifted_sigma[0], color='gray')
+                output = (arr_shifted, arr_shifted_pos_unc, arr_shifted_neg_unc)
                 return output
+            
+            # def test_shift_function(arr):
+            #     #   Use the ORIGINAL time with this, not time + delta
+            #     if (time_delta_sigmas == 0.).all():
+            #         arr_shifted = np.interp(time - time_deltas, time, arr)
+            #         arr_shifted_sigma = arr_shifted * 0.
+            #     else:
+            #         arr_shifted = np.interp(time - time_deltas, time, arr)
+                    
+            #         arr_shifted_plus = np.interp(time - (time_deltas + time_delta_sigmas), time, arr)
+            #         arr_shifted_minus = np.interp(time - (time_deltas - time_delta_sigmas), time, arr)
+                    
+            #         (arr_shifted_plus - arr_shifted_minus)
+            #     output = (arr_shifted, arr_shifted_sigma)
+            #     return output
             
             #self.best_shift_functions[model_name] = shift_function
             
@@ -1155,10 +1192,11 @@ class Trajectory:
                 #if len(col.dropna() > 0) and (col_name in self.variables):
                 if (col_name in self.variables):
                     
-                    col_shifted = shift_function(col.to_numpy('float64'))
+                    col_shifted = shift_function(col.to_numpy('float64'), col_name=col_name)
                     
                     shifted_primary_df.loc[:, (model_name, col_name)] = col_shifted[0]
-                    shifted_primary_df.loc[:, (model_name, col_name+'_sigma')] = col_shifted[1]
+                    shifted_primary_df.loc[:, (model_name, col_name+'_pos_unc')] = col_shifted[1]
+                    shifted_primary_df.loc[:, (model_name, col_name+'_neg_unc')] = col_shifted[2]
                     
         return shifted_primary_df
     
@@ -1214,16 +1252,17 @@ class Trajectory:
         weights[np.where(weights > 0)] = 1.0/weights[np.where(weights > 0)]
         
         #   
-        variable_sigmas = [v+'_sigma' for v in self.variables]
+        variables_unc = [v+'_pos_unc' for v in self.variables]
+        variables_unc.extend([v+'_neg_unc' for v in self.variables])
         
         partials_list = []
         for model_name in self.model_names:
             df = self.models[model_name][self.variables].mul(weights, fill_value=0.)
             
-            
-            if set(variable_sigmas).issubset(set(self.models[model_name].columns)): #   If sigmas get added from start, get rid of this bit
+            if set(variables_unc).issubset(set(self.models[model_name].columns)): #   If sigmas get added from start, get rid of this bit
                 
-                df[variable_sigmas] = self.models[model_name][variable_sigmas].mul(weights, fill_value=0.)
+                weights_for_unc = np.concatenate((weights, weights), axis=1)
+                df[variables_unc] = self.models[model_name][variables_unc].mul(weights_for_unc, fill_value=0.)
                 
             partials_list.append(df)
         
@@ -1233,12 +1272,12 @@ class Trajectory:
         #   Sum weighted variables, and RSS weighted errors
         for partial in partials_list:
             ensemble.loc[:, self.variables] += partial.loc[:, self.variables]
-            ensemble.loc[:, variable_sigmas] += partial.loc[:, variable_sigmas]**2.
+            ensemble.loc[:, variables_unc] += partial.loc[:, variables_unc]**2.
             
-        ensemble.loc[:, variable_sigmas] = np.sqrt(ensemble.loc[:, variable_sigmas])
+        ensemble.loc[:, variables_unc] = np.sqrt(ensemble.loc[:, variables_unc])
         #   !!!! This doesn't add error properly
         # ensemble = reduce(lambda a,b: a.add(b, fill_value=0.), partials_list)
-        
+
         self.addModel('ensemble', ensemble)
         
     # =============================================================================
@@ -1599,19 +1638,20 @@ class Trajectory:
                 tick_str += '\n' + tick.strftime('%d %b')
                 tick_str += '\n' + tick.strftime('%Y')
             
-            try:
-                if (tick.month > ticks[pos-1].month):
+            if (pos != 0):
+                try:
+                    if (tick.month > ticks[pos-1].month):
+                        tick_str += '\n' + tick.strftime('%d %b')
+                    
+                except:
+                    print('FAILED')
+                    print(tick.month)
+                    print(pos-1)
+                    print(ticks[pos-1])
+                   
+                if (tick.year > ticks[pos-1].year):
                     tick_str += '\n' + tick.strftime('%d %b')
-                
-            except:
-                print('FAILED')
-                print(tick.month)
-                print(pos-1)
-                print(ticks[pos-1])
-               
-            if (tick.year > ticks[pos-1].year):
-                tick_str += '\n' + tick.strftime('%d %b')
-                tick_str += '\n' + tick.strftime('%Y')
+                    tick_str += '\n' + tick.strftime('%Y')
            
             return tick_str
         return date_formatter
