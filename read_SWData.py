@@ -118,37 +118,38 @@ def get_fromCDAWeb(spacecraft, basedir='',
 def make_DerezzedData(*dfs, resolution=None):
     
     result_list = []
-    match resolution:
-        case None:
-            #  Do not resample
-            for df in dfs:
-                result_list.append(df)
-        
-        case str():
-            #  As long as the input is a string, use resample
-            for df in dfs:
-                resample = df.resample(resolution).mean()
-                result_list.append(resample)
-            
-        case (float() | int()):
-            #  Find the t_delta at percentile given by resolution
-            #  The find the largest such t_delta among all DataFrames
-            #  And scale to that
-            percentiles = []
-            for df in dfs:
-                if len(df) > 0:
-                    df['t_delta'] = (df.index.to_series().shift(-1) - 
-                                    df.index.to_series()).dt.total_seconds()
-                    percentiles.append(np.nanpercentile(df['t_delta'], resolution))
-                
-            resolution = np.max(percentiles)
-            
-            for df in dfs:
-                if len(df) > 0:
-                    df = df.resample('{:.0f}s'.format(resolution)).mean()
-                    df = df.drop(['t_delta'], axis='columns')
-                    result_list.append(df)
     
+    for df in dfs:
+        if isinstance(df.index, pd.DatetimeIndex):
+        
+            match resolution:
+                case None:
+                    #  Do not resample
+                    result_list.append(df)
+                
+                case str():
+                    #  As long as the input is a string, use resample
+                    resample = df.resample(resolution).mean()
+                    result_list.append(resample)
+                    
+                case (float() | int()):
+                    #  Find the t_delta at percentile given by resolution
+                    #  The find the largest such t_delta among all DataFrames
+                    #  And scale to that
+                    percentiles = []
+                    if len(df) > 0:
+                        df['t_delta'] = (df.index.to_series().shift(-1) - 
+                                        df.index.to_series()).dt.total_seconds()
+                        percentiles.append(np.nanpercentile(df['t_delta'], resolution))
+                        
+                    res = np.max(percentiles)
+                    if len(df) > 0:
+                        df = df.resample('{:.0f}s'.format(res)).mean()
+                        df = df.drop(['t_delta'], axis='columns')
+                        result_list.append(df)
+        else:
+            result_list.append(df)
+            
     result = tuple(result_list)
     if len(result) == 1: result = result[0]
     return result      
