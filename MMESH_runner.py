@@ -14,6 +14,7 @@ import spacecraftdata
 import read_SWModel
 import matplotlib.pyplot as plt
 
+plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
 
 spacecraft_colors = {'Pioneer 10': '#F6E680',
                      'Pioneer 11': '#FFD485',
@@ -222,11 +223,11 @@ inputs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
 inputs['Juno_01']     = {'spacecraft_name':'Juno',
                           'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
 
-model_names = ['ENLIL', 'HUXt', 'Tao']
+model_names = ['ENLIL', 'HUXt', 'Tao']  #  
 
 
 
-def MMESH_run(data_dict, model_names):
+def MMESH_run(data_dict, model_names, presentation=False):
     import string
     
     import sys
@@ -245,8 +246,6 @@ def MMESH_run(data_dict, model_names):
     #from sklearn.linear_model import LinearRegression
     
     #from numpy.polynomial import Polynomial
-    
-    plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
     
     #basefilepath = '/Users/mrutala/projects/MMESH/paper/figures/'
     basefilepath = '/Users/mrutala/presentations/AGU2023/Figures/'
@@ -316,7 +315,7 @@ def MMESH_run(data_dict, model_names):
                 n.append(traj.trajectory_name)
             
             #  Hacky
-            c = ['#5d9dd5', '#447abc', '#4034f4', '#75036b']
+            c = ['#5d9dd5', '#447abc', '#4034f4', '#75036b'][0:len(m_traj.trajectories)]
             axs[i].hist(l, range=(-120, 120), bins=20,
                         density=True,
                         histtype='barstacked', stacked=True, label=n, color=c)
@@ -415,7 +414,7 @@ def MMESH_run(data_dict, model_names):
                     dpi=300)
         plt.show()
     
-    def plot_TimeDelta_Grid_AllTrajectories():
+    def plot_TimeDelta_Grid_AllTrajectories(presentation=False, filepath=''):
         """
         Plot the empirical time deltas, and the fits to each
 
@@ -429,13 +428,18 @@ def MMESH_run(data_dict, model_names):
         length_list = []
         for traj_name, traj in m_traj.trajectories.items():
             length_list.append(len(traj.data))
+            figsize = traj.plotparams.figsize
+            adjustments = traj.plotparams.adjustments
+            presentation_mode = traj.presentationmode
         
-        fig, axs = plt.subplots(figsize=(9,6), nrows=len(m_traj.model_names), ncols=len(m_traj.trajectories), 
+        #m_traj_model_names = m_traj.model_names
+        m_traj_model_names = ['Tao']  #  OVERRIDE
+        
+        fig, axs = plt.subplots(figsize=figsize, nrows=len(m_traj_model_names), ncols=len(m_traj.trajectories), 
                                 sharex='col', sharey='row', width_ratios=length_list, squeeze=False)
-        plt.subplots_adjust(bottom=0.125, left=0.12, top=0.975, right=0.975, 
-                            wspace=0.05, hspace=0.05)
+        plt.subplots_adjust(**adjustments)
         for i, (traj_name, traj) in enumerate(m_traj.trajectories.items()):
-            for j, model_name in enumerate(traj.model_names):
+            for j, model_name in enumerate(m_traj_model_names):
                 
                 axs[j,i].plot(m_traj.nowcast_dict[model_name].index, 
                               m_traj.nowcast_dict[model_name]['mean'], color='C0')
@@ -449,9 +453,27 @@ def MMESH_run(data_dict, model_names):
                                  traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
                                  color='black', marker='o', s=4)
                 
-                if i == 0:
-                    axs[j,i].set_ylabel(model_name)
+                axs[j,i].axhline(0, linestyle='--', color='gray', alpha=0.6, zorder=-1, linewidth=1)
                 
+                if j == 0:
+                    label_bbox = dict(facecolor=traj.plotparams.data_color, 
+                                      edgecolor=traj.plotparams.data_color, 
+                                      pad=0.1, boxstyle='round')
+                    axs[j,i].annotate('{}'.format(traj.spacecraft_name),
+                                      (0.5, 1), xytext=(0, 0.1), va='bottom', ha='center',
+                                      xycoords='axes fraction', textcoords='offset fontsize',
+                                      bbox=label_bbox)
+                    
+                if i == len(m_traj.trajectories)-1:
+                    #axs[j,i].set_ylabel(model_name)
+                    label_bbox = dict(facecolor=traj.plotparams.model_colors[model_name], 
+                                      edgecolor=traj.plotparams.model_colors[model_name], 
+                                      pad=0.1, boxstyle='round')
+                    axs[j,i].annotate('{}'.format(model_name),
+                                      (1.0, 0.5), xytext=(0.3, 0), va='center', ha='left',
+                                      xycoords='axes fraction', textcoords='offset fontsize',
+                                      rotation='vertical', bbox=label_bbox)
+                    
                 # axs[j,i].set_xlim(traj.models[model_name].index[0], 
                 #                   traj.models[model_name].index[-1])
                 
@@ -464,14 +486,16 @@ def MMESH_run(data_dict, model_names):
             axs[0,i].xaxis.set_minor_locator(mdates.DayLocator(interval=subtick_interval))
             
             #axs[0,i].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
+            axs[0,i].set_xticks(axs[0,i].get_xticks()[::2])
             axs[0,i].xaxis.set_major_formatter(traj.timeseries_formatter(axs[0,i].get_xticks()))
                 
-        for i, ax in enumerate(axs.flatten()):
-            ax.annotate('({})'.format(string.ascii_lowercase[i]),
-                        (0,1), (1, -1), xycoords='axes fraction', textcoords='offset fontsize')
+        if not presentation_mode:
+            for i, ax in enumerate(axs.flatten()):
+                ax.annotate('({})'.format(string.ascii_lowercase[i]),
+                            (0,1), (1, -1), xycoords='axes fraction', textcoords='offset fontsize')
         fig.supxlabel('Date [DOY, DD MM, YYYY]')
         fig.supylabel('Timing Uncertainty [hours]')
-        fig.savefig('figures/Paper/' + 'TimeDelta_Grid_AllTrajectories.png', 
+        fig.savefig(filepath + 'TimeDelta_Grid_AllTrajectories.png', 
                     dpi=300)
         plt.plot()
     
@@ -507,11 +531,14 @@ def MMESH_run(data_dict, model_names):
         for model_name in model_names:
             model = read_SWModel.choose(model_name, val['spacecraft_name'], 
                                         starttime, stoptime, resolution='60Min')
+            
             traj0.addModel(model_name, model)
             
             traj0.plotparams.model_colors[model_name] = model_colors[model_name]  #  Optional
             traj0.plotparams.model_markers[model_name] = model_markers[model_name]  #  Optional
         
+        if presentation: 
+            traj0.set_PresentationMode()
         # =============================================================================
         #   Plot a Taylor Diagram of the unchanged models
         # =============================================================================
@@ -558,7 +585,7 @@ def MMESH_run(data_dict, model_names):
         smoothing_widths = traj0.optimize_ForBinarization('u_mag', threshold=1.05)  
         traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3) #  !!!! sigma value can be changed
         
-        traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
+        traj0.plot_SingleTimeseries('u_mag', starttime, stoptime, filepath=basefilepath)
         traj0.plot_SingleTimeseries('jumps', starttime, stoptime)
         
         #   Calculate a whole host of statistics
@@ -625,13 +652,13 @@ def MMESH_run(data_dict, model_names):
     
     #   Set up the prediction interval
     #original_spantime = stoptime - starttime
-    prediction_starttime = dt.datetime(2016, 5, 22)  #  starttime - original_spantime
-    prediction_stoptime = dt.datetime(2016, 11, 1)  #  stoptime + original_spantime
-    prediction_target = 'Juno'
+    prediction_starttime = dt.datetime(2018, 1, 1)  #  starttime - original_spantime
+    prediction_stoptime = dt.datetime(2019, 1, 1)  #  stoptime + original_spantime
+    prediction_target = 'Jupiter' # 'Juno'
     
     #  Initialize a trajectory class for the predictions
     traj1 = mmesh.Trajectory()
-    
+    traj1.set_PresentationMode()
     fullfilepath = mmesh_c.make_PlanetaryContext_CSV(prediction_target, 
                                                      prediction_starttime, 
                                                      prediction_stoptime, 
@@ -659,7 +686,7 @@ def MMESH_run(data_dict, model_names):
     
     m_traj.cast_Models(with_error=True)
     
-    plot_TimeDelta_Grid_AllTrajectories()
+    plot_TimeDelta_Grid_AllTrajectories(presentation=True, filepath=basefilepath)
     
     m_traj.cast_intervals['simulcast'].ensemble()
 
@@ -671,7 +698,9 @@ def MMESH_run(data_dict, model_names):
     spacecraft = spacecraftdata.SpacecraftData('Juno')
     spacecraft.read_processeddata(prediction_starttime, prediction_stoptime, resolution='60Min')
     
-    fig, axs = plt.subplots(nrows=len(m_traj.cast_intervals['simulcast'].model_names), sharex=True)
+    fig, axs = plt.subplots(figsize=m_traj.cast_intervals['simulcast'].plotparams.figsize,
+                            nrows=len(m_traj.cast_intervals['simulcast'].model_names), sharex=True)
+    plt.subplots_adjust(**m_traj.cast_intervals['simulcast'].plotparams.adjustments)
     
     for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
         model = m_traj.cast_intervals['simulcast'].models[model_name]
@@ -683,18 +712,25 @@ def MMESH_run(data_dict, model_names):
             axs[i].fill_between(model.index, 
                                 model['u_mag'] + model['u_mag_pos_unc'], 
                                 model['u_mag'] - model['u_mag_neg_unc'],
-                                alpha = 0.5, color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name])
+                                alpha = 0.5, color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name],
+                                linewidth=0.5)
         
-        axs[i].plot(model.index, model['u_mag'], color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name])
+        axs[i].plot(model.index, model['u_mag'], color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name],
+                    linewidth=1.5)
         
         #   Overplot the original model, skipping the ensemble
         if model_name in traj1_backup.model_names:
             
             axs[i].plot(traj1_backup.models[model_name].index, 
                         traj1_backup.models[model_name]['u_mag'], 
-                        color='gray')
+                        color='gray', linewidth=1, alpha=0.8)
         
-        axs[i].annotate(model_name, (0,1), (1,-1), xycoords='axes fraction', textcoords='offset fontsize')
+        label_bbox = dict(facecolor=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name], 
+                          edgecolor=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name], 
+                          pad=0.1, boxstyle='round')
+        axs[i].annotate(model_name, (1,0.5), (0.2,0), va='center', ha='left',
+                        xycoords='axes fraction', textcoords='offset fontsize',
+                        bbox = label_bbox, rotation='vertical')
     
         (r, std), rmsd = TD.find_TaylorStatistics(model['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
 
@@ -705,11 +741,15 @@ def MMESH_run(data_dict, model_names):
                                                          prediction_stoptime.strftime('%Y%m%dT%H%M%S'))
     fig.supxlabel('Date [YYYY-MM]')
     fig.supylabel(r'Solar Wind Flow Speed $|u_{SW}| [km/s]$')
-    fig.savefig('figures/Paper/' + filename, 
+    fig.savefig(basefilepath + filename, 
                 dpi=300)
     
     def plot_EnsembleTD_DTWMLR():
-        fig2, ax2 = TD.init_TaylorDiagram(np.std(spacecraft.data['u_mag']))
+        fig2 = plt.figure(figsize=m_traj.cast_intervals['simulcast'].plotparams.figsize)
+        plt.subplots_adjust(left=0.35, right=0.9, bottom=0.15, top=0.9)
+        fig2, ax2 = TD.init_TaylorDiagram(np.std(spacecraft.data['u_mag']), fig=fig2,
+                                          half=True, r_label=r'$\sigma_{u_{SW}}$ [km/s]',
+                                          theta_label=r'Pearson $r$')
         
         for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
             model = m_traj.cast_intervals['simulcast'].models[model_name]
@@ -738,10 +778,18 @@ def MMESH_run(data_dict, model_names):
             
             (r_0, std_0), rmsd_0 = TD.find_TaylorStatistics(model['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
             
+            ax2.scatter(np.arccos(r_0), std_0, s=36, c=traj0.plotparams.model_colors[model_name], 
+                        marker=traj0.plotparams.model_markers[model_name], label=model_name+' + DTW',
+                        zorder=11)
+            
             #  Baseline, compared to unshifted models
             if model_name != 'ensemble':
                 model_bl = traj1_backup.models[model_name]
                 (r_bl, std_bl), rmsd_bl = TD.find_TaylorStatistics(model_bl['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
+            
+                ax2.scatter(np.arccos(r_bl), std_bl, s=36, c='gray', 
+                            marker=traj0.plotparams.model_markers[model_name], label=model_name, 
+                            zorder=10)
             
             print('----------------------------------------')
             print(model_name)
@@ -760,8 +808,8 @@ def MMESH_run(data_dict, model_names):
             # r_sig, std_sig, rmsd_sig = np.std(r), np.std(std), np.std(rmsd)
             # r, std, rmsd = np.mean(r), np.mean(std), np.mean(rmsd)
             
-            ax2.scatter(np.arccos(r_0), std_0, s=36, c=traj0.plotparams.model_colors[model_name], 
-                        marker=traj0.plotparams.model_markers[model_name], label=model_name)
+            
+            
             
             # xerr = [[np.arccos(r-r_sig)-np.arccos(r)], [np.arccos(r)-np.arccos(r+r_sig)]]
             # yerr = [[std_sig], [std_sig]]
@@ -775,10 +823,11 @@ def MMESH_run(data_dict, model_names):
             #                                                          xerr[1], xerr[0]))
             
             ax2.set_rlim([0, 50])
-            
+            # ax2.set_thetamin(0)
+            # ax2.set_thetamax(90)
         
-        ax2.legend(ncols=4, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
-        fig2.savefig('figures/Paper/' + 'Ensemble_TD_JunoComparison.png', 
+        fig2.legend(ncols=1, bbox_to_anchor=[0.0, 0.4, 0.35, 0.5], loc='upper right', mode='expand', markerscale=1.0)
+        fig2.savefig(basefilepath + 'Ensemble_TD_JunoComparison.png', 
                      dpi=300)
         
     plot_EnsembleTD_DTWMLR()
