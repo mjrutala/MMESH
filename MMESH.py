@@ -84,6 +84,7 @@ class MultiTrajectory:
         nowcast_dict = {}
         for model_name in self.model_names:
             
+            #   !!! This should be dynamic based on input equation
             d = {'datetime':[], 
                  'empirical_time_delta':[], 
                  'solar_radio_flux':[], 
@@ -102,41 +103,24 @@ class MultiTrajectory:
                 
                 d['datetime'].extend(trajectory._primary_df.loc[trajectory.data_index].index)
             
-            #return(d)
-            
             training_df = pd.DataFrame.from_dict(d)
             training_df = training_df.set_index('datetime')
-            #predictions_dict[model_name] = training_df
             
-            #   !!! Might need to allow different formulae for differen models...
-            #   i.e. formula = formulae[model_name]
+            #   Set the input formula internally, then separate into individual
+            #   terms by splitting on plus signs. Drop terms from the training
+            #   DataFrame if they have null values for any equation terms
+            
+            #   !!! Might need to allow different formulae for different models...
+            #   !!! i.e. formula = formulae[model_name]
+            #   !!! Also, should catch all acceptable arithmetic symbols, not just plus
             self.mlr_formula = formula
             self.mlr_formula_terms = re.findall(r"[\w']+", formula)
             training_df = training_df.dropna(subset=self.mlr_formula_terms, axis='index')
-            
-            #   Need to predict for spacecraft for comparison,
-            #   then for Jupiter for cross-spacecraft comparison
-            # sc_pred = spacecraftdata.SpacecraftData(spacecraft_name)
-            # sc_pred.make_timeseries(total_dtimes_inh.index[0]-dt.timedelta(days=30), 
-            #                         total_dtimes_inh.index[-1]+dt.timedelta(days=365*5), 
-            #                         timedelta=dt.timedelta(hours=1))
-            # srf_prediction = solar_radio_flux.reindex(index=sc_pred.data.index)
-            # pos_TSE_pred = sc_pred.find_StateToEarth()
-            # prediction_df = pd.DataFrame({'f10p7_flux': srf_prediction['adjusted_flux'],
-            #                               'TSE_lon': pos_TSE_pred['del_lon'],
-            #                               'TSE_lat': pos_TSE_pred['del_lat']}, 
-            #                               index=sc_pred.data.index)
             
             mlr_fit = smf.ols(formula = formula, data=training_df).fit()  #!!!! Does this have weights available?
             #   We should weight by correlation coefficient to the original data
             #   Either assign those weights in the input, if possible
             #   OR do each MLR individually, then multiply coefficients by weights and add....
-            
-            # prediction_test = reg.get_prediction(exog=prediction_df, transform=True)
-            # alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
-            #                     #  alpha = 0.05 gives 2sigma or 95%
-            #                     #  alpha = 0.32 gives 1sigma or 68%
-            # pred = prediction_test.summary_frame(alpha_level)
             
             nowcast = mlr_fit.get_prediction(exog=training_df, transform=True)
             alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
@@ -147,23 +131,6 @@ class MultiTrajectory:
             
             predictions_dict[model_name] = mlr_fit
             nowcast_dict[model_name] = result
-            
-            # import matplotlib.pyplot as plt
-            # fig, axs = plt.subplots(figsize=(6,2), nrows=len(self.trajectories.keys()))
-            # for i, (trajectory_name, trajectory) in enumerate(self.trajectories.items()):
-            #     axs[i].plot(training_df.index, result['mean'], color='C0')
-            #     axs[i].fill_between(training_df.index, result['obs_ci_lower'], result['obs_ci_upper'], color='C0', alpha=0.5)
-            #     axs[i].plot(training_df.index, training_df['empirical_time_delta'], color='black')
-            #     axs[i].set_xlim(trajectory.data_index[0], trajectory.data_index[-1])
-            #     axs[i].set_xlabel('Date')
-            #     axs[i].set_ylabel(r'$\Delta$ Time [hours]')
-            #     axs[i].annotate(model_name, 
-            #                     (0,1), xytext=(1,-1),
-            #                     xycoords='axes fraction',
-            #                     textcoords='offset fontsize')
-            # plt.show()
-            
-            #print(training_df.index[0], training_df.index[-1])
             
         self.predictions_dict = predictions_dict
         self.nowcast_dict = nowcast_dict
@@ -191,6 +158,7 @@ class MultiTrajectory:
                 cast_context_df = pd.concat([cast_interval.models[model_name], 
                                             cast_interval._primary_df['context']],
                                             axis='columns')
+                if len(cast_context_df) > 0
                 rhs_terms = list(set(self.mlr_formula_terms) - set(['empirical_time_delta']))
                 
                 cast_context_df = cast_context_df.dropna(subset=rhs_terms, axis='index', how='any')
