@@ -78,7 +78,8 @@ def plot_TaylorDiagram(test_data, ref_data, fig=None, ax=None, **plt_kwargs):
     
     return(fig, ax)
    
-def init_TaylorDiagram(ref_std, fig=None, ax=None, **plt_kwargs):
+def init_TaylorDiagram(ref_std, fig=None, ax=None, half=False, r_label='', theta_label='',
+                       **plt_kwargs):
 
     #   If given nothing, make a figure and polar axis
     #   If given a figure, make a polar axis
@@ -87,25 +88,6 @@ def init_TaylorDiagram(ref_std, fig=None, ax=None, **plt_kwargs):
         fig = plt.figure()
     if ax == None:
         ax = fig.add_subplot(111, projection='polar')
-        
-    #   Set title and labels
-    #   Need to set y in one command and x in another-- pyplot REALLY doesn't
-    #   want to let you move the axes labels
-    ax.set_xlabel(r'Standard Deviation ($\sigma$)')
-    ax.xaxis.set_label_coords(0.5, 0.175)
-    
-    ax.set_ylabel('Pearson Correlation Coefficient (r)', y=0.82, rotation=0)
-    ax.yaxis.set_label_coords(0.5, 0.825)
-    
-    #  [0,180] includes both positive and negative correlations
-    ax.set_thetamin(0)
-    ax.set_thetamax(180)
-    theta_ticks = [-0.99, -0.95, -0.9, -0.8, -0.6, -0.4, -0.2, 0, 
-                   0.2, 0.4, 0.6, 0.8, 0.9, 0.95, 0.99]
-    ax.set_xticks([np.arccos(ang) for ang in theta_ticks])
-    ax.set_xticklabels(theta_ticks)
-    
-    ax.grid(visible=True, zorder=-6)
     
     #  Centered RMS difference circles, centered on reference
     ax.scatter(0, ref_std, marker='o', color='black')
@@ -119,7 +101,48 @@ def init_TaylorDiagram(ref_std, fig=None, ax=None, **plt_kwargs):
         y2 = y #  Reference point is on y=0 by definition
         ax.plot(np.arctan2(y2,x2), np.sqrt(x2**2 + y2**2), color='gray', linestyle=':', zorder=-4)
     ax.set_rlim([0, 2.0*ref_std])
+    
+    #  [0,180] includes both positive and negative correlations
+    ax.set_thetamin(0)
+    if half: 
+        ax.set_thetamax(90)
+        r_label_pos = [0.5, -0.1]
+        theta_ticks = [0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.95, 0.99]
+        theta_label_pos = [0.85, 0.85]
+        theta_label_rot = -45
+    else:
+        ax.set_thetamax(180)
+        r_label_pos = [0.5, -0.1]
+        theta_ticks = [-0.99, -0.95, -0.9, -0.8, -0.6, -0.4, -0.2, 0, 
+                       0.2, 0.4, 0.6, 0.8, 0.9, 0.95, 0.99]
+        theta_label_pos = [0.5, 0.825]
+        theta_label_rot = 0
         
+    ax.set_xticks([np.arccos(ang) for ang in theta_ticks])
+    ax.set_xticklabels(theta_ticks)
+    
+    #   Set title and labels
+    #   Need to set y in one command and x in another-- pyplot REALLY doesn't
+    #   want to let you move the axes labels
+    if r_label == '':
+        r_label = r'Standard Deviation ($\sigma$)'
+    
+    if theta_label == '':
+        theta_label = 'Pearson Correlation Coefficient (r)'
+    
+    ax.annotate(theta_label, theta_label_pos, xycoords='axes fraction', 
+                fontsize=plt.rcParams["figure.labelsize"],
+                rotation=theta_label_rot, ha='center', va='center')
+    
+    ax.annotate(r_label, r_label_pos, xycoords='axes fraction',
+                fontsize=plt.rcParams["figure.labelsize"],
+                ha='center', va='top')
+    
+    #ax.set_ylabel('Pearson Correlation Coefficient (r)', y=0.85, rotation=ylabel_rot)
+    #ax.yaxis.set_label_coords(0.5, 0.9)
+   
+    ax.grid(visible=True, zorder=-6)
+    
     for element in [ax.xaxis.label, ax.yaxis.label]:
         element.set_fontsize(plt.rcParams["figure.labelsize"])
     #          # ax.get_xticklabels() + ax.get_yticklabels()
