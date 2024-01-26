@@ -182,7 +182,7 @@ class MultiTrajectory:
         import re
         
         for model_name in self.model_names:
-            
+            breakpoint()
             for cast_interval_name, cast_interval in self.cast_intervals.items():
                 print("For model: {} ========================================".format(model_name))
                 print(self.predictions_dict[model_name].summary())
@@ -195,21 +195,22 @@ class MultiTrajectory:
                 
                 cast_context_df = cast_context_df.dropna(subset=rhs_terms, axis='index', how='any')
                 
-                cast = self.predictions_dict[model_name].get_prediction(cast_context_df)
-                alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
-                                    #  alpha = 0.05 gives 2sigma or 95%
-                                    #  alpha = 0.32 gives 1sigma or 68%
-                result = cast.summary_frame(alpha_level)
+                if len(cast_context_df) > 0:
+                    cast = self.predictions_dict[model_name].get_prediction(cast_context_df)
+                    alpha_level = 0.32  #  alpha is 1-CI or 1-sigma_level
+                                        #  alpha = 0.05 gives 2sigma or 95%
+                                        #  alpha = 0.32 gives 1sigma or 68%
+                    result = cast.summary_frame(alpha_level)
                 
-                #   !!!! N.B. Where data is present, the interval is smaller--
-                sig = (result['obs_ci_upper'] - result['obs_ci_lower'])/2.
+                    #   !!!! N.B. Where data is present, the interval is smaller--
+                    sig = (result['obs_ci_upper'] - result['obs_ci_lower'])/2.
+                    
+                    #   s_mu = shift_mu = mean shift
+                    s_mu = result['mean'].set_axis(cast_context_df.index)
+                    s_sig = sig.set_axis(cast_context_df.index)
                 
-                #   s_mu = shift_mu = mean shift
-                s_mu = result['mean'].set_axis(cast_context_df.index)
-                s_sig = sig.set_axis(cast_context_df.index)
-                
-                self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta')] = s_mu
-                self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta_sigma')] = s_sig
+                    self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta')] = s_mu
+                    self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta_sigma')] = s_sig
          
         if with_error:
             for cast_interval_name, cast_interval in self.cast_intervals.items():
@@ -365,9 +366,13 @@ class Trajectory:
     
     def __init__(self, name=''):
         from types import SimpleNamespace
+        adjustments = {'left': 0.1, 'right':0.95, 'bottom':0.2, 'top':0.95, 
+                       'wspace':0.1, 'hspace':0.0}
         d = {'data_color': '', 'data_marker': '',
-             'model_colors': {'ensemble': 'xkcd:cyan'}, 'model_markers': {'ensemble': 'o'}}
+             'model_colors': {'ensemble': 'xkcd:cyan'}, 'model_markers': {'ensemble': 'o'},
+             'figsize': (6, 4.5), 'adjustments': adjustments}
         self.plotparams = SimpleNamespace(**d)
+        self.presentationmode = False
         
         self.metric_tags = ['u_mag', 'p_dyn', 'n_tot', 'B_mag']
         self.variables =  ['u_mag', 'n_tot', 'p_dyn', 'B_mag']
@@ -467,6 +472,8 @@ class Trajectory:
             df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
 
             self._primary_df = pd.concat([self._primary_df, df], axis=1)
+        
+        self._primary_df = self._primary_df.sort_index()
     
     def addModel(self, model_name, model_df):
         self.model_names.append(model_name)
@@ -626,7 +633,10 @@ class Trajectory:
         
         param_sigs = {}
         for name, series in param_df.items():
-            sd = smooth_deriv(param_df[name], dt.timedelta(hours=1))
+            try: 
+                sd = smooth_deriv(param_df[name], dt.timedelta(hours=1))
+            except ValueError:
+                breakpoint()
             param_sigs[name] = np.nanstd(sd)
        
         ref_std = min(param_sigs.values())
@@ -1008,20 +1018,14 @@ class Trajectory:
         from matplotlib import collections  as mc
         from matplotlib.patches import ConnectionPatch
         
-        #   Shrink size for presentations to increase label size
-        if presentation:
-            figsize = (4, 3)
-        else:
-            figsize = (6, 4.5)
-        
         #   Optionally, choose which models get plotted
-        model_names = ['HUXt']
+        model_names = ['Tao']
         
         fig, axs = plt.subplots(nrows=3, ncols=len(model_names), 
-                                figsize=figsize, height_ratios=[1,2,2],
+                                figsize=self.plotparams.figsize, 
+                                height_ratios=[1,2,2],
                                 sharex=True, sharey='row', squeeze=False)
-        plt.subplots_adjust(left=0.1, bottom=0.2, right=0.95, top=0.95, 
-                            wspace=0.1, hspace=0.0)
+        plt.subplots_adjust(**self.plotparams.adjustments)
         
         for model_name, ax_col in zip(model_names, axs.T):
             
@@ -1054,7 +1058,7 @@ class Trajectory:
                                                  
             connections_basis = []
             connections_metric = []
-            for index, value in self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].items():
+            for i, (index, value) in enumerate(self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].items()):
                 
                 shift_index = index + dt.timedelta(hours=self.models[model_name].loc[index, 'empirical_time_delta'])
                 
@@ -1076,33 +1080,36 @@ class Trajectory:
                                      color="gray", linewidth=1.5, linestyle=":", alpha=0.8, zorder=5)
                 ax_col[2].add_artist(con)
             
-            lc = mc.LineCollection(connections_basis, 
-                                   linewidths=1.5, linestyles=":", color='gray', linewidth=1.5, zorder=1)
-            ax_col[0].add_collection(lc)
+            # lc = mc.LineCollection(connections_basis, 
+            #                        linewidths=1.5, linestyles=":", color='gray', linewidth=1.5, zorder=1)
+            # ax_col[0].add_collection(lc)
             
             #   Plot Model and Data Sources, color-coded
-            label_box = dict(facecolor=self.plotparams.model_colors[model_name], 
+            label_bbox = dict(facecolor=self.plotparams.model_colors[model_name], 
                                    edgecolor=self.plotparams.model_colors[model_name], 
                                    pad=0.1, boxstyle='round')
             ax_col[0].annotate('Model: {}'.format(model_name), 
-                               (0.0, 1), xytext=(0, 0.1), va='bottom', ha='left',
+                               (0, 1), xytext=(0.1, 0.2), va='bottom', ha='left',
                                xycoords='axes fraction', textcoords='offset fontsize',
                                bbox=label_bbox)
-            label_box = dict(facecolor=self.plotparams.data_color, 
+            label_bbox = dict(facecolor=self.plotparams.data_color, 
                                    edgecolor=self.plotparams.data_color, 
                                    pad=0.1, boxstyle='round')
+            x_offset = len(model_name)+8+0.1  #  Offset for text
             ax_col[0].annotate('Data: {}'.format(self.spacecraft_name),
-                               (1.0, 1), xytext=(0, 0.1), va='bottom', ha='right',
+                               (0, 1), xytext=(x_offset, 0.2), va='bottom', ha='left',
                                xycoords='axes fraction', textcoords='offset fontsize',
                                bbox=label_bbox)
 
         
-        axs[1,-1].annotate('Original Model', 
-                           (1,0.5), xytext=(0.1,0), va='center', ha='left',
-                           xycoords='axes fraction', textcoords='offset fontsize')
-        axs[2,-1].annotate('DTW Shifted Model',
-                           (1,0.5), xytext=(0.1,0), va='center', ha='left',
-                           xycoords='axes fraction', textcoords='offset fontsize')
+        axs[1,-1].annotate('Original', 
+                           (1,0.5), xytext=(0.125,0), va='center', ha='left',
+                           xycoords='axes fraction', textcoords='offset fontsize',
+                           rotation='vertical')
+        axs[2,-1].annotate('DTW Shifted',
+                           (1,0.5), xytext=(0.125,0), va='center', ha='left',
+                           xycoords='axes fraction', textcoords='offset fontsize',
+                           rotation='vertical')
         
         #axs[0,0].locator_params(nbins=3, axis='x')
         axs[0,0].xaxis.set_major_formatter(self.timeseries_formatter(axs[0,0].get_xticks()))
@@ -1303,6 +1310,13 @@ class Trajectory:
     # =============================================================================
     #   Plotting stuff
     # =============================================================================
+    def set_PresentationMode(self):
+        self.plotparams.figsize = (4, 3)
+        self.plotparams.adjustments = {'left': 0.15, 'right':0.95, 
+                                        'bottom':0.225, 'top':0.925, 
+                                        'wspace':0.2, 'hspace':0.0}
+        self.presentationmode = True
+    
     def _plot_parameters(self, parameter):
         #  Check which parameter was specified and set up some plotting keywords
         match parameter:
@@ -1339,7 +1353,7 @@ class Trajectory:
                 
         return tag, plot_kw
         
-    def plot_SingleTimeseries(self, parameter, starttime, stoptime, filename=''):
+    def plot_SingleTimeseries(self, parameter, starttime, stoptime, filepath=''):
         """
         Plot the time series of a single parameter from a single spacecraft,
         separated into 4/5 panels to show the comparison to each model.
@@ -1351,70 +1365,73 @@ class Trajectory:
         
         tag, plot_kw = self._plot_parameters(parameter)
         
-        # save_filestem = 'Timeseries_{}_{}_{}-{}'.format(spacecraft_name.replace(' ', ''),
-        #                                                 tag,
-        #                                                 starttime.strftime('%Y%m%d'),
-        #                                                 stoptime.strftime('%Y%m%d'))
+        save_filestem = 'Timeseries_{}_{}_{}-{}'.format(self.spacecraft_name.replace(' ', ''),
+                                                        tag,
+                                                        starttime.strftime('%Y%m%d'),
+                                                        stoptime.strftime('%Y%m%d'))
         
-        with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-            fig, axs = plt.subplots(figsize=(8,6), nrows=len(self.model_names), sharex=True, squeeze=False)
-            plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.95, hspace=0.0)
+    
+        fig, axs = plt.subplots(figsize=self.plotparams.figsize, nrows=len(self.model_names), sharex=True, squeeze=False)
+        plt.subplots_adjust(**self.plotparams.adjustments)
+        
+        for indx, ax in enumerate(axs.flatten()):
             
-            for indx, ax in enumerate(axs.flatten()):
-                
-                ax.plot(self.data.index, 
-                        self.data[tag],
-                        color='xkcd:blue grey', alpha=0.6, linewidth=1.5,
-                        label='Juno/JADE (Wilson+ 2018)')
-                
-                ax.set(**plot_kw)
-                ax.set_ylabel('')
-                #  get_yticks() for log scale doesn't work as expected; workaround:
-                yticks = ax.get_yticks()
-                yticks = [yt for yt in yticks if ax.get_ylim()[0] <= yt <= ax.get_ylim()[1]]
-                if indx != len(axs)-1: 
-                    if (yticks[0] in ax.get_ylim()) and yticks[-1] in ax.get_ylim():
-                        ax.set(yticks=yticks[1:])
-                #ax.grid(linestyle='-', linewidth=2, alpha=0.1, color='xkcd:black')
-            print('Plotting models...')  
-            for ax, model_name in zip(axs.flatten(), self.model_names):
-                if tag in self.models[model_name].columns:
-                    ax.plot(self.models[model_name].index, self.models[model_name][tag], 
-                            color=model_colors[model_name], label=model_name, linewidth=2)
-                
-                model_label_box = dict(facecolor=model_colors[model_name], 
-                                       edgecolor=model_colors[model_name], 
-                                       pad=0.1, boxstyle='round')
-               
-                ax.text(0.01, 0.95, model_name, color='black',
-                        horizontalalignment='left', verticalalignment='top',
-                        bbox = model_label_box,
-                        transform = ax.transAxes)
+            ax.plot(self.data.index, 
+                    self.data[tag],
+                    color='xkcd:blue grey', alpha=0.6, linewidth=1.5,
+                    label='Juno/JADE (Wilson+ 2018)')
             
-            fig.text(0.5, 0.025, 'Day of Year {:.0f}'.format(starttime.year), ha='center', va='center')
-            fig.text(0.025, 0.5, plot_kw['ylabel'], ha='center', va='center', rotation='vertical')
+            ax.set(**plot_kw)
+            ax.set_ylabel('')
+            #  get_yticks() for log scale doesn't work as expected; workaround:
+            yticks = ax.get_yticks()
+            yticks = [yt for yt in yticks if ax.get_ylim()[0] <= yt <= ax.get_ylim()[1]]
+            if indx != len(axs)-1: 
+                if (yticks[0] in ax.get_ylim()) and yticks[-1] in ax.get_ylim():
+                    ax.set(yticks=yticks[1:])
+            #ax.grid(linestyle='-', linewidth=2, alpha=0.1, color='xkcd:black')
+        print('Plotting models...')  
+        for ax, model_name in zip(axs.flatten(), self.model_names):
+            if tag in self.models[model_name].columns:
+                ax.plot(self.models[model_name].index, self.models[model_name][tag], 
+                        color=model_colors[model_name], label=model_name, linewidth=2)
             
-            tick_interval = int((stoptime - starttime).days/10.)
-            subtick_interval = int(tick_interval/5.)
-            
-            axs[0,0].set_xlim((starttime, stoptime))
-            axs[0,0].xaxis.set_major_locator(mdates.DayLocator(interval=tick_interval))
-            if subtick_interval > 0:
-                axs[0,0].xaxis.set_minor_locator(mdates.DayLocator(interval=subtick_interval))
-            axs[0,0].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
-            
-            # #  Trying to set up year labels, showing the year once at the start
-            # #  and again every time it changes
-            # ax_year = axs[-1].secondary_xaxis(-0.15)
-            # ax_year.set_xticks([axs[-1].get_xticks()[0]])
-            # ax_year.visible=False
-            # ax_year.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
-            
-            fig.align_ylabels()
-            # for suffix in ['.png', '.pdf']:
-            #     plt.savefig('figures/' + save_filestem, dpi=300, bbox_inches='tight')
-            plt.show()
-            #return models
+            model_label_box = dict(facecolor=model_colors[model_name], 
+                                   edgecolor=model_colors[model_name], 
+                                   pad=0.1, boxstyle='round')
+           
+            ax.text(0.01, 0.95, model_name, color='black',
+                    horizontalalignment='left', verticalalignment='top',
+                    bbox = model_label_box,
+                    transform = ax.transAxes)
+        
+        fig.text(0.5, 0.025, 'Day of Year', ha='center', va='center')
+        fig.text(0.025, 0.5, plot_kw['ylabel'], ha='center', va='center', rotation='vertical')
+        
+        tick_interval = int((stoptime - starttime).days/10.)
+        subtick_interval = int(tick_interval/5.)
+        
+        axs[0,0].set_xlim((starttime, stoptime))
+        axs[0,0].xaxis.set_major_formatter(self.timeseries_formatter(axs[0,0].get_xticks()))
+        
+        # axs[0,0].xaxis.set_major_locator(mdates.DayLocator(interval=tick_interval))
+        # if subtick_interval > 0:
+        #     axs[0,0].xaxis.set_minor_locator(mdates.DayLocator(interval=subtick_interval))
+        # axs[0,0].xaxis.set_major_formatter(mdates.DateFormatter('%j'))
+        
+        # #  Trying to set up year labels, showing the year once at the start
+        # #  and again every time it changes
+        # ax_year = axs[-1].secondary_xaxis(-0.15)
+        # ax_year.set_xticks([axs[-1].get_xticks()[0]])
+        # ax_year.visible=False
+        # ax_year.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+        
+        fig.align_ylabels()
+        #
+        if filepath != '':
+            plt.savefig(filepath + save_filestem, dpi=300, bbox_inches='tight')
+        plt.show()
+        #return models
             
     def plot_ConstantTimeShifting_Optimization(self):
         import matplotlib.pyplot as plt
