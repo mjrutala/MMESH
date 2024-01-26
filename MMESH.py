@@ -403,7 +403,10 @@ class Trajectory:
         
         self._data = None
         self._primary_df = pd.DataFrame()
-        
+    
+    def __len__(self):
+        return len(self._primary_df)
+    
     @property
     def context(self):
         return self._primary_df['context']
