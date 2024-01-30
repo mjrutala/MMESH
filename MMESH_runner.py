@@ -212,8 +212,8 @@ lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
     
 
 inputs = {}
-# inputs['Voyager1_01'] = {'spacecraft_name':'Voyager 1',
-#                          'span':(dt.datetime(1979, 1, 3), dt.datetime(1979, 5, 5))}
+inputs['Voyager1_01'] = {'spacecraft_name':'Voyager 1',
+                         'span':(dt.datetime(1979, 1, 3), dt.datetime(1979, 5, 5))}
 inputs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
                           'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
 inputs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
@@ -223,7 +223,7 @@ inputs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
 inputs['Juno_01']     = {'spacecraft_name':'Juno',
                           'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
 
-model_names = ['ENLIL', 'HUXt', 'Tao']  #  
+model_names = ['HUXt', 'Tao']  #  'ENLIL', 
 
 
 
@@ -315,10 +315,11 @@ def MMESH_run(data_dict, model_names, presentation=False):
                 n.append(traj.trajectory_name)
             
             #  Hacky
-            c = ['#5d9dd5', '#447abc', '#4034f4', '#75036b'][0:len(m_traj.trajectories)]
+            #c = ['#5d9dd5', '#447abc', '#4034f4', '#75036b'][0:len(m_traj.trajectories)]
+            #c = 
             axs[i].hist(l, range=(-120, 120), bins=20,
                         density=True,
-                        histtype='barstacked', stacked=True, label=n, color=c)
+                        histtype='barstacked', stacked=True, label=n)#, color=c)
             axs[i].annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
                         (0,1), (1,-1), ha='left', va='center', 
                         xycoords='axes fraction', textcoords='offset fontsize')
@@ -652,8 +653,8 @@ def MMESH_run(data_dict, model_names, presentation=False):
     
     #   Set up the prediction interval
     #original_spantime = stoptime - starttime
-    prediction_starttime = dt.datetime(2018, 1, 1)  #  starttime - original_spantime
-    prediction_stoptime = dt.datetime(2019, 1, 1)  #  stoptime + original_spantime
+    prediction_starttime = dt.datetime(2018, 2, 15)  #  starttime - original_spantime
+    prediction_stoptime = dt.datetime(2018, 7, 1)  #  stoptime + original_spantime
     prediction_target = 'Jupiter' # 'Juno'
     
     #  Initialize a trajectory class for the predictions
@@ -693,56 +694,60 @@ def MMESH_run(data_dict, model_names, presentation=False):
     #   Example plot of shifted models with errors
     #   And a TD
     
-    #  FOR TESTING ACCURACY
-    #  Load spacecraft data
-    spacecraft = spacecraftdata.SpacecraftData('Juno')
-    spacecraft.read_processeddata(prediction_starttime, prediction_stoptime, resolution='60Min')
+    #  !!!! ++++++++++++++++++
+    #   FOR TESTING ACCURACY
+    #  !!!! KEEP THIS BELOW
+    #  !!!! ------------------
     
-    fig, axs = plt.subplots(figsize=m_traj.cast_intervals['simulcast'].plotparams.figsize,
-                            nrows=len(m_traj.cast_intervals['simulcast'].model_names), sharex=True)
-    plt.subplots_adjust(**m_traj.cast_intervals['simulcast'].plotparams.adjustments)
     
-    for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
-        model = m_traj.cast_intervals['simulcast'].models[model_name]
+    # spacecraft = spacecraftdata.SpacecraftData('Juno')
+    # spacecraft.read_processeddata(prediction_starttime, prediction_stoptime, resolution='60Min')
+    
+    # fig, axs = plt.subplots(figsize=m_traj.cast_intervals['simulcast'].plotparams.figsize,
+    #                         nrows=len(m_traj.cast_intervals['simulcast'].model_names), sharex=True)
+    # plt.subplots_adjust(**m_traj.cast_intervals['simulcast'].plotparams.adjustments)
+    
+    # for i, model_name in enumerate(m_traj.cast_intervals['simulcast'].model_names):
+    #     model = m_traj.cast_intervals['simulcast'].models[model_name]
 
-        axs[i].scatter(spacecraft.data.index, spacecraft.data['u_mag'],
-                        color='black', marker='o', s=2)
+    #     axs[i].scatter(spacecraft.data.index, spacecraft.data['u_mag'],
+    #                     color='black', marker='o', s=2)
         
-        if 'u_mag_pos_unc' in model.columns:
-            axs[i].fill_between(model.index, 
-                                model['u_mag'] + model['u_mag_pos_unc'], 
-                                model['u_mag'] - model['u_mag_neg_unc'],
-                                alpha = 0.5, color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name],
-                                linewidth=0.5)
+    #     if 'u_mag_pos_unc' in model.columns:
+    #         axs[i].fill_between(model.index, 
+    #                             model['u_mag'] + model['u_mag_pos_unc'], 
+    #                             model['u_mag'] - model['u_mag_neg_unc'],
+    #                             alpha = 0.5, color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name],
+    #                             linewidth=0.5)
         
-        axs[i].plot(model.index, model['u_mag'], color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name],
-                    linewidth=1.5)
+    #     axs[i].plot(model.index, model['u_mag'], color=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name],
+    #                 linewidth=1.5)
         
-        #   Overplot the original model, skipping the ensemble
-        if model_name in traj1_backup.model_names:
+    #     #   Overplot the original model, skipping the ensemble
+    #     if model_name in traj1_backup.model_names:
             
-            axs[i].plot(traj1_backup.models[model_name].index, 
-                        traj1_backup.models[model_name]['u_mag'], 
-                        color='gray', linewidth=1, alpha=0.8)
+    #         axs[i].plot(traj1_backup.models[model_name].index, 
+    #                     traj1_backup.models[model_name]['u_mag'], 
+    #                     color='gray', linewidth=1, alpha=0.8)
         
-        label_bbox = dict(facecolor=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name], 
-                          edgecolor=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name], 
-                          pad=0.1, boxstyle='round')
-        axs[i].annotate(model_name, (1,0.5), (0.2,0), va='center', ha='left',
-                        xycoords='axes fraction', textcoords='offset fontsize',
-                        bbox = label_bbox, rotation='vertical')
+    #     label_bbox = dict(facecolor=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name], 
+    #                       edgecolor=m_traj.cast_intervals['simulcast'].plotparams.model_colors[model_name], 
+    #                       pad=0.1, boxstyle='round')
+    #     axs[i].annotate(model_name, (1,0.5), (0.2,0), va='center', ha='left',
+    #                     xycoords='axes fraction', textcoords='offset fontsize',
+    #                     bbox = label_bbox, rotation='vertical')
     
-        (r, std), rmsd = TD.find_TaylorStatistics(model['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
+    #     (r, std), rmsd = TD.find_TaylorStatistics(model['u_mag'].loc[spacecraft.data.index], spacecraft.data['u_mag'])
 
-        #axs[i].annotate(str(r), (0,1), (1, -2), xycoords='axes fraction', textcoords='offset fontsize')
+    #     #axs[i].annotate(str(r), (0,1), (1, -2), xycoords='axes fraction', textcoords='offset fontsize')
         
-    filename = 'Ensemble_TimeSeries_{}_{}-{}.png'.format(prediction_target.lower().capitalize(),
-                                                         prediction_starttime.strftime('%Y%m%dT%H%M%S'),
-                                                         prediction_stoptime.strftime('%Y%m%dT%H%M%S'))
-    fig.supxlabel('Date [YYYY-MM]')
-    fig.supylabel(r'Solar Wind Flow Speed $|u_{SW}| [km/s]$')
-    fig.savefig(basefilepath + filename, 
-                dpi=300)
+    # filename = 'Ensemble_TimeSeries_{}_{}-{}.png'.format(prediction_target.lower().capitalize(),
+    #                                                      prediction_starttime.strftime('%Y%m%dT%H%M%S'),
+    #                                                      prediction_stoptime.strftime('%Y%m%dT%H%M%S'))
+    # fig.supxlabel('Date [YYYY-MM]')
+    # fig.supylabel(r'Solar Wind Flow Speed $|u_{SW}| [km/s]$')
+    # fig.savefig(basefilepath + filename, 
+    #             dpi=300)
     
     def plot_EnsembleTD_DTWMLR():
         fig2 = plt.figure(figsize=m_traj.cast_intervals['simulcast'].plotparams.figsize)
@@ -830,9 +835,9 @@ def MMESH_run(data_dict, model_names, presentation=False):
         fig2.savefig(basefilepath + 'Ensemble_TD_JunoComparison.png', 
                      dpi=300)
         
-    plot_EnsembleTD_DTWMLR()
+    #plot_EnsembleTD_DTWMLR()
     
-    plt.show()
+    #plt.show()
         
     plot_TemporalShifts_All_Total()
     
