@@ -12,24 +12,24 @@ import numpy as np
 import pandas as pd
 
 
-spacecraft_colors = {'Pioneer 10': '#F6E680',
-                     'Pioneer 11': '#FFD485',
-                     'Voyager 1' : '#FEC286',
-                     'Voyager 2' : '#FEAC86',
-                     'Ulysses'   : '#E6877E',
-                     'Juno'      : '#D8696D'}
-model_colors = {'Tao'    : '#C59FE5',
-                'HUXt'   : '#A0A5E4',
-                'SWMF-OH': '#98DBEB',
-                'MSWIM2D': '#A9DBCA',
-                'ENLIL'  : '#DCED96',
-                'ensemble': '#55FFFF'}
-model_symbols = {'Tao'    : 'v',
-                'HUXt'   : '*',
-                'SWMF-OH': '^',
-                'MSWIM2D': 'd',
-                'ENLIL'  : 'h',
-                'ensemble': 'o'}
+# spacecraft_colors = {'Pioneer 10': '#F6E680',
+#                      'Pioneer 11': '#FFD485',
+#                      'Voyager 1' : '#FEC286',
+#                      'Voyager 2' : '#FEAC86',
+#                      'Ulysses'   : '#E6877E',
+#                      'Juno'      : '#D8696D'}
+# model_colors = {'Tao'    : '#C59FE5',
+#                 'HUXt'   : '#A0A5E4',
+#                 'SWMF-OH': '#98DBEB',
+#                 'MSWIM2D': '#A9DBCA',
+#                 'ENLIL'  : '#DCED96',
+#                 'ensemble': '#55FFFF'}
+# model_symbols = {'Tao'    : 'v',
+#                 'HUXt'   : '*',
+#                 'SWMF-OH': '^',
+#                 'MSWIM2D': 'd',
+#                 'ENLIL'  : 'h',
+#                 'ensemble': 'o'}
 
 """
 How I imagine this framework to work:
@@ -344,8 +344,9 @@ class MultiTrajectory:
     # #         for model_name, model_output in d['models'].items():
                 
     # #             print()
-                
-class Trajectory:
+              
+import _MMESH_mixins
+class Trajectory(_MMESH_mixins.visualization):
     """
     The Trajectory class is designed to hold trajectory information in 4D
     (x, y, z, t), together with model and spacecraft data along the same path.
@@ -353,14 +354,6 @@ class Trajectory:
     """
     
     def __init__(self, name=''):
-        from types import SimpleNamespace
-        adjustments = {'left': 0.1, 'right':0.95, 'bottom':0.2, 'top':0.95, 
-                       'wspace':0.1, 'hspace':0.0}
-        d = {'data_color': '', 'data_marker': '',
-             'model_colors': {'ensemble': 'xkcd:cyan'}, 'model_markers': {'ensemble': 'o'},
-             'figsize': (6, 4.5), 'adjustments': adjustments}
-        self.plotparams = SimpleNamespace(**d)
-        self.presentationmode = False
         
         self.metric_tags = ['u_mag', 'p_dyn', 'n_tot', 'B_mag']
         self.variables =  ['u_mag', 'n_tot', 'p_dyn', 'B_mag']
@@ -392,6 +385,8 @@ class Trajectory:
         self._data = None
         self._primary_df = pd.DataFrame()
     
+        self.initialize_plotprops()
+    
     def __len__(self):
         return len(self._primary_df)
     
@@ -403,16 +398,8 @@ class Trajectory:
         if self._primary_df.empty:
             self._primary_df = df
         else:
-            try:
-                new_keys = [*self._primary_df.columns.levels[0], label]
-                self._primary_df = pd.concat([self._primary_df, df], axis=1)
-            except:
-                breakpoint()
-            
-            # new_keys = [*self._primary_df.columns.levels[0], self.model_names[-1]]
-            # df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
-
-            # self._primary_df = pd.concat([self._primary_df, df], axis=1)
+            new_keys = [*self._primary_df.columns.levels[0], label]
+            self._primary_df = pd.concat([self._primary_df, df], axis=1)
         
         #   Using this method will always re-set the index to datetime
         #   which is useful for preventing errors
@@ -427,19 +414,6 @@ class Trajectory:
     
     @context.setter
     def context(self, df):
-        # int_columns = list(set(df.columns).intersection(self.variables))
-        # int_columns.extend(list(set(df.columns).intersection(self.variable_sigmas)))
-        # df = df[int_columns]
-        
-        # if self._primary_df.empty:
-        #     df.columns = pd.MultiIndex.from_product([['context'], df.columns])
-        #     self._primary_df = df
-        # else:
-        #     #   Get existing top-level columns names, and add 'context'
-        #     new_keys = [self._primary_df.columns.levels[0], 'context']
-        #     #df.columns = pd.MultiIndex.from_product([['context'], df.columns])
-
-        #     self._primary_df = pd.concat([self._primary_df, df], axis=1, keys=new_keys)
         self._add_to_primary_df('context', df)
 
     @property
@@ -452,14 +426,7 @@ class Trajectory:
         #  Find common columns between the supplied DataFrame and internals
         int_columns = list(set(df.columns).intersection(self.variables))
         df = df[int_columns]
-        
-        # if self._primary_df.empty:
-        #     df.columns = pd.MultiIndex.from_product([[self.spacecraft_name], df.columns])
-        #     self._primary_df = df
-        # else:
-        #     new_keys = [self._primary_df.columns.levels[0], self.spacecraft_name]
-        #     self._primary_df = pd.concat([self._primary_df, df], axis=1,
-        #                                 keys=new_keys)
+
         self._add_to_primary_df(self.spacecraft_name, df)
         
         #   data_index is useful for statistical comparison between model and data
@@ -481,22 +448,8 @@ class Trajectory:
         int_columns.extend(list(set(df.columns).intersection(self.variables_unc)))
         df = df[int_columns]
         
-        # if self._primary_df.empty:
-        #     #new_keys = [self.model_names[-1]]
-            
-        #     df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
-        #     self._primary_df = df
-        # else:
-
-        #     new_keys = [*self._primary_df.columns.levels[0], self.model_names[-1]]
-        #     df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
-
-        #     self._primary_df = pd.concat([self._primary_df, df], axis=1)
-        
-        # self._primary_df = self._primary_df.sort_index()
         self._add_to_primary_df(self.model_names[-1], df)
         
-    
     def addModel(self, model_name, model_df):
         self.model_names.append(model_name)
         #self.model_names = sorted(self.model_names)
@@ -565,7 +518,7 @@ class Trajectory:
             (r, std), rmsd = TD.find_TaylorStatistics(self.models[model_name][tag_name].loc[self.data_index].to_numpy(dtype='float64'), ref_data)
             
             ax.scatter(np.arccos(r), std, label=model_name,
-                       marker=model_symbols[model_name], s=72, c=model_colors[model_name],
+                       marker=self.gpp('marker',model_name), s=72, c=self.gpp('color',model_name),
                        zorder=10)
         
         return (fig, ax)
@@ -944,7 +897,7 @@ class Trajectory:
                     
                     axs[0].plot(shift_model_df.loc[shift_model_df[basis_tag]!=0, basis_tag].index, 
                                 shift_model_df.loc[shift_model_df[basis_tag]!=0, basis_tag].values*2,
-                                linestyle='None', color=model_colors[model_name], marker='o', zorder=2)
+                                linestyle='None', color=self.gpp('color',model_name), marker='o', zorder=2)
                     
                     axs[0].set(ylim=[0.5,2.5], yticks=[1, 2], yticklabels=['Data', 'Model'])
                     
@@ -960,10 +913,10 @@ class Trajectory:
                     axs[0].add_collection(lc)
                     
                     axs[1].plot(self.data.index, self.data[metric_tag], color=spacecraft_colors[self.spacecraft_name])
-                    axs[1].plot(shift_model_df.index, shift_model_df[metric_tag], color=model_colors[model_name])
+                    axs[1].plot(shift_model_df.index, shift_model_df[metric_tag], color=self.gpp('color',model_name))
                     
                     axs[2].plot(self.data.index, self.data[metric_tag], color=spacecraft_colors[self.spacecraft_name])
-                    axs[2].plot(shift_model_df.index, r_metric_warped,  color=model_colors[model_name])
+                    axs[2].plot(shift_model_df.index, r_metric_warped,  color=self.gpp('color',model_name))
                     
                     for point in tie_points:
                         query_date = mdates.date2num(self.data.index[point[0]])
@@ -1040,7 +993,7 @@ class Trajectory:
         
         return
     
-    def plot_OptimizedOffset(self, basis_tag, metric_tag, filepath='', presentation=False):
+    def plot_OptimizedOffset(self, basis_tag, metric_tag, filepath=''):
         #   New plotting function
         import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
@@ -1051,39 +1004,39 @@ class Trajectory:
         model_names = ['Tao']
         
         fig, axs = plt.subplots(nrows=3, ncols=len(model_names), 
-                                figsize=self.plotparams.figsize, 
+                                figsize=self.plotprops['figsize'], 
                                 height_ratios=[1,2,2],
                                 sharex=True, sharey='row', squeeze=False)
-        plt.subplots_adjust(**self.plotparams.adjustments)
+        plt.subplots_adjust(**self.plotprops['adjustments'])
         
         for model_name, ax_col in zip(model_names, axs.T):
             
             ax_col[0].scatter(self.data.loc[self.data[basis_tag]!=0, basis_tag].index, 
                               self.data.loc[self.data[basis_tag]!=0, basis_tag].values,
-                              color=self.plotparams.data_color, edgecolors='black',
-                              marker=self.plotparams.data_marker, s=32,
+                              color=self.gpp('color','data'), edgecolors='black',
+                              marker=self.gpp('marker','data'), s=32,
                               zorder=3)
         
             ax_col[0].scatter(self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].index, 
                               self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].values*2,
-                              color=self.plotparams.model_colors[model_name], edgecolors='black',
-                              marker=self.plotparams.model_markers[model_name], s=32,
+                              color=self.gpp('color',model_name), edgecolors='black',
+                              marker=self.gpp('marker',model_name), s=32,
                               zorder=2)
             
             ax_col[0].set(ylim=[0.5,2.5], yticks=[1, 2], yticklabels=['Data', 'Model'])
             
             ax_col[1].scatter(self.data.index, self.data[metric_tag], 
-                              color=self.plotparams.data_color, marker=self.plotparams.data_marker, s=1)
+                              color=self.gpp('color','data'), marker=self.gpp('marker','data'), s=1)
             ax_col[2].scatter(self.data.index, self.data[metric_tag], 
-                              color=self.plotparams.data_color, marker=self.plotparams.data_marker, s=1)
+                              color=self.gpp('color','data'), marker=self.gpp('marker','data'), s=1)
             
             ax_col[1].plot(self.models[model_name].index, self.models[model_name][metric_tag],
-                           color=self.plotparams.model_colors[model_name])
+                           color=self.gpp('color',model_name))
 
             temp_shift = self._shift_Models(time_delta_column='empirical_time_delta')
             #   !!!!! Make shift return just models, that's all it changes...
             ax_col[2].plot(temp_shift.index, temp_shift[(model_name, metric_tag)],
-                           color=self.plotparams.model_colors[model_name])                                     
+                           color=self.gpp('color',model_name))                                     
                                                  
             connections_basis = []
             connections_metric = []
@@ -1114,15 +1067,15 @@ class Trajectory:
             # ax_col[0].add_collection(lc)
             
             #   Plot Model and Data Sources, color-coded
-            label_bbox = dict(facecolor=self.plotparams.model_colors[model_name], 
-                                   edgecolor=self.plotparams.model_colors[model_name], 
+            label_bbox = dict(facecolor=self.gpp('color',model_name), 
+                                   edgecolor=self.gpp('color',model_name), 
                                    pad=0.1, boxstyle='round')
             ax_col[0].annotate('Model: {}'.format(model_name), 
                                (0, 1), xytext=(0.1, 0.2), va='bottom', ha='left',
                                xycoords='axes fraction', textcoords='offset fontsize',
                                bbox=label_bbox)
-            label_bbox = dict(facecolor=self.plotparams.data_color, 
-                                   edgecolor=self.plotparams.data_color, 
+            label_bbox = dict(facecolor=self.gpp('color','data'), 
+                                   edgecolor=self.gpp('color','data'), 
                                    pad=0.1, boxstyle='round')
             x_offset = len(model_name)+8+0.1  #  Offset for text
             ax_col[0].annotate('Data: {}'.format(self.spacecraft_name),
@@ -1342,12 +1295,13 @@ class Trajectory:
     # =============================================================================
     #   Plotting stuff
     # =============================================================================
-    def set_PresentationMode(self):
-        self.plotparams.figsize = (4, 3)
-        self.plotparams.adjustments = {'left': 0.15, 'right':0.95, 
-                                        'bottom':0.225, 'top':0.925, 
-                                        'wspace':0.2, 'hspace':0.0}
-        self.presentationmode = True
+    
+    # def set_PresentationMode(self):
+    #     self.plotpropsfigsize = (4, 3)
+    #     self.plotparams.adjustments = {'left': 0.15, 'right':0.95, 
+    #                                     'bottom':0.225, 'top':0.925, 
+    #                                     'wspace':0.2, 'hspace':0.0}
+    #     self.presentationmode = True
     
     def _plot_parameters(self, parameter):
         #  Check which parameter was specified and set up some plotting keywords
@@ -1403,8 +1357,8 @@ class Trajectory:
                                                         stoptime.strftime('%Y%m%d'))
         
     
-        fig, axs = plt.subplots(figsize=self.plotparams.figsize, nrows=len(self.model_names), sharex=True, squeeze=False)
-        plt.subplots_adjust(**self.plotparams.adjustments)
+        fig, axs = plt.subplots(figsize=self.plotprops['figsize'], nrows=len(self.model_names), sharex=True, squeeze=False)
+        plt.subplots_adjust(**self.plotprops['adjustments'])
         
         for indx, ax in enumerate(axs.flatten()):
             
@@ -1426,10 +1380,10 @@ class Trajectory:
         for ax, model_name in zip(axs.flatten(), self.model_names):
             if tag in self.models[model_name].columns:
                 ax.plot(self.models[model_name].index, self.models[model_name][tag], 
-                        color=model_colors[model_name], label=model_name, linewidth=2)
+                        color=self.gpp('color',model_name), label=model_name, linewidth=2)
             
-            model_label_box = dict(facecolor=model_colors[model_name], 
-                                   edgecolor=model_colors[model_name], 
+            model_label_box = dict(facecolor=self.gpp('color',model_name), 
+                                   edgecolor=self.gpp('color',model_name), 
                                    pad=0.1, boxstyle='round')
            
             ax.text(0.01, 0.95, model_name, color='black',
@@ -1477,7 +1431,7 @@ class Trajectory:
             
             ax.plot(self.model_shift_stats[model_name]['shift'], 
                     self.model_shift_stats[model_name]['r'],
-                    color=model_colors[model_name])
+                    color=self.gpp('color',model_name))
             
             #!!!!  Need to allow custom optimization formulae
             best_shift_indx = np.argmax(self.model_shift_stats[model_name]['r'])
@@ -1518,15 +1472,15 @@ class Trajectory:
             tst = self.models[model_name]['u_mag'].loc[self.data_index].to_numpy(dtype='float64')
             
             fig, ax = TD.plot_TaylorDiagram(tst, ref, fig=fig, ax=ax, zorder=9, 
-                                            s=36, c='black', marker=model_symbols[model_name],
+                                            s=36, c='black', marker=self.gpp('marker',model_name),
                                             label=model_name)
             
             # fig, ax = TD.plot_TaylorDiagram(tst, ref, fig=fig, ax=ax, zorder=10, 
-            #                                 s=36, c=model_colors[model_name], marker=model_symbols[model_name],
+            #                                 s=36, c=self.gpp('color',model_name), marker=self.gpp('marker',model_name),
             #                                 label=model_name + ' ' + str(shift) + ' h')
             # (r, sig), rmsd = TD.find_TaylorStatistics(tst, ref)
             # ax.scatter(np.arccos(r), sig, zorder=9, 
-            #            s=36, c='black', marker=model_symbols[model_name],
+            #            s=36, c='black', marker=self.gpp('marker',model_name),
             #            label=model_name)
             
             best_shift_indx = np.argmax(self.model_shift_stats[model_name]['r'])
@@ -1540,14 +1494,14 @@ class Trajectory:
             fig, ax = TD.plot_TaylorDiagram(shift_model_df[(model_name, 'u_mag')], 
                                             shift_model_df[(self.spacecraft_name, 'u_mag')], 
                                             fig=fig, ax=ax, zorder=9, 
-                                            s=36, c=model_colors[model_name], marker=model_symbols[model_name],
+                                            s=36, c=self.gpp('color',model_name), marker=self.gpp('marker',model_name),
                                             label=model_name + ' ' + str(shift) + ' h')
             
             # (r, sig), rmsd = TD.find_TaylorStatistics(shift_model_df[(model_name, 'u_mag')], 
             #                                                shift_model_df[(self.spacecraft_name, 'u_mag')]) #self.model_shift_stats[model_name].iloc[best_shift_indx][['shift', 'r', 'stddev', 'rmsd']]
             
             # ax.scatter(np.arccos(r), sig, zorder=10, 
-            #             s=36, c=model_colors[model_name], marker=model_symbols[model_name],
+            #             s=36, c=self.gpp('color',model_name), marker=self.gpp('marker',model_name),
             #             label=model_name + ' ' + str(shift) + ' h')
         
         ax.legend(ncols=3, bbox_to_anchor=[0.0,0.0,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
@@ -1581,7 +1535,7 @@ class Trajectory:
             #   Plot the optimization function, and its components (shift and dist. width)
             #   Plot half the 68% width, or the quasi-1-sigma value, in hours
             ax0.plot(self.model_shift_stats[model_name]['shift'], self._dtw_optimization_equation(self.model_shift_stats[model_name]),
-                     color=model_colors[model_name], zorder=10)
+                     color=self.gpp('color',model_name), zorder=10)
             ax0_correl.plot(self.model_shift_stats[model_name]['shift'], self.model_shift_stats[model_name]['r'],
                             color='C1', zorder=1)
             ax0_width.plot(self.model_shift_stats[model_name]['shift'], (self.model_shift_stats[model_name]['width_68']/2.),
@@ -1601,7 +1555,7 @@ class Trajectory:
             histo = np.histogram(dtw_opt_shifts, range=[-96,96], bins=int(192/6))
             
             ax1.stairs(histo[0]/np.sum(histo[0]), histo[1],
-                          color=model_colors[model_name], linewidth=2)
+                          color=self.gpp('color',model_name), linewidth=2)
             ax1.axvline(np.median(dtw_opt_shifts), linewidth=1, alpha=0.8, label=r'P_{50}', color='black')
             ax1.axvline(np.percentile(dtw_opt_shifts, 16), linestyle=':', linewidth=1, alpha=0.8, label=r'P_{16}', color='black')
             ax1.axvline(np.percentile(dtw_opt_shifts, 84), linestyle=':', linewidth=1, alpha=0.8, label=r'P_{84}', color='black')
@@ -1678,7 +1632,7 @@ class Trajectory:
             (r, sig), rmse = TD.find_TaylorStatistics(self.models[model_name]['u_mag'].to_numpy('float64'), 
                                                       self.data['u_mag'].to_numpy('float64'))
             ax.scatter(np.arccos(r), sig, 
-                        marker=model_symbols[model_name], s=24, c='black',
+                        marker=self.gpp('marker',model_name), s=24, c='black',
                         zorder=9,
                         label=model_name)
             
@@ -1687,7 +1641,7 @@ class Trajectory:
             # r, sig = traj0.model_dtw_stats[model_name].iloc[best_shift_indx][['r', 'stddev']].values.flatten()
             r, sig = self.best_shifts[model_name][['r', 'stddev']].values.flatten()
             ax.scatter(np.arccos(r), sig, 
-                        marker=model_symbols[model_name], s=48, c=model_colors[model_name],
+                        marker=self.gpp('marker',model_name), s=48, c=self.gpp('color',model_name),
                         zorder=10,
                         label='{} + DTW'.format(model_name))
             
