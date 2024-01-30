@@ -44,211 +44,38 @@ r_range = np.array((4.9, 5.5))  #  [4.0, 6.4]
 lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
 
 
-# def MMESH_traj_run():
-#     import string
-    
-#     import sys
-#     sys.path.append('/Users/mrutala/projects/SolarWindEM/')
-#     import MMESH as mmesh
-#     import numpy as np
-#     import scipy.stats as scstats
-#     import scipy.optimize as optimize
-#     import matplotlib.pyplot as plt
-#     import plot_TaylorDiagram as TD
-    
-#     from sklearn.linear_model import LinearRegression
-    
-#     from numpy.polynomial import Polynomial
-    
-#     spacecraft_name = 'Juno' # 'Ulysses'
-#     model_names = ['Tao', 'HUXt', 'ENLIL']
-    
-#     #   !!!! This whole pipline is currently (2023 11 03) sensitive to these
-#     #   input dates, but shouldn't be-- Optimization should not change based on input dates
-#     #   as long as the input dates span the whole of the spacecraft data being used
-#     #   since we should always be dropping NaN rows...
-#     starttime = dt.datetime(2016, 5, 16) # dt.datetime(1997,8,14) # dt.datetime(1991,12,8) # 
-#     stoptime = dt.datetime(2016, 6, 26) # dt.datetime(1998,1,1) # dt.datetime(1992,2,2) # 
-    
-#     reference_frame = 'SUN_INERTIAL'
-#     observer = 'SUN'
-    
-#     #!!!!
-#     #  NEED ROBUST in-SW-subset TOOL! ADD HERE!
-    
-#     #  Change start and stop times to reflect spacecraft limits-- with optional padding
-#     padding = dt.timedelta(days=8)
-#     starttime = starttime - padding
-#     stoptime = stoptime + padding
-    
-#     #  Load spacecraft data
-#     spacecraft = spacecraftdata.SpacecraftData(spacecraft_name)
-#     spacecraft.read_processeddata(starttime, stoptime, resolution='60Min')
-#     pos_TSE = spacecraft.find_StateToEarth()
-    
-#     #  Initialize a trajectory class and add the spacecraft data
-#     traj0 = mmesh.Trajectory()
-#     traj0.addData(spacecraft_name, spacecraft.data)
-    
-#     # traj0.addTrajectory(x)
-    
-#     #  Read models and add to trajectory
-#     for model_name in model_names:
-#         model = read_SWModel.choose(model_name, spacecraft_name, 
-#                                     starttime, stoptime, resolution='60Min')
-#         traj0.addModel(model_name, model)
-    
-#     # =============================================================================
-#     #   Plot a Taylor Diagram of the unchanged models
-#     # =============================================================================
-#     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-#         fig = plt.figure(figsize=(6,4.5))
-#         fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
-#         ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
-#                   loc='lower left', mode='expand', markerscale=1.0)
-#         plt.show()
-    
-#     # =============================================================================
-#     #   Optimize the models via constant temporal shifting
-#     #   Then plot:
-#     #       - The changes in correlation coefficient 
-#     #         (more generically, whatever combination is being optimized)
-#     #       - The changes on a Taylor Diagram
-#     # =============================================================================
-#     shifts = np.arange(-96, 96+6, 6)    #  in hours
-#     shift_stats = traj0.optimize_shifts('u_mag', shifts=shifts)
-#     print(traj0.model_shift_mode)
-    
-#     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-#         traj0.plot_ConstantTimeShifting_Optimization()
-        
-#         fig = plt.figure(figsize=[6,4.5])
-#         traj0.plot_ConstantTimeShifting_TD(fig=fig)
-        
-#         extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted()) 
-        
-#         for suffix in ['.png']:
-#             plt.savefig('figures/' + 'test_TD', dpi=300, bbox_inches=extent)
-    
-#     # =============================================================================
-#     #   Optimize the models via dynamic time warping
-#     #   Then plot:
-#     #       - The changes in correlation cooefficient 
-#     #         (more generically, whatever combination is being optimized)
-#     #       - The changes on a Taylor Diagram
-#     # =============================================================================
-#     #   Binarize the data and models
-#     smoothing_widths = {'Tao':      4,
-#                         'HUXt':     2,
-#                         'ENLIL':    2,
-#                         'Juno':     6,
-#                         'Ulysses':  12}   #  hours
-#     traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3)
-    
-#     traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
-#     traj0.plot_SingleTimeseries('jumps', starttime, stoptime)
-    
-#     #   Calculate a whole host of statistics
-#     dtw_stats = traj0.find_WarpStatistics('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
-#     #   Write an equation describing the optimization equation
-#     def optimization_eqn(df):
-#         f = df['r'] * 2/df['width_68']
-#         return (f - np.min(f))/(np.max(f)-np.min(f))
-#     #   Plug in the optimization equation
-#     traj0.optimize_Warp(optimization_eqn)
-#     print(traj0.model_shift_mode)
-#     #   This should probably be in MMESH/trajectory class
-#     for model_name in traj0.model_names:
-#         constant_offset = traj0.best_shifts[model_name]['shift']
-#         dynamic_offsets = traj0.model_shifts[model_name][str(int(constant_offset))]
-#         traj0._primary_df[model_name, 'empirical_dtime'] = constant_offset + dynamic_offsets
-
-#     with plt.style.context('/Users/mrutala/code/python/mjr.mplstyle'):
-#         traj0.plot_DynamicTimeWarping_Optimization()
-#         traj0.plot_DynamicTimeWarping_TD()
-    
-    
-#     # =============================================================================
-#     #    Compare output list of temporal shifts (and, maybe, running standard deviation or similar)
-#     #    to physical parameters: 
-#     #       -  T-S-E angle
-#     #       -  Solar cycle phase
-#     #       -  Running Mean SW Speed
-#     #   This should **ALL** ultimately go into the "Ensemble" class 
-#     # =============================================================================    
-#     formula = "empirical_dtime ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
-    
-#     #   traj0.addContext()
-#     srf = mmesh.read_SolarRadioFlux(traj0._primary_df.index[0], traj0._primary_df.index[-1])
-#     traj0._primary_df[('context', 'solar_radio_flux')] = srf['adjusted_flux']   
-#     traj0._primary_df[('context', 'target_sun_earth_lon')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lon']
-#     traj0._primary_df[('context', 'target_sun_earth_lat')] = pos_TSE.reindex(index=traj0._primary_df.index)['del_lon']
-    
-#     prediction_df = pd.DataFrame(index = pd.DatetimeIndex(np.arange(traj0._primary_df.index[0], traj0._primary_df.index[-1] + dt.timedelta(days=1000), dt.timedelta(hours=1))))
-#     prediction_df['solar_radio_flux'] = mmesh.read_SolarRadioFlux(prediction_df.index[0], prediction_df.index[-1])['adjusted_flux']
-    
-#     sc_pred = spacecraftdata.SpacecraftData(spacecraft_name)
-#     sc_pred.make_timeseries(prediction_df.index[0], 
-#                             prediction_df.index[-1] + dt.timedelta(hours=1), 
-#                             timedelta=dt.timedelta(hours=1))
-#     pos_TSE_pred = sc_pred.find_StateToEarth()
-#     prediction_df['target_sun_earth_lon'] = pos_TSE_pred.reindex(index=prediction_df.index)['del_lon']
-    
-#     mmesh0 = mmesh.MMESH(trajectories=[traj0])
-    
-#     test = mmesh0.linear_regression(formula)
-    
-#     import statsmodels.api as sm
-#     import statsmodels.formula.api as smf
-    
-#     # for model_name in traj0.model_names:
-#     forecast = test['Tao'].get_prediction(prediction_df)
-#     alpha_level = 0.32 
-#     result = forecast.summary_frame(alpha_level)
-    
-#     return prediction_df, result
-
-#     # formula = "total_dtimes ~ f10p7_flux + TSE_lat + TSE_lon" 
-    
-
-inputs = {}
-inputs['Voyager1_01'] = {'spacecraft_name':'Voyager 1',
-                         'span':(dt.datetime(1979, 1, 3), dt.datetime(1979, 5, 5))}
-inputs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
+# =============================================================================
+# Define the epoch of each trajectory we'll run
+# =============================================================================
+epochs = {}
+# inputs['Voyager1_01'] = {'spacecraft_name':'Voyager 1',
+#                          'span':(dt.datetime(1979, 1, 3), dt.datetime(1979, 5, 5))}
+epochs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
                           'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
-inputs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
+epochs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
                           'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
-inputs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
+epochs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
                           'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
-inputs['Juno_01']     = {'spacecraft_name':'Juno',
+epochs['Juno_01']     = {'spacecraft_name':'Juno',
                           'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
 
-model_names = ['HUXt', 'Tao']  #  'ENLIL', 
+model_names = ['ENLIL', 'HUXt', 'Tao']
 
-
-
-def MMESH_run(data_dict, model_names, presentation=False):
+def MMESH_run(epochs, model_names, presentation=False):
     import string
-    
-    import sys
-    sys.path.append('/Users/mrutala/projects/SolarWindEM/')
-    import MMESH as mmesh
-    import MMESH_context as mmesh_c
     import numpy as np
-    #import scipy.stats as scstats
-    #import scipy.optimize as optimize
-    #import matplotlib.pyplot as plt
-    import plot_TaylorDiagram as TD
     import copy
     
-    #import string
+    #import sys
+    #sys.path.append('/Users/mrutala/projects/SolarWindEM/')
+    import MMESH as mmesh
+    import MMESH_context as mmesh_c
+    import plot_TaylorDiagram as TD
     
-    #from sklearn.linear_model import LinearRegression
-    
-    #from numpy.polynomial import Polynomial
-    
-    #basefilepath = '/Users/mrutala/projects/MMESH/paper/figures/'
-    basefilepath = '/Users/mrutala/presentations/AGU2023/Figures/'
+    # =============================================================================
+    #     !!!! All of the below should go in a config file
+    # =============================================================================
+    basefilepath = 'paper/figures/'
     
     #   Encapsualted plotting calls for publishing
     def plot_BothShiftMethodsTD():
@@ -501,7 +328,7 @@ def MMESH_run(data_dict, model_names, presentation=False):
         plt.plot()
     
     trajectories = []
-    for key, val in data_dict.items():
+    for key, val in epochs.items():
         starttime = val['span'][0]
         stoptime = val['span'][1]
         
