@@ -395,6 +395,32 @@ class Trajectory:
     def __len__(self):
         return len(self._primary_df)
     
+    def _add_to_primary_df(self, label, df):
+        
+        #   Relabel the columns using MultiIndexing to add the label
+        df.columns = pd.MultiIndex.from_product([[label], df.columns])
+        
+        if self._primary_df.empty:
+            self._primary_df = df
+        else:
+            try:
+                new_keys = [*self._primary_df.columns.levels[0], label]
+                self._primary_df = pd.concat([self._primary_df, df], axis=1)
+            except:
+                breakpoint()
+            
+            # new_keys = [*self._primary_df.columns.levels[0], self.model_names[-1]]
+            # df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
+
+            # self._primary_df = pd.concat([self._primary_df, df], axis=1)
+        
+        #   Using this method will always re-set the index to datetime
+        #   which is useful for preventing errors
+        self._primary_df.index = pd.to_datetime(self._primary_df.index)
+        self._primary_df = self._primary_df.sort_index()
+        
+        return
+    
     @property
     def context(self):
         return self._primary_df['context']
@@ -405,15 +431,16 @@ class Trajectory:
         # int_columns.extend(list(set(df.columns).intersection(self.variable_sigmas)))
         # df = df[int_columns]
         
-        if self._primary_df.empty:
-            df.columns = pd.MultiIndex.from_product([['context'], df.columns])
-            self._primary_df = df
-        else:
-            #   Get existing top-level columns names, and add 'context'
-            new_keys = [self._primary_df.columns.levels[0], 'context']
-            #df.columns = pd.MultiIndex.from_product([['context'], df.columns])
+        # if self._primary_df.empty:
+        #     df.columns = pd.MultiIndex.from_product([['context'], df.columns])
+        #     self._primary_df = df
+        # else:
+        #     #   Get existing top-level columns names, and add 'context'
+        #     new_keys = [self._primary_df.columns.levels[0], 'context']
+        #     #df.columns = pd.MultiIndex.from_product([['context'], df.columns])
 
-            self._primary_df = pd.concat([self._primary_df, df], axis=1, keys=new_keys)
+        #     self._primary_df = pd.concat([self._primary_df, df], axis=1, keys=new_keys)
+        self._add_to_primary_df('context', df)
 
     @property
     def data(self):
@@ -426,13 +453,15 @@ class Trajectory:
         int_columns = list(set(df.columns).intersection(self.variables))
         df = df[int_columns]
         
-        if self._primary_df.empty:
-            df.columns = pd.MultiIndex.from_product([[self.spacecraft_name], df.columns])
-            self._primary_df = df
-        else:
-            new_keys = [self._primary_df.columns.levels[0], self.spacecraft_name]
-            self._primary_df = pd.concat([self._primary_df, df], axis=1,
-                                        keys=new_keys)
+        # if self._primary_df.empty:
+        #     df.columns = pd.MultiIndex.from_product([[self.spacecraft_name], df.columns])
+        #     self._primary_df = df
+        # else:
+        #     new_keys = [self._primary_df.columns.levels[0], self.spacecraft_name]
+        #     self._primary_df = pd.concat([self._primary_df, df], axis=1,
+        #                                 keys=new_keys)
+        self._add_to_primary_df(self.spacecraft_name, df)
+        
         #   data_index is useful for statistical comparison between model and data
         #   data_span is useful for propagating the models
         self.data_index = self.data.dropna(axis='index', how='all').index
@@ -452,19 +481,21 @@ class Trajectory:
         int_columns.extend(list(set(df.columns).intersection(self.variables_unc)))
         df = df[int_columns]
         
-        if self._primary_df.empty:
-            #new_keys = [self.model_names[-1]]
+        # if self._primary_df.empty:
+        #     #new_keys = [self.model_names[-1]]
             
-            df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
-            self._primary_df = df
-        else:
+        #     df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
+        #     self._primary_df = df
+        # else:
 
-            new_keys = [*self._primary_df.columns.levels[0], self.model_names[-1]]
-            df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
+        #     new_keys = [*self._primary_df.columns.levels[0], self.model_names[-1]]
+        #     df.columns = pd.MultiIndex.from_product([[self.model_names[-1]], df.columns])
 
-            self._primary_df = pd.concat([self._primary_df, df], axis=1)
+        #     self._primary_df = pd.concat([self._primary_df, df], axis=1)
         
-        self._primary_df = self._primary_df.sort_index()
+        # self._primary_df = self._primary_df.sort_index()
+        self._add_to_primary_df(self.model_names[-1], df)
+        
     
     def addModel(self, model_name, model_df):
         self.model_names.append(model_name)
@@ -1146,9 +1177,11 @@ class Trajectory:
         shifted_primary_df = copy.deepcopy(self._primary_df)
         
         for model_name in self.model_names:
-            #breakpoint()
-            time = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
-            
+            try:
+                time = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
+            except:
+                breakpoint()
+                
             #   If no time_delta_column is given, then set it to all zeros
             if time_delta_column == None:
                 time_deltas = np.zeros(len(self.models[model_name]))
