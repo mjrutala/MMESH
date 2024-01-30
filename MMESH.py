@@ -148,9 +148,12 @@ class MultiTrajectory:
         import statsmodels.formula.api as smf
         import re
         
-        for model_name in self.model_names:
-            breakpoint()
-            for cast_interval_name, cast_interval in self.cast_intervals.items():
+        for cast_interval_name, cast_interval in self.cast_intervals.items():
+            models_to_be_removed = []
+        #for model_name in self.model_names:
+            #   First: get the time_delta predictions for each model
+            for model_name in cast_interval.model_names:
+            #for cast_interval_name, cast_interval in self.cast_intervals.items():
                 print("For model: {} ========================================".format(model_name))
                 print(self.predictions_dict[model_name].summary())
                 
@@ -158,7 +161,7 @@ class MultiTrajectory:
                 cast_context_df = pd.concat([cast_interval.models[model_name], 
                                             cast_interval._primary_df['context']],
                                             axis='columns')
-                if len(cast_context_df) > 0
+                
                 rhs_terms = list(set(self.mlr_formula_terms) - set(['empirical_time_delta']))
                 
                 cast_context_df = cast_context_df.dropna(subset=rhs_terms, axis='index', how='any')
@@ -179,14 +182,31 @@ class MultiTrajectory:
                 
                     self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta')] = s_mu
                     self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta_sigma')] = s_sig
-         
-        if with_error:
-            for cast_interval_name, cast_interval in self.cast_intervals.items():
+                else:
+                    message = ('Context for Model: {} is partially or fully '
+                               'missing in cast interval: {}. Removing this '
+                               'model from this cast interval now...')
+                    logging.warning(message.format(model_name, cast_interval_name))
+                    models_to_be_removed.append(model_name)
+        
+            for model_name in models_to_be_removed:
+                self.cast_intervals[cast_interval_name].delModel(model_name)
+            
+           # breakpoint()
+            #   Second: shift the models according to the time_delta predictions    
+            if with_error:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma')
-        else:
-            for cast_interval_name, cast_interval in self.cast_intervals.items():
+            else:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta')
-        return
+                
+        
+        # if with_error:
+        #     for cast_interval_name, cast_interval in self.cast_intervals.items():
+        #         cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma')
+        # else:
+        #     for cast_interval_name, cast_interval in self.cast_intervals.items():
+        #         cast_interval.shift_Models(time_delta_column='mlr_time_delta')
+        # return
         
     #   We want to characterize linear relationships independently and together
     #   Via single-target (for now) multiple linear regression
@@ -450,6 +470,13 @@ class Trajectory:
         self.model_names.append(model_name)
         #self.model_names = sorted(self.model_names)
         self.models = model_df
+        
+    # @deleter
+    # def models(self, model_name):
+        
+    def delModel(self, model_name):
+        self.model_names.remove(model_name)
+        self._primary_df.drop(model_name, axis='columns', inplace=True)
 
     def baseline(self):
         import scipy
@@ -1119,6 +1146,7 @@ class Trajectory:
         shifted_primary_df = copy.deepcopy(self._primary_df)
         
         for model_name in self.model_names:
+            #breakpoint()
             time = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
             
             #   If no time_delta_column is given, then set it to all zeros
