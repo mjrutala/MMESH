@@ -11,6 +11,10 @@ import logging
 import numpy as np
 import pandas as pd
 
+import plot_TaylorDiagram as TD
+
+from matplotlib.ticker import MultipleLocator
+import string
 
 # spacecraft_colors = {'Pioneer 10': '#F6E680',
 #                      'Pioneer 11': '#FFD485',
@@ -462,40 +466,52 @@ class Trajectory(_MMESH_mixins.visualization):
         self.model_names.remove(model_name)
         self._primary_df.drop(model_name, axis='columns', inplace=True)
 
-    def baseline(self):
-        import scipy
+    # def baseline(self):
+    #     import scipy
         
-        models_stats = {}
-        for model_name in self.model_names:
+    #     models_stats = {}
+    #     for model_name in self.model_names:
             
-            model_stats = {}
-            for m_tag in self.metric_tags:
+    #         model_stats = {}
+    #         for m_tag in self.metric_tags:
                 
-                #  Find overlap between data and this model, ignoring NaNs
-                i1 = self.data.dropna(subset=[m_tag]).index
-                i2 = self.models[model_name].dropna(subset=[m_tag]).index
-                intersection_indx = i1.intersection(i2) 
+    #             #  Find overlap between data and this model, ignoring NaNs
+    #             i1 = self.data.dropna(subset=[m_tag]).index
+    #             i2 = self.models[model_name].dropna(subset=[m_tag]).index
+    #             intersection_indx = i1.intersection(i2) 
                 
-                if len(intersection_indx) > 2:
-                    #  Calculate r (corr. coeff.) and both standard deviations
-                    r, pvalue = scipy.stats.pearsonr(self.data[m_tag].loc[intersection_indx],
-                                                     self.models[model_name][m_tag].loc[intersection_indx])
-                    model_stddev = np.std(self.models[model_name][m_tag].loc[intersection_indx])
-                    spacecraft_stddev = np.std(self.data[m_tag].loc[intersection_indx])
-                else:
-                    r = 0
-                    model_stddev = 0
-                    spacecraft_stddev = 0
+    #             if len(intersection_indx) > 2:
+    #                 #  Calculate r (corr. coeff.) and both standard deviations
+    #                 r, pvalue = scipy.stats.pearsonr(self.data[m_tag].loc[intersection_indx],
+    #                                                  self.models[model_name][m_tag].loc[intersection_indx])
+    #                 model_stddev = np.std(self.models[model_name][m_tag].loc[intersection_indx])
+    #                 spacecraft_stddev = np.std(self.data[m_tag].loc[intersection_indx])
+    #             else:
+    #                 r = 0
+    #                 model_stddev = 0
+    #                 spacecraft_stddev = 0
                 
-                model_stats[m_tag] = (spacecraft_stddev, model_stddev, r)
+    #             model_stats[m_tag] = (spacecraft_stddev, model_stddev, r)
                 
-            models_stats[model_name] = model_stats
+    #         models_stats[model_name] = model_stats
         
-        return models_stats
+    #     return models_stats
+    
+    def baseline(self, parameter):
+        
+        df = self._primary_df.xs(parameter, axis=1, level=1, drop_level=False)
+        df = df.dropna(axis='index')
+        
+        results_list = {self.spacecraft_name: (0, np.std(df[self.spacecraft_name].values), 0)}
+        for model_name in self.model_names:
+            ref = df[self.spacecraft_name][parameter].values
+            tst = df[model_name][parameter].values
+            (r, sig), rmsd = TD.find_TaylorStatistics(tst, ref)
+            results_list[model_name] = (r, sig, rmsd)
+        
+        return results_list
     
     def plot_TaylorDiagram(self, tag_name='', fig=None, ax=None, **plt_kwargs):
-        
-        import plot_TaylorDiagram as TD
 
         #  If only _primary_df, then:
         #    plot models with shapes and colors
@@ -672,7 +688,6 @@ class Trajectory(_MMESH_mixins.visualization):
         A pandas DataFrame of statistics (columns) vs shifts (rows)
 
         """
-        import plot_TaylorDiagram as TD
         
         for model_name in self.model_names:
             
@@ -756,7 +771,6 @@ class Trajectory(_MMESH_mixins.visualization):
         import dtw
         
         import DTW_Application as dtwa
-        import plot_TaylorDiagram as TD
         
         from sklearn.metrics import confusion_matrix
         
@@ -984,6 +998,8 @@ class Trajectory(_MMESH_mixins.visualization):
             print(constant_offset)
             dynamic_offsets = self.model_shifts[model_name][str(int(constant_offset))]
             
+            #   So, this time_delta DOES NOT mean 'point 0 belongs at time[0] + time_delta[0]'
+            #   Instead, it means that 'the point that belongs at time[0] is currently at time[0]-time_delta[0]'
             #   Apply the constant offset everywhere, but the dynamic ones only where data exist
             #   !!!! May want to reconsider this at some point
             self._primary_df.loc[:, (model_name, 'empirical_time_delta')] = constant_offset
@@ -1009,51 +1025,102 @@ class Trajectory(_MMESH_mixins.visualization):
                                 sharex=True, sharey='row', squeeze=False)
         plt.subplots_adjust(**self.plotprops['adjustments'])
         
-        for model_name, ax_col in zip(model_names, axs.T):
+        def t_fmt(t):
+            return t.dayofyear + t.hour/24. + t.minute/60. + t.second/60.
+        
+        for num, (model_name, ax_col) in enumerate(zip(model_names, axs.T)):
+            letter_labels = string.ascii_lowercase[num*3:(num+3)*3]
+            ax_col[0].annotate('({})'.format(letter_labels[0]), (0,1), (1,-1), 
+                               xycoords='axes fraction', textcoords='offset fontsize', 
+                               va='top', ha='left')
+            ax_col[1].annotate('({})'.format(letter_labels[1]), (0,1), (1,-1), 
+                               xycoords='axes fraction', textcoords='offset fontsize', 
+                               va='top', ha='left')
+            ax_col[2].annotate('({})'.format(letter_labels[2]), (0,1), (1,-1), 
+                               xycoords='axes fraction', textcoords='offset fontsize', 
+                               va='top', ha='left')
             
-            ax_col[0].scatter(self.data.loc[self.data[basis_tag]!=0, basis_tag].index, 
+            ax_col[0].scatter(t_fmt(self.data.loc[self.data[basis_tag]!=0, basis_tag].index), 
                               self.data.loc[self.data[basis_tag]!=0, basis_tag].values,
                               color=self.gpp('color','data'), edgecolors='black',
                               marker=self.gpp('marker','data'), s=32,
                               zorder=3)
         
-            ax_col[0].scatter(self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].index, 
+            ax_col[0].scatter(t_fmt(self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].index), 
                               self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].values*2,
                               color=self.gpp('color',model_name), edgecolors='black',
                               marker=self.gpp('marker',model_name), s=32,
                               zorder=2)
             
-            ax_col[0].set(ylim=[0.5,2.5], yticks=[1, 2], yticklabels=['Data', 'Model'])
+            #   Plot Model and Data Sources, color-coded
             
-            ax_col[1].scatter(self.data.index, self.data[metric_tag], 
-                              color=self.gpp('color','data'), marker=self.gpp('marker','data'), s=1)
-            ax_col[2].scatter(self.data.index, self.data[metric_tag], 
-                              color=self.gpp('color','data'), marker=self.gpp('marker','data'), s=1)
+            # ax_col[0].annotate('Model: {}'.format(model_name), 
+            #                    (0, 1), xytext=(0.1, 0.2), va='bottom', ha='left',
+            #                    xycoords='axes fraction', textcoords='offset fontsize',
+            #                    bbox=label_bbox)
+            # x_offset = len(model_name)+8+0.1  #  Offset for text
+            # ax_col[0].annotate('Data: {}'.format(self.spacecraft_name),
+            #                    (0, 1), xytext=(x_offset, 0.2), va='bottom', ha='left',
+            #                    xycoords='axes fraction', textcoords='offset fontsize',
+            #                    bbox=label_bbox)
+            ax_col[0].set(ylim=[0.5,2.5], yticks=[1, 2],
+                          yticklabels=['Data: {}'.format(self.spacecraft_name), 
+                                       'Model: {}'.format(model_name)])
             
-            ax_col[1].plot(self.models[model_name].index, self.models[model_name][metric_tag],
+            label_bbox = dict(facecolor=self.gpp('color','data'), 
+                                   edgecolor=self.gpp('color','data'), 
+                                   pad=0.1, boxstyle='round')
+            ax_col[0].get_yticklabels()[0].set_bbox(label_bbox)
+            
+            label_bbox = dict(facecolor=self.gpp('color',model_name), 
+                                   edgecolor=self.gpp('color',model_name), 
+                                   pad=0.1, boxstyle='round')
+            ax_col[0].get_yticklabels()[1].set_bbox(label_bbox)
+            
+            
+            
+            ax_col[1].plot(t_fmt(self.data.index), self.data[metric_tag], 
+                              color=self.gpp('color','data'), linewidth=1)
+            ax_col[2].plot(t_fmt(self.data.index), self.data[metric_tag], 
+                              color=self.gpp('color','data'), linewidth=1)
+            
+            ax_col[1].plot(t_fmt(self.models[model_name].index), self.models[model_name][metric_tag],
                            color=self.gpp('color',model_name))
 
             temp_shift = self._shift_Models(time_delta_column='empirical_time_delta')
             #   !!!!! Make shift return just models, that's all it changes...
-            ax_col[2].plot(temp_shift.index, temp_shift[(model_name, metric_tag)],
-                           color=self.gpp('color',model_name))                                     
+            # ax_col[2].plot(temp_shift.index, temp_shift[(model_name, metric_tag)],
+            #                color=self.gpp('color',model_name))        
+            ax_col[2].plot(t_fmt(self.models[model_name].index), temp_shift[(model_name, metric_tag)],
+                           color=self.gpp('color',model_name))  
                                                  
             connections_basis = []
             connections_metric = []
             for i, (index, value) in enumerate(self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].items()):
                 
-                shift_index = index + dt.timedelta(hours=self.models[model_name].loc[index, 'empirical_time_delta'])
+                #  Find the time-coordinate for where each 'jump' got shifted to
+                t_elapsed = (self.models[model_name].index - self.models[model_name].index[0]).total_seconds()/3600.
+                x = t_elapsed - self.models[model_name].loc[:, 'empirical_time_delta'].values
+                x_tie = (index - self.models[model_name].index[0]).total_seconds()/3600.
+                shift_index_elapsed = np.interp(x_tie, x, t_elapsed)
                 
-                pair1 = (mdates.date2num(index), 2)
-                pair2 = (mdates.date2num(shift_index), 1)
+                shift_index = index + dt.timedelta(hours=(shift_index_elapsed-x_tie))
+                
+                #   This first plot shows the matched features, so only add
+                #   the connection if both features exist                
+                if shift_index in self.data.index:
+                    if self.data.loc[shift_index, 'jumps'] == 1:
+                        pair1 = (t_fmt(index), 2)
+                        pair2 = (t_fmt(shift_index), 1)
+                        
+                        connections_basis.append([pair1, pair2])
                 
                 #   For the shifted abcissa (y) value, just take the unshifted y value
                 #   Shifts only change x, not y, so the y value should not change
                 #   And this saves having to interpolate
-                pair3 = (mdates.date2num(index), self.models[model_name].loc[index, metric_tag])
-                pair4 = (mdates.date2num(shift_index), self.models[model_name].loc[index, metric_tag])
-
-                connections_basis.append([pair1, pair2])
+                pair3 = (t_fmt(index), self.models[model_name].loc[index, metric_tag])
+                pair4 = (t_fmt(shift_index), self.models[model_name].loc[index, metric_tag])
+                
                 connections_metric.append([pair3, pair4])
                 
                 con = ConnectionPatch(xyA=pair3, xyB=pair4, 
@@ -1062,41 +1129,25 @@ class Trajectory(_MMESH_mixins.visualization):
                                      color="gray", linewidth=1.5, linestyle=":", alpha=0.8, zorder=5)
                 ax_col[2].add_artist(con)
             
-            # lc = mc.LineCollection(connections_basis, 
-            #                        linewidths=1.5, linestyles=":", color='gray', linewidth=1.5, zorder=1)
-            # ax_col[0].add_collection(lc)
-            
-            #   Plot Model and Data Sources, color-coded
-            label_bbox = dict(facecolor=self.gpp('color',model_name), 
-                                   edgecolor=self.gpp('color',model_name), 
-                                   pad=0.1, boxstyle='round')
-            ax_col[0].annotate('Model: {}'.format(model_name), 
-                               (0, 1), xytext=(0.1, 0.2), va='bottom', ha='left',
-                               xycoords='axes fraction', textcoords='offset fontsize',
-                               bbox=label_bbox)
-            label_bbox = dict(facecolor=self.gpp('color','data'), 
-                                   edgecolor=self.gpp('color','data'), 
-                                   pad=0.1, boxstyle='round')
-            x_offset = len(model_name)+8+0.1  #  Offset for text
-            ax_col[0].annotate('Data: {}'.format(self.spacecraft_name),
-                               (0, 1), xytext=(x_offset, 0.2), va='bottom', ha='left',
-                               xycoords='axes fraction', textcoords='offset fontsize',
-                               bbox=label_bbox)
-
+            lc = mc.LineCollection(connections_basis, 
+                                    linewidths=1.5, linestyles="-", color='gray', linewidth=1.5, zorder=1)
+            ax_col[0].add_collection(lc)
         
         axs[1,-1].annotate('Original', 
-                           (1,0.5), xytext=(0.125,0), va='center', ha='left',
+                           (1,0.5), xytext=(0.25,0), va='center', ha='left',
                            xycoords='axes fraction', textcoords='offset fontsize',
                            rotation='vertical')
         axs[2,-1].annotate('DTW Shifted',
-                           (1,0.5), xytext=(0.125,0), va='center', ha='left',
+                           (1,0.5), xytext=(0.25,0), va='center', ha='left',
                            xycoords='axes fraction', textcoords='offset fontsize',
                            rotation='vertical')
         
         #axs[0,0].locator_params(nbins=3, axis='x')
-        axs[0,0].xaxis.set_major_formatter(self.timeseries_formatter(axs[0,0].get_xticks()))
-        
-        fig.supxlabel('Date')
+        #axs[0,0].xaxis.set_major_formatter(self.timeseries_formatter(axs[0,0].get_xticks()))
+        axs[-1,-1].xaxis.set_major_locator(MultipleLocator(10))
+        axs[-1,-1].xaxis.set_minor_locator(MultipleLocator(1))
+
+        fig.supxlabel('Decimal Day of Year {}'.format(self.data.index[0].year))
         fig.supylabel(r'Solar Wind Flow Speed ($u_{mag}$) [km/s]')
         
         fig.savefig(filepath, dpi=300)
@@ -1156,6 +1207,7 @@ class Trajectory(_MMESH_mixins.visualization):
                 #   Use the ORIGINAL time with this, not time + delta
                 if (time_delta_sigmas == 0.).all():
                     arr_shifted = np.interp(time - time_deltas, time, arr)
+                    #arr_shifted = np.interp(time, time+time_deltas, arr)
                     arr_shifted_pos_unc = arr_shifted * 0.
                     arr_shifted_neg_unc = arr_shifted * 0.
                 else:
@@ -1164,6 +1216,7 @@ class Trajectory(_MMESH_mixins.visualization):
                     for i in range(n_mc):
                         time_deltas_perturb = r.normal(time_deltas, time_delta_sigmas)
                         arr_perturb_list.append(np.interp(time - time_deltas_perturb, time, arr))
+                        #arr_perturb_list.append(np.interp(time, time+time_deltas_perturb, arr))
 
                     arr_shifted = np.mean(arr_perturb_list, axis=0)
                     arr_shifted_sigma = np.std(arr_perturb_list, axis=0)
@@ -1462,7 +1515,6 @@ class Trajectory(_MMESH_mixins.visualization):
     
     def plot_ConstantTimeShifting_TD(self, fig=None):
         import matplotlib.pyplot as plt
-        import plot_TaylorDiagram as TD
         
         fig, ax = TD.init_TaylorDiagram(np.nanstd(self.data['u_mag']), fig=fig)
         
@@ -1613,7 +1665,6 @@ class Trajectory(_MMESH_mixins.visualization):
         
     def plot_DynamicTimeWarping_TD(self, fig=None):
         import matplotlib.pyplot as plt
-        import plot_TaylorDiagram as TD
         
         #   There's probably a much neater way to do this
         #   But we need to drop all NaNs in the data + model sets
