@@ -45,13 +45,13 @@ epochs = {}
 #                          'span':(dt.datetime(1979, 1, 3), dt.datetime(1979, 5, 5))}
 # inputs['Voyager2'] = {'spacecraft_name':'Voyager 2',
 #                          'span':(dt.datetime(1979, 3, 30), dt.datetime(1979, 8, 20))}
-epochs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
-                          'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
-epochs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
-                          'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
-epochs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
-                          'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
-epochs['Juno_01']     = {'spacecraft_name':'Juno',
+# epochs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
+#                           'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
+# epochs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
+#                           'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
+# epochs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
+#                           'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
+epochs['Juno']     = {'spacecraft_name':'Juno',
                           'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
 
 model_names = ['ENLIL', 'HUXt', 'Tao']
@@ -84,14 +84,21 @@ def MMESH_run(epochs, model_names):
         
         fig = plt.figure(figsize=traj0.plotprops['figsize'], constrained_layout=True)
         
-        fig, ax = TD.init_TaylorDiagram(np.nanstd(traj0.data['u_mag']), fig=fig, half=True)
+        fig, ax = TD.init_TaylorDiagram(np.nanstd(traj0.data['u_mag']), fig=fig, half=True,
+                                        r_label=r'Standard Deviation in Flow Speed $\sigma(u_{mag})$ [km/s]')
+        ax.set_rlim(0, 1.5*np.nanstd(traj0.data['u_mag']))
         
-        breakpoint()
+        points = traj0.baseline('u_mag')
+        #breakpoint()
         
         for model_name in traj0.model_names:
-            TD.plot_TaylorDiagram(traj0.models[model_name]['u_mag'].loc[traj0.data_index], traj0.data['u_mag'], ax=ax,
-                                  s=32, c='black', marker=traj0.gpp('marker',model_name),
-                                  label=r'{}'.format(model_name))
+            # TD.plot_TaylorDiagram(traj0.models[model_name]['u_mag'].loc[traj0.data_index], traj0.data['u_mag'], ax=ax,
+            #                       s=32, c='black', marker=traj0.gpp('marker',model_name),
+            #                       label=r'{}'.format(model_name))
+            ax.scatter(np.arccos(points[model_name][0]), points[model_name][1],
+                       s=32, c='black', marker=traj0.gpp('marker', model_name),
+                       label=r'{}'.format(model_name))
+            
             ax.scatter(*constant_shift_dict[model_name],
                        s=32, facecolors=traj0.gpp('color',model_name), marker=traj0.gpp('marker',model_name),
                        edgecolors='black', linewidths=0.5,
@@ -100,7 +107,9 @@ def MMESH_run(epochs, model_names):
                        s=32, c=traj0.gpp('color',model_name), marker=traj0.gpp('marker',model_name),
                        label=r'{} + DTW'.format(model_name))
             
-        ax.legend(ncols=3, bbox_to_anchor=[0.0,-0.02,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
+        #ax.legend(ncols=3, bbox_to_anchor=[0.0,-0.02,1.0,0.15], loc='lower left', mode='expand', markerscale=1.0)
+        ax.legend(ncols=1, bbox_to_anchor=[-0.45,0.0,0.4,1.0], loc='upper left', mode='expand', markerscale=1.0)
+        
         #print(fig, ax)
         #extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted()) 
         fig.set_constrained_layout_pads(w_pad=0, h_pad=0.05)
@@ -146,10 +155,10 @@ def MMESH_run(epochs, model_names):
             
             #  Hacky
             #c = ['#5d9dd5', '#447abc', '#4034f4', '#75036b'][0:len(m_traj.trajectories)]
-            #c = 
+            
             axs[i].hist(l, range=(-120, 120), bins=20,
                         density=True,
-                        histtype='barstacked', stacked=True, label=n)#, color=c)
+                        histtype='barstacked', stacked=True, label=n, color=c)
             axs[i].annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
                         (0,1), (1,-1), ha='left', va='center', 
                         xycoords='axes fraction', textcoords='offset fontsize')
@@ -437,7 +446,9 @@ def MMESH_run(epochs, model_names):
         # traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
         # traj0.shift_Models(time_delta_column='empirical_time_delta')
         # traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
-        breakpoint()
+        
+        #breakpoint()
+        
         # =============================================================================
         #             
         # =============================================================================
