@@ -13,13 +13,17 @@ Options:
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 def make_NaNFree(*arrays):
-
+    
     nans_arr = np.zeros(len(arrays[0]))
     for arr in arrays:
-        nans_arr += np.isnan(arr)
+        try:
+            nans_arr += np.isnan(arr).astype(int)
+        except:
+            breakpoint()
     
     nans_arr[nans_arr > 1] = 1
     nans_arr = nans_arr.astype(bool)
@@ -37,7 +41,6 @@ def find_TaylorStatistics(test_data, ref_data):
     if N != float(len(ref_data)):
         print("'test_data' and 'ref_data' must have the same length.")
         return
-    
     
     test_arr = np.array(test_data, dtype='float64')
     ref_arr = np.array(ref_data, dtype='float64')
@@ -59,6 +62,22 @@ def find_TaylorStatistics(test_data, ref_data):
     centered_RMS_diff = np.sqrt((1./N) * np.sum(((test_arr - test_mean) - (ref_arr - ref_mean))**2))
     
     return((correlation_r, test_std), centered_RMS_diff)
+
+def find_TaylorDiagramCoordinates(ref, *tests):
+    
+    df = pd.DataFrame(ref, columns=['ref'])
+    for i, test in enumerate(tests):
+        df['{0:02d}'.format(i)] = test
+    
+    df = df.dropna(axis='index')
+    
+    results_list = [(0, np.std(df['ref'].values), 0)]
+    for column_name, column in df.items():
+        if column_name != 'ref':
+            (r, sig), rmsd = find_TaylorStatistics(column.values, df['ref'].values)
+            results_list.append((r, sig, rmsd))
+    
+    return results_list
 
 def plot_TaylorDiagram(test_data, ref_data, fig=None, ax=None, **plt_kwargs):
     
@@ -108,14 +127,14 @@ def init_TaylorDiagram(ref_std, fig=None, ax=None, half=False, r_label='', theta
         ax.set_thetamax(90)
         r_label_pos = [0.5, -0.1]
         theta_ticks = [0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.95, 0.99]
-        theta_label_pos = [0.85, 0.85]
+        theta_label_pos = [0.825, 0.825]
         theta_label_rot = -45
     else:
         ax.set_thetamax(180)
         r_label_pos = [0.5, -0.1]
         theta_ticks = [-0.99, -0.95, -0.9, -0.8, -0.6, -0.4, -0.2, 0, 
                        0.2, 0.4, 0.6, 0.8, 0.9, 0.95, 0.99]
-        theta_label_pos = [0.5, 0.825]
+        theta_label_pos = [0.5, 0.85]
         theta_label_rot = 0
         
     ax.set_xticks([np.arccos(ang) for ang in theta_ticks])
