@@ -70,6 +70,7 @@ class MultiTrajectory:
             possible_models += trajectory.model_names
         
         self.model_names = list(set(possible_models))
+        self.model_names.sort()
         
         self.offset_times = []  #   offset_times + (constant_offset) + np.linspace(0, total_hours, n_steps) give interpolation index
         self.optimized_shifts = []
@@ -702,6 +703,7 @@ class Trajectory(_MMESH_mixins.visualization):
                 shift_model_df = pd.concat([self.data, shift_model_df], axis=1,
                                             keys=[self.spacecraft_name, model_name])
                 
+                #  !!!! This could use the internal 'baseline' method now!
                 model_nonan, ref_nonan = TD.make_NaNFree(shift_model_df[model_name][metric_tag].to_numpy(dtype='float64'), 
                                                          shift_model_df[self.spacecraft_name][metric_tag].to_numpy(dtype='float64'))
 
@@ -852,9 +854,15 @@ class Trajectory(_MMESH_mixins.visualization):
                 
                 #   This should work to interpolate any model quantity to the 
                 #   warp which best aligns with data
+                #   !!! r_time_warped is IDENTICAL to reference_to_query_indx...
                 r_time_warped = np.interp(reference_to_query_indx, np.arange(0,len(reference)), r_time)
                 r_time_deltas = r_time - r_time_warped  #   !!!! changed from r_time_warped - r_time to current form MJR 2023/11/30
-
+                
+                #   Don't spline from the zeros at the start and end of the time series
+                #   These are an artifact of fixing the two time series to match at start and end
+                r_time_deltas[tie_points[0][0]:tie_points[1][0]] = r_time_deltas[tie_points[1][0]+1]
+                r_time_deltas[tie_points[-2][0]:tie_points[-1][0]+1] = r_time_deltas[tie_points[-2][0]-1]
+                
                 #   Warp the reference (i.e., shifted model at basis tag)
                 #   This DOES work to interpolate any model quantity! Finally!
                 #   I guess the confusing thing is that the resulting time 
@@ -949,6 +957,10 @@ class Trajectory(_MMESH_mixins.visualization):
                 #   20231019: Alright, I'm 99% sure these are reporting shifts correctly
                 #   That is, a positive delta_t means you add that number to the model
                 #   datetime index to best match the data. Vice versa for negatives
+                #   20240131: This is almost right-- a positive delta_t does NOT mean
+                #   that the current point should be shifted by +dt forward; it means 
+                #   that the point that should be in the current position *needs* to be 
+                #   shifted +dt forward
                 
                 time_delta_df = pd.DataFrame(data=r_time_deltas, index=shift_model_df.index, columns=[str(shift)])
                 
@@ -1017,7 +1029,7 @@ class Trajectory(_MMESH_mixins.visualization):
         from matplotlib.patches import ConnectionPatch
         
         #   Optionally, choose which models get plotted
-        model_names = ['Tao']
+        model_names = ['ENLIL']
         
         fig, axs = plt.subplots(nrows=3, ncols=len(model_names), 
                                 figsize=self.plotprops['figsize'], 
@@ -1170,7 +1182,6 @@ class Trajectory(_MMESH_mixins.visualization):
         This can also be used to propagate arrival time errors by supplying 
         time_delta_sigma with no time_delta (i.e., time_delta of zero)
         
-        OVERWRITES CURRENT VALUES
         """
         import matplotlib.pyplot as plt
         import copy
@@ -1336,8 +1347,8 @@ class Trajectory(_MMESH_mixins.visualization):
         
         #   Sum weighted variables, and RSS weighted errors
         for partial in partials_list:
-            ensemble.loc[:, self.variables] += partial.loc[:, self.variables]
-            ensemble.loc[:, variables_unc] += partial.loc[:, variables_unc]**2.
+            ensemble.loc[:, self.variables] += partial.loc[:, self.variables].astype('float64')
+            ensemble.loc[:, variables_unc] += (partial.loc[:, variables_unc].astype('float64'))**2.
             
         ensemble.loc[:, variables_unc] = np.sqrt(ensemble.loc[:, variables_unc])
         #   !!!! This doesn't add error properly
