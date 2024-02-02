@@ -1740,3 +1740,8 @@ class Trajectory(_MMESH_mixins.visualization):
            
             return tick_str
         return date_formatter
+    
+    def index_ddoy(self, index):
+        #   !!! If trajectory.data didn't subscript _primary_df, this could be
+        #   and argument-less function...
+        return (index - dt.datetime(index[0].year,1,1)).total_seconds()/(24*60*60)
