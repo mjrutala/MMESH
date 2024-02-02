@@ -13,6 +13,7 @@ import numpy as np
 import spacecraftdata
 import read_SWModel
 import matplotlib.pyplot as plt
+from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
 
 plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
 
@@ -90,7 +91,7 @@ def MMESH_run(epochs, model_names):
                                         r_label=r'Standard Deviation in Flow Speed $\sigma(u_{mag})$ [km/s]')
         ax.set_rlim(0, 1.5*points[traj0.spacecraft_name][1])
         
-        points = traj0.baseline('u_mag')
+        #points = traj0.baseline('u_mag')
         
         for model_name in traj0.model_names:
             # TD.plot_TaylorDiagram(traj0.models[model_name]['u_mag'].loc[traj0.data_index], traj0.data['u_mag'], ax=ax,
@@ -117,6 +118,103 @@ def MMESH_run(epochs, model_names):
         fig.savefig('figures/Paper/' + 'TD_{}_BothShiftMethods.png'.format('_'.join(traj0.model_names)), 
                     dpi=300)#, bbox_inches=extent)
         plt.show()
+    
+    # =============================================================================
+    #   Figure 3: Time series of original models w/ Taylor Diagram
+    # =============================================================================
+    def plot_OriginalModels(fullfilename):
+        param = 'u_mag'
+        
+        mosaic = []
+        for model_name in traj0.model_names:
+            mosaic.append([model_name]*2 + ['u_mag_TD'])
+        
+        fig, axd = plt.subplot_mosaic(mosaic, figsize=(6,2),
+                                      per_subplot_kw={'u_mag_TD': {"projection": "polar"}})
+        
+        # fig1, axs = plt.subplots(nrows=3, sharex=True, sharey=True, figsize=(6,2))
+        plt.subplots_adjust(bottom=0.2, left=0.1, right=0.95, top=0.85,
+                            hspace=0.1)
+        
+        lines = []
+        for i, model_name in enumerate(traj0.model_names):
+            
+            data = axd[model_name].plot(traj0.index_ddoy(traj0.data.index), 
+                               traj0.data[param],
+                               color='xkcd:blue grey', alpha=0.6, linewidth=0.5,
+                               label=traj0.spacecraft_name)
+            
+            model_name_for_paper = model_name
+            if model_name_for_paper == 'Tao': 
+                model_name_for_paper += '+'
+                
+            l = axd[model_name].plot(traj0.index_ddoy(traj0.models[model_name].index), 
+                            traj0.models[model_name][param],
+                            color=traj0.gpp('color',model_name), linewidth=1.0,
+                            marker=traj0.gpp('marker',model_name), markersize=0.1,
+                            label=model_name_for_paper)
+            lines.append(l[0])
+            
+            axd[model_name].annotate('({})'.format(string.ascii_lowercase[i]),
+                            (0,1), (1,-1), ha='center', va='center',
+                            xycoords='axes fraction', 
+                            textcoords='offset fontsize')
+        
+        _ = [axd[model_name].sharex(axd[traj0.model_names[-1]]) for model_name in traj0.model_names]
+        _ = [axd[model_name].sharey(axd[traj0.model_names[-1]]) for model_name in traj0.model_names]
+        
+        axd[model_name].xaxis.set_major_locator(MultipleLocator(50))
+        axd[model_name].xaxis.set_minor_locator(MultipleLocator(5))
+        
+        axd[model_name].set_xlabel('Day of Year {}'.format(traj0._primary_df.index[0].year),
+                                   fontsize=plt.rcParams['figure.labelsize'])
+        #axd[model_name].xaxis.set_label_coords(0.5,40)
+        
+        axd[model_name].yaxis.set_major_locator(MultipleLocator(250))
+        axd[model_name].yaxis.set_minor_locator(MultipleLocator(50))
+        fig.supylabel(r'Flow Speed $u_{mag}$ [km/s]', fontsize=plt.rcParams['figure.labelsize'])
+        
+        handles = data
+        handles.extend(lines)
+        labels = [traj0.spacecraft_name]
+        labels.extend(traj0.model_names)
+        
+        bbox = axd[traj0.model_names[0]].get_position()
+        fig.legend(handles, labels, loc='upper left', 
+                    ncols=4, bbox_to_anchor=[bbox.x0, 
+                                             bbox.y0+bbox.height+0.05, 
+                                             bbox.width, 
+                                             0.1], #mode='expand',
+                    markerscale=50.)
+        
+        points = traj0.baseline('u_mag')
+        
+        fig, ax = TD.init_TaylorDiagram(points[traj0.spacecraft_name][1], fig=fig, ax=axd['u_mag_TD'], half=True,
+                                        r_label=' ',
+                                        theta_label=r'$r_{P}$')
+        ax.set_rlim(0, 1.25*points[traj0.spacecraft_name][1])
+        ax.set_xlabel(r'$\sigma_{u_{mag}}$ [km/s]')
+        #ax.xaxis.label.set_position(axd[model_name].xaxis.label.get_position())
+        ax.xaxis.set_label_coords(0.5,-0.18)
+        
+        for model_name in traj0.model_names:
+            ax.scatter(np.arccos(points[model_name][0]), points[model_name][1],
+                        s=32, zorder=1,
+                        c=traj0.gpp('color', model_name), 
+                        marker=traj0.gpp('marker', model_name),
+                        label=r'{}'.format(model_name))
+        
+        ax.annotate('({})'.format(string.ascii_lowercase[i+1]),
+                    (0,1), (1,-1), ha='center', va='center',
+                    xycoords='axes fraction',
+                    textcoords='offset fontsize')
+        
+        
+        for suffix in ['.png', '.eps']:
+            plt.savefig(fullfilename+suffix, dpi=300)
+        plt.show()
+        
+        return
     
     def plot_BestShiftWarpedTimeDistribution():
         
@@ -380,11 +478,16 @@ def MMESH_run(epochs, model_names):
         # =============================================================================
         #   Plot a Taylor Diagram of the unchanged models
         # =============================================================================
-        fig = plt.figure(figsize=(6,4.5))
-        fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
-        ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
-                  loc='lower left', mode='expand', markerscale=1.0)
-        plt.show()
+        
+        # fig = plt.figure(figsize=(6,4.5))
+        # fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
+        # ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
+        #           loc='lower left', mode='expand', markerscale=1.0)
+        # plt.show()
+        
+        plot_OriginalModels(basefilepath+'fig03_OriginalModels')        
+        
+        #breakpoint()
         
         # =============================================================================
         #   Optimize the models via constant temporal shifting
