@@ -127,7 +127,7 @@ def init_TaylorDiagram(ref_std, fig=None, ax=None, half=False, r_label='', theta
         ax.set_thetamax(90)
         r_label_pos = [0.5, -0.1]
         theta_ticks = [0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.95, 0.99]
-        theta_label_pos = [0.825, 0.825]
+        theta_label_pos = [0.85, 0.85]
         theta_label_rot = -45
     else:
         ax.set_thetamax(180)
