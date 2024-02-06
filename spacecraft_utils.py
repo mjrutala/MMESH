@@ -24,6 +24,15 @@ import PlottingConstants as pc
 r_range = [4.9, 5.5]
 lat_range = [-6.1, 6.1]
 
+epoch_colors = {"Pioneer11" : '#bb4c41',
+                "Voyager1"  : '#be7a3e',
+                "Voyager2"  : '#c0a83b',
+                "Ulysses_01": '#86b666',
+                "Ulysses_02": '#4bc490',
+                "Ulysses_03": '#5a9ab3',
+                "Ulysses"   : '#86b666',
+                "Juno"      : '#686fd5'}
+
 
 # def run_HUXtAtSpacecraft(spacecraft_names):
 #     import copy
@@ -188,7 +197,7 @@ def get_SpacecraftDataCoverage():
         
     return times
     
-def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
+def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes, fullfilename):
     import copy
     import matplotlib.pyplot as plt
     import matplotlib.patches as patches
@@ -209,8 +218,8 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
     # =============================================================================
     #   Would-be inputs
     # =============================================================================
-    spacecraft_names = ['Juno', 'Ulysses', 'Voyager 1', 'Voyager 2', 'Pioneer 10', 'Pioneer 11']
-    
+    #spacecraft_names = ['Juno', 'Ulysses', 'Voyager 1', 'Voyager 2', 'Pioneer 10', 'Pioneer 11']
+    spacecraft_names = list(spacecraft_lifetimes.keys())
         
     # =============================================================================
     # Find when Ulysses was within +/- 30 deg. of the ecliptic, and near 5 AU
@@ -267,12 +276,15 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
     
         #return sc_sw, sc_mp
     box_height = 0.8
-    box_centers = {'Pioneer 10': 1,
-                   'Pioneer 11': 2,
-                   'Voyager 1': 3, 
-                   'Voyager 2': 4, 
-                   'Ulysses'  : 5, 
-                   'Juno'     : 6}
+    # box_centers = {'Pioneer 10': 1,
+    #                'Pioneer 11': 2,
+    #                'Voyager 1': 3, 
+    #                'Voyager 2': 4, 
+    #                'Ulysses'  : 5, 
+    #                'Juno'     : 6}
+    box_centers = {}
+    for i, spacecraft_name in enumerate(spacecraft_names):
+        box_centers[spacecraft_name] = i + 1
     
     # =============================================================================
     # F10.4 Radio flux from the sun
@@ -324,47 +336,49 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
                 
                 
             
-            axs[0].add_collection(collections.PatchCollection(rectangle_list, facecolors=pc.spacecraft_colors[sc.name]))
+            axs[0].add_collection(collections.PatchCollection(rectangle_list, 
+                                                              facecolors=epoch_colors[sc.name.replace(' ','')]))
             
            
-        for sc in mp_trajectory_list:
-            #  This bit splits the spacecraft data up into chunks to plot
-            sc_deltas = sc.data.index.to_series().diff()
-            gaps_indx = np.where(sc_deltas > dt.timedelta(days=5))[0]
+        # for sc in mp_trajectory_list:
+        #     #  This bit splits the spacecraft data up into chunks to plot
+        #     sc_deltas = sc.data.index.to_series().diff()
+        #     gaps_indx = np.where(sc_deltas > dt.timedelta(days=5))[0]
             
-            start_indx = np.insert(gaps_indx, 0, 0)
-            stop_indx = np.append(gaps_indx, len(sc.data.index))-1
+        #     start_indx = np.insert(gaps_indx, 0, 0)
+        #     stop_indx = np.append(gaps_indx, len(sc.data.index))-1
             
-            print('Start and stop dates for ' + sc.name)
-            for first, final in zip(start_indx, stop_indx):
-                print(sc.data.index[first].strftime('%Y-%m-%d') + 
-                      ' -- ' + 
-                      sc.data.index[final].strftime('%Y-%m-%d'))
-                print(str((sc.data.index[final] - sc.data.index[first]).total_seconds()/3600.) + ' total hours')
-                rlonlat = [spice.reclat(np.array(row[['x_pos', 'y_pos', 'z_pos']], dtype='float64')) for indx, row in sc.data.iterrows()]
-                rlonlat = np.array(rlonlat).T
-                print('Radial range of: ' + str(np.min(rlonlat[0,:])/sc.au_to_km) +
-                      ' - ' + str(np.max(rlonlat[0,:])/sc.au_to_km) + ' AU')
-                print('Heliolatitude range of: ' + str(np.min(rlonlat[2,:])*180/np.pi) +
-                      ' - ' + str(np.max(rlonlat[2,:])*180/np.pi) + 'deg.')
-            print('------------------------------------------')
+        #     print('Start and stop dates for ' + sc.name)
+        #     for first, final in zip(start_indx, stop_indx):
+        #         print(sc.data.index[first].strftime('%Y-%m-%d') + 
+        #               ' -- ' + 
+        #               sc.data.index[final].strftime('%Y-%m-%d'))
+        #         print(str((sc.data.index[final] - sc.data.index[first]).total_seconds()/3600.) + ' total hours')
+        #         rlonlat = [spice.reclat(np.array(row[['x_pos', 'y_pos', 'z_pos']], dtype='float64')) for indx, row in sc.data.iterrows()]
+        #         rlonlat = np.array(rlonlat).T
+        #         print('Radial range of: ' + str(np.min(rlonlat[0,:])/sc.au_to_km) +
+        #               ' - ' + str(np.max(rlonlat[0,:])/sc.au_to_km) + ' AU')
+        #         print('Heliolatitude range of: ' + str(np.min(rlonlat[2,:])*180/np.pi) +
+        #               ' - ' + str(np.max(rlonlat[2,:])*180/np.pi) + 'deg.')
+        #     print('------------------------------------------')
             
-            #  If the spacecraft data is split into chunks, we don't want to plot
-            #  a continuous line-- so use a collection of patches
-            rectangle_list = []
-            for x0, xf in zip(start_indx, stop_indx):
+        #     #  If the spacecraft data is split into chunks, we don't want to plot
+        #     #  a continuous line-- so use a collection of patches
+        #     rectangle_list = []
+        #     for x0, xf in zip(start_indx, stop_indx):
                 
-                ll_corner = (mdates.date2num(sc.data.index[x0]), box_centers[sc.name]-box_height/2.)
+        #         ll_corner = (mdates.date2num(sc.data.index[x0]), box_centers[sc.name]-box_height/2.)
                 
-                width = mdates.date2num(sc.data.index[xf] + dt.timedelta(days=1)) - mdates.date2num(sc.data.index[x0])
+        #         width = mdates.date2num(sc.data.index[xf] + dt.timedelta(days=1)) - mdates.date2num(sc.data.index[x0])
                 
-                rectangle_list.append(patches.Rectangle(ll_corner, width, box_height))
+        #         rectangle_list.append(patches.Rectangle(ll_corner, width, box_height))
                 
                 
-            #  Unfortunately, there will always be a 1 pixel space between rectangle patches, 
-            #  so these can't appear flush against one another when they should...
-            axs[0].add_collection(collections.PatchCollection(rectangle_list, facecolors='xkcd:gray', alpha=0.5))
-        axs[0].set_xlim((dt.datetime(1970, 1, 1), dt.datetime(1980, 1, 1)))
+        #     #  Unfortunately, there will always be a 1 pixel space between rectangle patches, 
+        #     #  so these can't appear flush against one another when they should...
+        #     axs[0].add_collection(collections.PatchCollection(rectangle_list, facecolors='xkcd:gray', alpha=0.5))
+        
+        axs[0].set_xlim((dt.datetime(1990, 1, 1), dt.datetime(2023, 5, 15)))
         
         axs[1].set_ylabel('Observed Radio Flux @ 10.7 cm [SFU]')
         axs[1].set_xlabel('Year')
@@ -372,19 +386,19 @@ def plot_spacecraftcoverage_solarcycle(spacecraft_lifetimes):
         
         axs[1].set_ylim((50, 300))
         
-        axs[0].set_ylim((0,7))
+        axs[0].set_ylim((0,len(spacecraft_names)+1))
         axs[0].set_yticks(list(box_centers.values()))
         axs[0].set_yticklabels(list(box_centers.keys()))
         axs[0].set_ylabel('Spacecraft')
         
         #plt.tight_layout()
-        figurename = 'Coverage_vs_SolarCycle'
-        for suffix in ['.png', '.pdf']:
-            plt.savefig('figures/' + figurename + suffix, bbox_inches='tight')
+        #figurename = 'Coverage_vs_SolarCycle'
+        for suffix in ['.png', '.jpg']:
+            plt.savefig(fullfilename + suffix, bbox_inches='tight')
         plt.show()
         spice.kclear()
         
-def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
+def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans, fullfilename):
     import copy
     import spiceypy as spice
     import spacecraftdata as SpacecraftData
@@ -397,11 +411,12 @@ def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
     spacecraft_names = list(spacecraft_spans.keys())
     
     observer1 = 'Solar System Barycenter'
-    frame1 = 'JUPITER_JSS'
+    frame1 = 'JUNO_JSS'
     observer2 = 'JUPITER BARYCENTER'
-    frame2 = 'JUPITER_JSS' 
+    frame2 = 'JUNO_JSS' 
     
     spice.furnsh('/Users/mrutala/SPICE/generic/kernels/fk/SolarFrames.tf')
+    spice.furnsh('/Users/mrutala/SPICE/juno/kernels/fk/juno_v12.tf')
     
     sr = 5 #sr == sample rate for scatter plots
     
@@ -425,6 +440,8 @@ def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
         delta_lat_TSE = []
         delta_lon_TSJ = []
         delta_lat_TSJ = []
+        
+        deltas_colors = []
         for sc in spacecraft_list:
             #   Convert full data range to ets
             times_total = [spice.datetime2et(t) for t in sc.data.index]
@@ -468,6 +485,8 @@ def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
             delta_lat_TSE.append(np.abs(np.abs(del_lat_TSE + 180) % 360 - 180))
             delta_lon_TSJ.append(np.abs(np.abs(del_lon_TSJ + 180) % 360 - 180))
             delta_lat_TSJ.append(np.abs(np.abs(del_lat_TSJ + 180) % 360 - 180))
+            
+            deltas_colors.append(epoch_colors[sc.name.replace(' ','')])
         
             xyz_in_AU = np.array([np.array(row[['x_pos', 'y_pos', 'z_pos']]).astype('float64')
                                   for indx, row in sc.data.iterrows()]) / sc.au_to_km 
@@ -572,35 +591,35 @@ def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
         plt.subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.9, wspace=0.225, hspace=0.075)
         
         axs[0,0].hist(delta_r_TS, bins=12, range=r_range, histtype='bar', stacked=True,
-                      label=spacecraft_names)
+                      label=spacecraft_names, color=deltas_colors)
         axs[0,0].set(xlim=[3.8,5.6], xlabel='', xticklabels='')
         axs[0,0].xaxis.set_minor_locator(MultipleLocator(0.05))
         
         axs[0,1].hist(delta_lon_TSJ, bins=18, range=[0,180], histtype='bar', stacked=True,
-                    label=spacecraft_names)
+                    label=spacecraft_names, color=deltas_colors)
         axs[0,1].set(xlim=[0,180], xlabel='', xticklabels='',  
                    xticks=[0, 60, 120, 180])
         axs[0,1].xaxis.set_minor_locator(MultipleLocator(10))
         
         axs[0,2].hist(delta_lat_TSJ, bins=30, range=[0,15], histtype='bar', stacked=True,
-                    label=spacecraft_names)
+                    label=spacecraft_names, color=deltas_colors)
         axs[0,2].set(xlim=[0,15], xlabel='', xticklabels='', 
                    xticks=[0, 5, 10, 15])
         axs[0,2].xaxis.set_minor_locator(MultipleLocator(0.5))
         
         axs[1,0].hist(delta_r_TE, bins=15, range=[3.5, 5], histtype='bar', stacked=True,
-                      label=spacecraft_names)
+                      label=spacecraft_names, color=deltas_colors)
         axs[1,0].set(xlim=[3.8,5.6], xlabel=r'$\Delta$Distance [AU]')
         axs[1,0].xaxis.set_minor_locator(MultipleLocator(0.1))
         
         axs[1,1].hist(delta_lon_TSE, bins=18, range=[0,180], histtype='bar', stacked=True,
-                    label=spacecraft_names)
+                    label=spacecraft_names, color=deltas_colors)
         axs[1,1].set(xlim=[0,180], xlabel=r'$\Delta$Longitude [deg.]',
-                   xticks=[0, 60, 120, 180])
+                     xticks=[0, 60, 120, 180])
         axs[1,1].xaxis.set_minor_locator(MultipleLocator(10))
         
         axs[1,2].hist(delta_lat_TSE, bins=30, range=[0,15], histtype='bar', stacked=True,
-                    label=spacecraft_names)
+                    label=spacecraft_names, color=deltas_colors)
         axs[1,2].set(xlim=[0,15], xlabel=r'$\Delta$Latitude [deg.]',
                    xticks=[0, 5, 10, 15])
         axs[1,2].xaxis.set_minor_locator(MultipleLocator(0.5))
@@ -612,17 +631,22 @@ def plot_FullSpacecraftTrajectory_JSS(spacecraft_spans):
         axs[1,1].text(0.05, 0.9, '(e) TSE', ha='left', va='center', transform=axs[1,1].transAxes)
         axs[1,2].text(0.05, 0.9, '(f) TSE', ha='left', va='center', transform=axs[1,2].transAxes)
         
+        #   Add some padding on the y-axis to leave room for panel labels 
+        for ax in axs.flatten():
+            ax.set_ylim(np.array(ax.get_ylim())*np.array([1,1.1]))
+        
         fig.supylabel('Spacecraft Measurements [hours]')
         
         
         handles, labels = axs[0,0].get_legend_handles_labels()
         fig.legend(handles, labels, ncols=3,
-                   bbox_to_anchor=[0.15, 0.92, 0.7, .08], loc='lower left',
-                  mode="expand", borderaxespad=0.)
+                   bbox_to_anchor=[0.1, 0.92, 0.7, .08], loc='lower left',
+                   #mode="expand", 
+                   borderaxespad=0.)
         
-    figurename = 'Used_Spacecraft_Trajectory_Histogram'
-    for suffix in ['.png']:
-        plt.savefig('figures/' + figurename + suffix, bbox_inches='tight', dpi=300)
+    #figurename = 'Used_Spacecraft_Trajectory_Histogram'
+    for suffix in ['.png', '.jpg']:
+        plt.savefig(fullfilename + suffix, bbox_inches='tight', dpi=300)
     plt.show()
     plt.show()
     
