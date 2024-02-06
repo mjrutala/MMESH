@@ -160,7 +160,7 @@ def init_TaylorDiagram(ref_std, fig=None, ax=None, half=False, r_label='', theta
     #ax.set_ylabel('Pearson Correlation Coefficient (r)', y=0.85, rotation=ylabel_rot)
     #ax.yaxis.set_label_coords(0.5, 0.9)
    
-    ax.grid(visible=True, zorder=-6)
+    ax.grid(visible=True, zorder=-100)
     
     for element in [ax.xaxis.label, ax.yaxis.label]:
         element.set_fontsize(plt.rcParams["figure.labelsize"])
