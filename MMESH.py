@@ -501,15 +501,26 @@ class Trajectory(_MMESH_mixins.visualization):
     def baseline(self, parameter):
         
         df = self._primary_df.xs(parameter, axis=1, level=1, drop_level=False)
-        df = df.dropna(axis='index')
         
-        results_list = {self.spacecraft_name: (0, np.std(df[self.spacecraft_name].values), 0)}
-        for model_name in self.model_names:
+        #   Record which models are all NaNs, then remove them from the DataFrame
+        nan_models = df.columns[df.isnull().all()].get_level_values(0)
+        df = df.dropna(axis='columns', how='all')
+        remaining_models = list(set(self.model_names) - set(nan_models))
+        
+        #   Then, drop any remaining NaN rows
+        df = df.dropna(axis='index', how='any')
+        
+        try: results_list = {self.spacecraft_name: (0, np.std(df[self.spacecraft_name].values), 0)}
+        except: breakpoint()
+        for model_name in remaining_models:
             ref = df[self.spacecraft_name][parameter].values
             tst = df[model_name][parameter].values
             (r, sig), rmsd = TD.find_TaylorStatistics(tst, ref)
             results_list[model_name] = (r, sig, rmsd)
         
+        for model_name in nan_models:
+            results_list[model_name] = (np.nan, np.nan, np.nan)
+            
         return results_list
     
     def plot_TaylorDiagram(self, tag_name='', fig=None, ax=None, **plt_kwargs):
@@ -1021,7 +1032,10 @@ class Trajectory(_MMESH_mixins.visualization):
         
         return
     
-    def plot_OptimizedOffset(self, basis_tag, metric_tag, filepath=''):
+    # =============================================================================
+    #   Figure 5
+    # =============================================================================
+    def plot_OptimizedOffset(self, basis_tag, metric_tag, fullfilepath=''):
         #   New plotting function
         import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
@@ -1029,16 +1043,13 @@ class Trajectory(_MMESH_mixins.visualization):
         from matplotlib.patches import ConnectionPatch
         
         #   Optionally, choose which models get plotted
-        model_names = ['ENLIL']
+        model_names = ['HUXt']
         
         fig, axs = plt.subplots(nrows=3, ncols=len(model_names), 
                                 figsize=self.plotprops['figsize'], 
                                 height_ratios=[1,2,2],
                                 sharex=True, sharey='row', squeeze=False)
         plt.subplots_adjust(**self.plotprops['adjustments'])
-        
-        def t_fmt(t):
-            return t.dayofyear + t.hour/24. + t.minute/60. + t.second/60.
         
         for num, (model_name, ax_col) in enumerate(zip(model_names, axs.T)):
             letter_labels = string.ascii_lowercase[num*3:(num+3)*3]
@@ -1052,13 +1063,14 @@ class Trajectory(_MMESH_mixins.visualization):
                                xycoords='axes fraction', textcoords='offset fontsize', 
                                va='top', ha='left')
             
-            ax_col[0].scatter(t_fmt(self.data.loc[self.data[basis_tag]!=0, basis_tag].index), 
+            ax_col[0].scatter(self.index_ddoy(self.data.loc[self.data[basis_tag]!=0, basis_tag].index), 
                               self.data.loc[self.data[basis_tag]!=0, basis_tag].values,
-                              color=self.gpp('color','data'), edgecolors='black',
+                              # color=self.gpp('color','data'), edgecolors='black',
+                              color='black', edgecolors='black',
                               marker=self.gpp('marker','data'), s=32,
                               zorder=3)
         
-            ax_col[0].scatter(t_fmt(self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].index), 
+            ax_col[0].scatter(self.index_ddoy(self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].index), 
                               self.models[model_name].loc[self.models[model_name][basis_tag]!=0, basis_tag].values*2,
                               color=self.gpp('color',model_name), edgecolors='black',
                               marker=self.gpp('marker',model_name), s=32,
@@ -1082,7 +1094,7 @@ class Trajectory(_MMESH_mixins.visualization):
             label_bbox = dict(facecolor=self.gpp('color','data'), 
                                    edgecolor=self.gpp('color','data'), 
                                    pad=0.1, boxstyle='round')
-            ax_col[0].get_yticklabels()[0].set_bbox(label_bbox)
+            # ax_col[0].get_yticklabels()[0].set_bbox(label_bbox)
             
             label_bbox = dict(facecolor=self.gpp('color',model_name), 
                                    edgecolor=self.gpp('color',model_name), 
@@ -1091,19 +1103,21 @@ class Trajectory(_MMESH_mixins.visualization):
             
             
             
-            ax_col[1].plot(t_fmt(self.data.index), self.data[metric_tag], 
-                              color=self.gpp('color','data'), linewidth=1)
-            ax_col[2].plot(t_fmt(self.data.index), self.data[metric_tag], 
-                              color=self.gpp('color','data'), linewidth=1)
+            ax_col[1].plot(self.index_ddoy(self.data.index), self.data[metric_tag], 
+                           # color=self.gpp('color','data'), linewidth=1)
+                           color='black', linewidth=1)
+            ax_col[2].plot(self.index_ddoy(self.data.index), self.data[metric_tag], 
+                           # color=self.gpp('color','data'), linewidth=1)
+                           color='black', linewidth=1)
             
-            ax_col[1].plot(t_fmt(self.models[model_name].index), self.models[model_name][metric_tag],
+            ax_col[1].plot(self.index_ddoy(self.models[model_name].index), self.models[model_name][metric_tag],
                            color=self.gpp('color',model_name))
 
             temp_shift = self._shift_Models(time_delta_column='empirical_time_delta')
             #   !!!!! Make shift return just models, that's all it changes...
             # ax_col[2].plot(temp_shift.index, temp_shift[(model_name, metric_tag)],
             #                color=self.gpp('color',model_name))        
-            ax_col[2].plot(t_fmt(self.models[model_name].index), temp_shift[(model_name, metric_tag)],
+            ax_col[2].plot(self.index_ddoy(self.models[model_name].index), temp_shift[(model_name, metric_tag)],
                            color=self.gpp('color',model_name))  
                                                  
             connections_basis = []
@@ -1118,20 +1132,25 @@ class Trajectory(_MMESH_mixins.visualization):
                 
                 shift_index = index + dt.timedelta(hours=(shift_index_elapsed-x_tie))
                 
+                #   !!! Can't use built-in self.index_ddoy with an individual entry...
+                #   
+                index_ddoy = (index - dt.datetime(self.data_index[0].year,1,1)).total_seconds()/(24*60*60) + 1/24.
+                shift_index_ddoy = (shift_index - dt.datetime(self.data_index[0].year,1,1)).total_seconds()/(24*60*60) + 1/24.
+                
                 #   This first plot shows the matched features, so only add
                 #   the connection if both features exist                
                 if shift_index in self.data.index:
                     if self.data.loc[shift_index, 'jumps'] == 1:
-                        pair1 = (t_fmt(index), 2)
-                        pair2 = (t_fmt(shift_index), 1)
+                        pair1 = (index_ddoy, 2)
+                        pair2 = (shift_index_ddoy, 1)
                         
                         connections_basis.append([pair1, pair2])
                 
                 #   For the shifted abcissa (y) value, just take the unshifted y value
                 #   Shifts only change x, not y, so the y value should not change
                 #   And this saves having to interpolate
-                pair3 = (t_fmt(index), self.models[model_name].loc[index, metric_tag])
-                pair4 = (t_fmt(shift_index), self.models[model_name].loc[index, metric_tag])
+                pair3 = (index_ddoy, self.models[model_name].loc[index, metric_tag])
+                pair4 = (shift_index_ddoy, self.models[model_name].loc[index, metric_tag])
                 
                 connections_metric.append([pair3, pair4])
                 
@@ -1144,6 +1163,8 @@ class Trajectory(_MMESH_mixins.visualization):
             lc = mc.LineCollection(connections_basis, 
                                     linewidths=1.5, linestyles="-", color='gray', linewidth=1.5, zorder=1)
             ax_col[0].add_collection(lc)
+            
+            ax_col[0].set_xlim(self.index_ddoy(self.data.index)[0], self.index_ddoy(self.data.index)[-1])
         
         axs[1,-1].annotate('Original', 
                            (1,0.5), xytext=(0.25,0), va='center', ha='left',
@@ -1156,13 +1177,17 @@ class Trajectory(_MMESH_mixins.visualization):
         
         #axs[0,0].locator_params(nbins=3, axis='x')
         #axs[0,0].xaxis.set_major_formatter(self.timeseries_formatter(axs[0,0].get_xticks()))
-        axs[-1,-1].xaxis.set_major_locator(MultipleLocator(10))
-        axs[-1,-1].xaxis.set_minor_locator(MultipleLocator(1))
-
-        fig.supxlabel('Decimal Day of Year {}'.format(self.data.index[0].year))
-        fig.supylabel(r'Solar Wind Flow Speed ($u_{mag}$) [km/s]')
+        axs[-1,-1].xaxis.set_major_locator(MultipleLocator(25))
+        axs[-1,-1].xaxis.set_minor_locator(MultipleLocator(5))
         
-        fig.savefig(filepath, dpi=300)
+        axs[-1,-1].yaxis.set_major_locator(MultipleLocator(250))
+        axs[-1,-1].yaxis.set_minor_locator(MultipleLocator(50))
+
+        fig.supxlabel('Day of Year {}'.format(self.data.index[0].year))
+        fig.supylabel(r'Flow Speed ($u_{mag}$) [km/s]')
+        
+        for suffix in ['.png', '.eps', '.jpg']:
+            fig.savefig(fullfilepath, dpi=300)
         plt.show()
         return
     
@@ -1372,25 +1397,25 @@ class Trajectory(_MMESH_mixins.visualization):
         match parameter:
             case ('u_mag' | 'flow speed'):
                 tag = 'u_mag'
-                ylabel = r'Solar Wind Flow Speed $u_{mag}$ [km s$^{-1}$]'
+                ylabel = r'$u_{mag}$ [km/s]'
                 plot_kw = {'ylabel': ylabel,
                            'yscale': 'linear', 'ylim': (250, 600),
                            'yticks': np.arange(350,600+50,100)}
             case ('p_dyn' | 'pressure'):
                 tag = 'p_dyn'
-                ylabel = r'Solar Wind Dynamic Pressure $p_{dyn}$ [nPa]'
+                ylabel = r'$p_{dyn}$ [nPa]'
                 plot_kw = {'ylabel': ylabel,
                            'yscale': 'log', 'ylim': (1e-3, 2e0),
                            'yticks': 10.**np.arange(-3,0+1,1)}
             case ('n_tot' | 'density'):
                 tag = 'n_tot'
-                ylabel = r'Solar Wind Ion Density $n_{tot}$ [cm$^{-3}$]'
+                ylabel = r'$n_{tot}$ [cm$^{-3}$]'
                 plot_kw = {'ylabel': ylabel,
                            'yscale': 'log', 'ylim': (5e-3, 5e0),
                            'yticks': 10.**np.arange(-2, 0+1, 1)}
             case ('B_mag' | 'magnetic field'):
                 tag = 'B_mag'
-                ylabel = r'Solar Wind Magnetic Field Magnitude $B_{mag}$ [nT]'
+                ylabel = r'$B_{IMF}$ [nT]'
                 plot_kw = {'ylabel': ylabel,
                            'yscale': 'linear', 'ylim': (0, 5),
                            'yticks': np.arange(0, 5+1, 2)}
@@ -1403,7 +1428,7 @@ class Trajectory(_MMESH_mixins.visualization):
                 
         return tag, plot_kw
         
-    def plot_SingleTimeseries(self, parameter, starttime, stoptime, filepath=''):
+    def plot_SingleTimeseries(self, parameter, starttime, stoptime, fullfilepath=''):
         """
         Plot the time series of a single parameter from a single spacecraft,
         separated into 4/5 panels to show the comparison to each model.
@@ -1415,10 +1440,10 @@ class Trajectory(_MMESH_mixins.visualization):
         
         tag, plot_kw = self._plot_parameters(parameter)
         
-        save_filestem = 'Timeseries_{}_{}_{}-{}'.format(self.spacecraft_name.replace(' ', ''),
-                                                        tag,
-                                                        starttime.strftime('%Y%m%d'),
-                                                        stoptime.strftime('%Y%m%d'))
+        # save_filestem = 'Timeseries_{}_{}_{}-{}'.format(self.spacecraft_name.replace(' ', ''),
+        #                                                 tag,
+        #                                                 starttime.strftime('%Y%m%d'),
+        #                                                 stoptime.strftime('%Y%m%d'))
         
     
         fig, axs = plt.subplots(figsize=self.plotprops['figsize'], nrows=len(self.model_names), sharex=True, squeeze=False)
@@ -1426,12 +1451,12 @@ class Trajectory(_MMESH_mixins.visualization):
         
         for indx, ax in enumerate(axs.flatten()):
             
-            ax.plot(self.data.index, 
+            ax.plot(self.index_ddoy(self.data.index), 
                     self.data[tag],
-                    color='xkcd:blue grey', alpha=0.6, linewidth=1.5,
+                    color='black', alpha=1.0, linewidth=1.0,
                     label='Juno/JADE (Wilson+ 2018)')
             
-            ax.set(**plot_kw)
+            #ax.set(**plot_kw)
             ax.set_ylabel('')
             #  get_yticks() for log scale doesn't work as expected; workaround:
             yticks = ax.get_yticks()
@@ -1441,28 +1466,37 @@ class Trajectory(_MMESH_mixins.visualization):
                     ax.set(yticks=yticks[1:])
             #ax.grid(linestyle='-', linewidth=2, alpha=0.1, color='xkcd:black')
         print('Plotting models...')  
-        for ax, model_name in zip(axs.flatten(), self.model_names):
+        for i, (ax, model_name) in enumerate(zip(axs.flatten(), self.model_names)):
             if tag in self.models[model_name].columns:
-                ax.plot(self.models[model_name].index, self.models[model_name][tag], 
+                ax.plot(self.index_ddoy(self.models[model_name].index),
+                        self.models[model_name][tag], 
                         color=self.gpp('color',model_name), label=model_name, linewidth=2)
             
             model_label_box = dict(facecolor=self.gpp('color',model_name), 
                                    edgecolor=self.gpp('color',model_name), 
                                    pad=0.1, boxstyle='round')
            
-            ax.text(0.01, 0.95, model_name, color='black',
+            ax.text(0.01, 0.95, '({}) {}'.format(string.ascii_lowercase[i], model_name),
+                    color='black',
                     horizontalalignment='left', verticalalignment='top',
-                    bbox = model_label_box,
+                    #bbox = model_label_box,
                     transform = ax.transAxes)
+            
+            ax.set_xlim(self.index_ddoy(self.data.index)[0], self.index_ddoy(self.data.index)[-1])
+            ax.xaxis.set_major_locator(MultipleLocator(25))
+            ax.xaxis.set_minor_locator(MultipleLocator(5))
+            ax.set_yticks([0,1])
+            ax.set_ylim([0,2])
         
-        fig.text(0.5, 0.025, 'Day of Year', ha='center', va='center')
+        fig.text(0.5, 0.025, 'Day of Year {}'.format(self._primary_df.index[0].year),
+                 ha='center', va='center')
         fig.text(0.025, 0.5, plot_kw['ylabel'], ha='center', va='center', rotation='vertical')
         
-        tick_interval = int((stoptime - starttime).days/10.)
-        subtick_interval = int(tick_interval/5.)
+        # tick_interval = int((stoptime - starttime).days/10.)
+        # subtick_interval = int(tick_interval/5.)
         
-        axs[0,0].set_xlim((starttime, stoptime))
-        axs[0,0].xaxis.set_major_formatter(self.timeseries_formatter(axs[0,0].get_xticks()))
+        # axs[0,0].set_xlim((starttime, stoptime))
+        # axs[0,0].xaxis.set_major_formatter(self.timeseries_formatter(axs[0,0].get_xticks()))
         
         # axs[0,0].xaxis.set_major_locator(mdates.DayLocator(interval=tick_interval))
         # if subtick_interval > 0:
@@ -1478,8 +1512,10 @@ class Trajectory(_MMESH_mixins.visualization):
         
         fig.align_ylabels()
         #
-        if filepath != '':
-            plt.savefig(filepath + save_filestem, dpi=300, bbox_inches='tight')
+        
+        if fullfilepath != '':
+            for suffix in ['.png', '.jpg']:
+                plt.savefig(fullfilepath+suffix, dpi=300, bbox_inches='tight')
         plt.show()
         #return models
             
@@ -1741,7 +1777,11 @@ class Trajectory(_MMESH_mixins.visualization):
             return tick_str
         return date_formatter
     
-    def index_ddoy(self, index):
+    def index_ddoy(self, index, start_ref=None):
         #   !!! If trajectory.data didn't subscript _primary_df, this could be
         #   and argument-less function...
-        return (index - dt.datetime(index[0].year,1,1)).total_seconds()/(24*60*60)
+        if start_ref == None:
+            result = (index - dt.datetime(index[0].year,1,1)).total_seconds()/(24*60*60)
+        else:
+            result = (index - dt.datetime(start_ref.year,1,1)).total_seconds()/(24*60*60)
+        return result
