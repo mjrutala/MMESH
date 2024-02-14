@@ -1,1 +1,18 @@
 .DS_store
+
+#  Figures, documents, and other for the MMESH paper
+paper
+
+#  Results of by-eye identification of 'jumps' in solar wind time series
+binarization_threshhold_tests
+
+#  Inputs for MMESH
+data
+models
+context_files
+
+#  Code removed from this repo (to be added to another)
+separated_code
+
+#  Generated spacecraft trajectory ephemerides
+trajectories
