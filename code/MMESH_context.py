@@ -36,7 +36,7 @@ def read_SolarRadioFlux(starttime, stoptime, sample_rate='60Min'):
     
     return result
 
-def make_PlanetaryContext_CSV(target, starttime, stoptime, kernel_paths=kernel_paths, filepath=[]):
+def make_PlanetaryContext_CSV(target, starttime, stoptime, kernel_paths=kernel_paths, filepath=''):
     #   !!!! Add option for resolution?
     datetimes = np.arange(starttime, stoptime, dt.timedelta(hours=1)).astype(dt.datetime)
     
@@ -66,11 +66,11 @@ def make_PlanetaryContext_CSV(target, starttime, stoptime, kernel_paths=kernel_p
     filename = '{}_{}-{}_Context.csv'.format(target.lower().capitalize(),
                                              starttime.strftime('%Y%m%d%H%M%S'),
                                              stoptime.strftime('%Y%m%d%H%M%S'))
-    fullfilepath = filepath + '/' + filename
-    context_df.to_csv(fullfilepath, index_label='datetime')
+    fullfilepath = filepath / filename
+    context_df.to_csv(str(fullfilepath), index_label='datetime')
     return fullfilepath
 
-def make_SpacecraftContext_CSV(target, starttime, stoptime, kernel_paths=kernel_paths, filepath=[]):
+def make_SpacecraftContext_CSV(target, starttime, stoptime, kernel_paths=kernel_paths, filepath=''):
     #   !!!! Add option for resolution?
     datetimes = np.arange(starttime, stoptime, dt.timedelta(hours=1)).astype(dt.datetime)
     
@@ -100,6 +100,6 @@ def make_SpacecraftContext_CSV(target, starttime, stoptime, kernel_paths=kernel_
     filename = '{}_{}-{}_Context.csv'.format(target.lower().capitalize(),
                                              starttime.strftime('%Y%m%d%H%M%S'),
                                              stoptime.strftime('%Y%m%d%H%M%S'))
-    fullfilepath = filepath + '/' + filename
-    context_df.to_csv(fullfilepath, index_label='datetime')
+    fullfilepath = filepath / filename
+    context_df.to_csv(str(fullfilepath), index_label='datetime')
     return fullfilepath
