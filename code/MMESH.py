@@ -747,43 +747,41 @@ class Trajectory(_MMESH_mixins.visualization):
         self.model_shift_method = 'constant'
         return self.model_shift_stats
     
-    def find_WarpStatistics_old(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
-        import sys
-        import DTW_Application as dtwa
-        import SWData_Analysis as swda
+    # def find_WarpStatistics_old(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
+    #     import sys
+    #     import DTW_Application as dtwa
+    #     import SWData_Analysis as swda
         
-        for model_name in self.model_names:
+    #     for model_name in self.model_names:
                
-            #  Only compare where data exists
-            df_nonan = self._primary_df.dropna(subset=[(self.spacecraft_name, basis_tag)], axis='index')
+    #         #  Only compare where data exists
+    #         df_nonan = self._primary_df.dropna(subset=[(self.spacecraft_name, basis_tag)], axis='index')
             
-            stats = []
-            time_deltas = []
-            for shift in shifts:
-                stat, time_delta = dtwa.find_SolarWindDTW(df_nonan[self.spacecraft_name], df_nonan[model_name], shift, 
-                                                          basis_tag, metric_tag, 
-                                                          total_slope_limit=96.0,
-                                                          intermediate_plots=intermediate_plots,
-                                                          model_name = model_name,
-                                                          spacecraft_name = self.spacecraft_name)
-                time_delta = time_delta.rename(columns={'time_lag': str(shift)})
+    #         stats = []
+    #         time_deltas = []
+    #         for shift in shifts:
+    #             stat, time_delta = dtwa.find_SolarWindDTW(df_nonan[self.spacecraft_name], df_nonan[model_name], shift, 
+    #                                                       basis_tag, metric_tag, 
+    #                                                       total_slope_limit=96.0,
+    #                                                       intermediate_plots=intermediate_plots,
+    #                                                       model_name = model_name,
+    #                                                       spacecraft_name = self.spacecraft_name)
+    #             time_delta = time_delta.rename(columns={'time_lag': str(shift)})
                 
-                stats.append(pd.DataFrame.from_dict(stat))
-                time_deltas.append(time_delta)
+    #             stats.append(pd.DataFrame.from_dict(stat))
+    #             time_deltas.append(time_delta)
             
-            stats_df = pd.concat(stats, axis='index', ignore_index=True)
-            times_df = pd.concat(time_deltas, axis='columns')
-            self.model_shifts[model_name] = times_df
-            self.model_shift_stats[model_name] = stats_df
+    #         stats_df = pd.concat(stats, axis='index', ignore_index=True)
+    #         times_df = pd.concat(time_deltas, axis='columns')
+    #         self.model_shifts[model_name] = times_df
+    #         self.model_shift_stats[model_name] = stats_df
         
-        self.model_shift_method = 'dynamic'
-        return self.model_shift_stats
+    #     self.model_shift_method = 'dynamic'
+    #     return self.model_shift_stats
     
     def find_WarpStatistics(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
         import scipy
         import dtw
-        
-        import DTW_Application as dtwa
         
         from sklearn.metrics import confusion_matrix
         
@@ -1436,7 +1434,7 @@ class Trajectory(_MMESH_mixins.visualization):
         import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
         
-        import PlottingConstants
+        #import PlottingConstants
         
         tag, plot_kw = self._plot_parameters(parameter)
         
@@ -1515,7 +1513,7 @@ class Trajectory(_MMESH_mixins.visualization):
         
         if fullfilepath != '':
             for suffix in ['.png', '.jpg']:
-                plt.savefig(fullfilepath+suffix, dpi=300, bbox_inches='tight')
+                plt.savefig(str(fullfilepath)+suffix, dpi=300, bbox_inches='tight')
         plt.show()
         #return models
             
