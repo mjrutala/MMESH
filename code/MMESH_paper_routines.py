@@ -9,9 +9,13 @@ Created on Thu Nov  2 15:56:40 2023
 import datetime as dt
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
+import sys
+sys.path.append('/Users/mrutala/projects/MMESH/separated_code/')
 import spacecraftdata
 import read_SWModel
+
 import matplotlib.pyplot as plt
 from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
 
@@ -72,7 +76,8 @@ def MMESH_run(epochs, model_names):
     # =============================================================================
     #     !!!! All of the below should go in a config file
     # =============================================================================
-    basefilepath = 'paper/figures/'
+    basefilepath = Path('/Users/mrutala/projects/MMESH/dump/')
+    figurefilepath = basefilepath / 'paper' /'figures'
     
     # =============================================================================
     #   All of the plotting functions have been encapsulated in inner functions
@@ -136,7 +141,7 @@ def MMESH_run(epochs, model_names):
         fig.set_constrained_layout_pads(w_pad=0, h_pad=0.05)
         
         for suffix in ['.png', '.jpg']:
-            fig.savefig(fullfilename+suffix, 
+            fig.savefig(str(fullfilename)+suffix, 
                         dpi=300)#, bbox_inches=extent)
         plt.show()
         
@@ -236,7 +241,7 @@ def MMESH_run(epochs, model_names):
         
         
         for suffix in ['.png', '.jpg']:
-            plt.savefig(fullfilename+suffix, dpi=300)
+            plt.savefig(str(fullfilename)+suffix, dpi=300)
         plt.show()
         
         return
@@ -383,7 +388,7 @@ def MMESH_run(epochs, model_names):
         
         
         for suffix in ['.png', '.jpg']:
-            plt.savefig(fullfilename+suffix, dpi=300)
+            plt.savefig(str(fullfilename)+suffix, dpi=300)
         plt.show()
         
         return
@@ -425,7 +430,7 @@ def MMESH_run(epochs, model_names):
             for traj_name, traj in mtraj.trajectories.items():
                 l.append(traj.models[model_name].loc[traj.data_index, 'empirical_time_delta'])  #  Only when overlapping w/ data
                 c.append(traj.gpp('color','data'))
-                n.append(traj.trajectory_name)
+                n.append(traj.trajectory_name.replace('_',' '))
             
             #  Hacky
             #c = ['#5d9dd5', '#447abc', '#4034f4', '#75036b'][0:len(mtraj.trajectories)]
@@ -451,7 +456,7 @@ def MMESH_run(epochs, model_names):
                    mode="expand", borderaxespad=0.)
 
         for suffix in ['.png', '.jpg']:
-            plt.savefig(fullfilename, 
+            plt.savefig(str(fullfilename)+suffix, 
                         dpi=300)
         plt.show()
     #
@@ -533,7 +538,7 @@ def MMESH_run(epochs, model_names):
                    mode="expand", borderaxespad=0.)
          
         for suffix in ['.png', '.jpg']:
-            plt.savefig(fullfilename + suffix, 
+            plt.savefig(str(fullfilename) + suffix, 
                         dpi=300)
         plt.show()
     
@@ -629,7 +634,7 @@ def MMESH_run(epochs, model_names):
         fig.supylabel('Measured Timing Differences [hours]')
         
         for suffix in ['.png', '.jpg']:
-            fig.savefig(fullfilepath+suffix, 
+            fig.savefig(str(fullfilepath)+suffix, 
                         dpi=300)
         plt.plot()
         
@@ -681,7 +686,7 @@ def MMESH_run(epochs, model_names):
         #           loc='lower left', mode='expand', markerscale=1.0)
         # plt.show()
         
-        plot_OriginalModels(basefilepath+'fig03_OriginalModels')        
+        plot_OriginalModels(figurefilepath/'fig03_OriginalModels')        
         
         #breakpoint()
         
@@ -720,8 +725,8 @@ def MMESH_run(epochs, model_names):
         smoothing_widths = traj0.optimize_ForBinarization('u_mag', threshold=1.05)  
         traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3) #  !!!! sigma value can be changed
         
-        #traj0.plot_SingleTimeseries('u_mag', starttime, stoptime, filepath=basefilepath)
-        traj0.plot_SingleTimeseries('jumps', starttime, stoptime, fullfilepath=basefilepath+'figA1_Binarization')
+        #traj0.plot_SingleTimeseries('u_mag', starttime, stoptime, filepath=figurefilepath)
+        traj0.plot_SingleTimeseries('jumps', starttime, stoptime, fullfilepath=figurefilepath/'figA1_Binarization')
         
         #   Calculate a whole host of statistics
         dtw_stats = traj0.find_WarpStatistics('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
@@ -739,12 +744,12 @@ def MMESH_run(epochs, model_names):
         
         #filename = basefilepath+'/OptimizedDTWOffset_{}_{}.png'.format(traj0.trajectory_name, '-'.join(traj0.model_names))
         
-        traj0.plot_OptimizedOffset('jumps', 'u_mag', fullfilepath=basefilepath+'fig04_DTWIllustration')
+        traj0.plot_OptimizedOffset('jumps', 'u_mag', fullfilepath=figurefilepath/'fig04_DTWIllustration')
     
         traj0.plot_DynamicTimeWarping_Optimization()
         #traj0.plot_DynamicTimeWarping_TD()
         
-        plot_BothShiftMethodsTD(basefilepath+'fig05_ShiftMethodComparison_TD')
+        plot_BothShiftMethodsTD(figurefilepath/'fig05_ShiftMethodComparison_TD')
         
         #plot_BestShiftWarpedTimeDistribution()
         
@@ -794,7 +799,7 @@ def MMESH_run(epochs, model_names):
     fullfilepath = mmesh_c.make_PlanetaryContext_CSV(prediction_target, 
                                                      prediction_starttime, 
                                                      prediction_stoptime, 
-                                                     filepath='context_files/')
+                                                     filepath=basefilepath / 'context_files/')
     cast_traj_juno.context = pd.read_csv(fullfilepath, index_col='datetime', parse_dates=True)
     
     #  Read models and add to trajectory
@@ -813,8 +818,8 @@ def MMESH_run(epochs, model_names):
     
     #   Set up the prediction interval
     #original_spantime = stoptime - starttime
-    forecast_starttime = dt.datetime(2016, 5, 15)  #  starttime - original_spantime
-    forecast_stoptime = dt.datetime(2018, 5, 15)  #  stoptime + original_spantime
+    forecast_starttime = dt.datetime(2016, 7, 4)  #  starttime - original_spantime
+    forecast_stoptime = dt.datetime(2023, 7, 4)  #  stoptime + original_spantime
     forecast_target = 'Jupiter'
     
     #  Initialize a trajectory class for the predictions
@@ -822,7 +827,7 @@ def MMESH_run(epochs, model_names):
     fullfilepath = mmesh_c.make_PlanetaryContext_CSV(forecast_target, 
                                                      forecast_starttime, 
                                                      forecast_stoptime, 
-                                                     filepath='context_files/')
+                                                     filepath=basefilepath / 'context_files/')
     cast_traj_jupiter.context = pd.read_csv(fullfilepath, index_col='datetime', parse_dates=True)
     
     #  Read models and add to trajectory
@@ -844,13 +849,13 @@ def MMESH_run(epochs, model_names):
     
     mtraj.cast_Models(with_error=True)
     
-    plot_TimeDelta_Grid_AllTrajectories(fullfilepath=basefilepath+'fig07_MLRTimingFits')
+    plot_TimeDelta_Grid_AllTrajectories(fullfilepath=figurefilepath/'fig07_MLRTimingFits')
     
     mtraj.cast_intervals['juno_simulcast'].ensemble()
     mtraj.cast_intervals['jupiter_forecast'].ensemble()
 
     plot_MMESHPerformance(mtraj.cast_intervals['juno_simulcast'], 
-                          basefilepath+'Fig08_MMESHPerformance',
+                          figurefilepath/'Fig08_MMESHPerformance',
                           unshifted_trajectory=cast_traj_juno_backup)
     
     #  !!!! ++++++++++++++++++
@@ -902,7 +907,7 @@ def MMESH_run(epochs, model_names):
     #                                                           prediction_stoptime.strftime('%Y%m%dT%H%M%S'))
     #     fig.supxlabel('Date [YYYY-MM]')
     #     fig.supylabel(r'Solar Wind Flow Speed $|u_{SW}| [km/s]$')
-    #     fig.savefig(basefilepath + filename, 
+    #     fig.savefig(figurefilepath + filename, 
     #                 dpi=300)
     
     #plot_ComparisonResults()
@@ -992,14 +997,14 @@ def MMESH_run(epochs, model_names):
             # ax2.set_thetamax(90)
         
         fig2.legend(ncols=1, bbox_to_anchor=[0.0, 0.4, 0.35, 0.5], loc='upper right', mode='expand', markerscale=1.0)
-        fig2.savefig(basefilepath + 'Ensemble_TD_JunoComparison.png', 
+        fig2.savefig(figurefilepath / 'Ensemble_TD_JunoComparison.png', 
                      dpi=300)
         
     # plot_EnsembleTD_DTWMLR()
     
     #plt.show()
         
-    plot_TemporalShifts_All_Total(basefilepath+'fig06_AllTimingUncertainties')
+    plot_TemporalShifts_All_Total(figurefilepath/'fig06_AllTimingUncertainties')
     
     # =============================================================================
     #   Fig 09: Example MMESH forecasts
@@ -1045,6 +1050,12 @@ def MMESH_run(epochs, model_names):
             axs[i].set_xlim(index[0], index[0]+365)
             axs[i].xaxis.set_major_locator(MultipleLocator(25))
             axs[i].xaxis.set_minor_locator(MultipleLocator(5))
+            
+            axs[i].yaxis.set_major_locator(MultipleLocator(100))
+            axs[i].yaxis.set_minor_locator(MultipleLocator(20))
+            
+        axs[0].set_ylim(350,650)
+        
         
         fig.supxlabel('Day of Year {}'.format(traj._primary_df.index[0].year))
         fig.supylabel('Solar Wind Flow Speed $u_{mag}$ [km/s]')
@@ -1060,10 +1071,10 @@ def MMESH_run(epochs, model_names):
                                              0.1], mode='expand')
         
         for suffix in ['.png', '.jpg']:
-            plt.savefig(fullfilename, dpi=300)
+            plt.savefig(str(fullfilename)+suffix, dpi=300)
         plt.show()
         return
     
-    plot_MMESHExample(mtraj.cast_intervals['jupiter_forecast'], basefilepath+'fig09_MMESHExample')
+    plot_MMESHExample(mtraj.cast_intervals['jupiter_forecast'], figurefilepath/'fig09_MMESHExample')
     
     return mtraj
