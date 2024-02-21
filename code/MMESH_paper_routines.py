@@ -11,8 +11,6 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-import sys
-sys.path.append('/Users/mrutala/projects/MMESH/separated_code/')
 import spacecraftdata
 import read_SWModel
 
