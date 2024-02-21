@@ -360,12 +360,17 @@ def MMESH_run(epochs, model_names):
             #ax.xaxis.label.set_position(axd[model_name].xaxis.label.get_position())
             ax.xaxis.set_label_coords(0.5,-0.18)
         
+            print("For variable {}:".format(var))
+            
             for model_name in trajectory.model_names:
                 ax.scatter(np.arccos(points[model_name][0]), points[model_name][1],
                             s=32, zorder=1,
                             c=trajectory.gpp('color', model_name), 
                             marker=trajectory.gpp('marker', model_name),
                             label=r'{}'.format(model_name))
+                
+                print("{} r = {}".format(model_name, points[model_name][0]))
+                print("and RMSD = {}".format(points[model_name][2]))
             
             if unshifted_trajectory != None:
                 unshifted_points = unshifted_trajectory.baseline(var)
@@ -376,6 +381,10 @@ def MMESH_run(epochs, model_names):
                                c='black', 
                                marker=trajectory.gpp('marker', model_name),
                                label=r'{}'.format(model_name))
+                    
+                    print("Prior to shifting, ")
+                    print("{} r = {}".format(model_name, unshifted_points[model_name][0]))
+                    print("and RMSD = {}".format(unshifted_points[model_name][2]))
         
             if var=='p_dyn':
                 ax.set_yticks(ax.get_yticks()[0::2])
@@ -385,8 +394,9 @@ def MMESH_run(epochs, model_names):
                         (0,1), (1,-1), ha='center', va='center',
                         xycoords='axes fraction',
                         textcoords='offset fontsize')
-        
-        
+            
+            print("==========================================================")
+            
         for suffix in ['.png', '.jpg']:
             plt.savefig(str(fullfilename)+suffix, dpi=300)
         plt.show()
@@ -995,6 +1005,7 @@ def MMESH_run(epochs, model_names):
             ax2.set_rlim([0, 50])
             # ax2.set_thetamin(0)
             # ax2.set_thetamax(90)
+        breakpoint()
         
         fig2.legend(ncols=1, bbox_to_anchor=[0.0, 0.4, 0.35, 0.5], loc='upper right', mode='expand', markerscale=1.0)
         fig2.savefig(figurefilepath / 'Ensemble_TD_JunoComparison.png', 
@@ -1078,3 +1089,45 @@ def MMESH_run(epochs, model_names):
     plot_MMESHExample(mtraj.cast_intervals['jupiter_forecast'], figurefilepath/'fig09_MMESHExample')
     
     return mtraj
+
+
+def write_cast_for_publication(traj, fullfilename):
+    
+    output = traj._primary_df
+    
+    output = output.drop('context', axis=1, level=0)
+    output = output.drop('mlr_time_delta', axis=1, level=1)
+    output = output.drop('mlr_time_delta_sigma', axis=1, level=1)
+    
+    output = output.reindex(sorted(output.columns), axis=1)
+    #output.index.name = 'datetime'
+    
+    ensemble_output = output.drop(['ENLIL', 'HUXt', 'Tao'], axis=1, level=0)
+    # ensemble_output = output.drop('HUXt', axis=1, level=0)
+    # ensemble_output = output.drop('Tao', axis=1, level=0)
+    
+    output_fullfilename = fullfilename[:-4] + '_withConstituentModels' + fullfilename[-4:]
+    ensemble_fullfilename = fullfilename
+    
+    header = ['# Multi-Model Ensemble System for the outer Heliosphere (MMESH)',
+              '# Output MME for target: Jupiter',
+              '# Spanning: 2016/07/04 - 2023/07/04',
+              '# Run by: M. J. Rutala, 2024/02/21',
+              '# First row (if present) indicates the source of the parameter',
+              '# (whether consituent model or the ensemble itself)',
+              '# Second row indicates the parameter',
+              '# Units are as follows:',
+              '# B_mag (magnitude of the IMF): nT',
+              '# n_tot (total number density of solar wind, assumed to be all protons): cm^-3',
+              '# p_dyn (solar wind dynamic pressure): nPa',
+              '# u_mag (magnitude of the solar wind flow speed): km/s',
+              '###################################################################################']
+    header = [line + ' \n' for line in header]
+    
+    with open(output_fullfilename, 'w') as f:
+        f.writelines(header)
+        output.to_csv(f, float_format='%.4f')
+        
+    with open(ensemble_fullfilename, 'w') as f:
+        f.writelines(header)
+        ensemble_output.to_csv(f, float_format='%.4f')
