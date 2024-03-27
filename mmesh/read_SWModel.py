@@ -14,9 +14,12 @@ import datetime as dt
 import copy
 import logging
 import glob
+import configparser
 
 from pathlib import Path
 
+import sys
+sys.path.append('/Users/mrutala/MMESH/separated_code/')
 from read_SWData import make_DerezzedData
 
 m_p = 1.67e-27
