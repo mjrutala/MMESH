@@ -25,13 +25,108 @@ from read_SWData import make_DerezzedData
 m_p = 1.67e-27
 kg_per_amu = 1.66e-27 # 
 
-default_df = pd.DataFrame(columns=['u_mag', 'n_tot', 'p_dyn', 'B_mag', 
-                                   'u_r', 'u_t', 'u_n', 
-                                   'n_proton', 'n_alpha',
-                                   'p_dyn_proton', 'p_dyn_alpha',
-                                   'T_proton', 'T_alpha',
-                                   'B_r', 'B_t', 'B_n', 'B_pol'])
+# default_df = pd.DataFrame(columns=['u_mag', 'n_tot', 'p_dyn', 'B_mag', 
+#                                    'u_r', 'u_t', 'u_n', 
+#                                    'n_proton', 'n_alpha',
+#                                    'p_dyn_proton', 'p_dyn_alpha',
+#                                    'T_proton', 'T_alpha',
+#                                    'B_r', 'B_t', 'B_n', 'B_pol'])
 
+
+
+
+
+#   Standard column names handled by this code, and descriptions:
+#       datetime  = single string containing both date and time
+#       iyear...... integer year, %Y format
+#       imonth..... integer month, $m format
+#       iday....... integer day, $d format
+#       idoy....... integer day of year, %j format
+#       stime...... string time, %H:%M:%S.$f format
+def read_model(model, target, starttime, stoptime, resolution=None):
+    
+    #   Read the config file
+    config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
+    config.read('../Readers.ini')
+    
+    #   Read the base directory and construct a directory from it
+    fulldir = Path(config['Models']['directory']) / model / target
+    
+    #   Search for files (NOT directories) in the specified directory
+    filenames = [g.split('/')[-1] for g in glob.glob(str(fulldir / '*.*'))]
+    if filenames == []:
+        logging.warning('No files were found in {}. '
+                        'Please check the directory, bearing in mind that '
+                        'path specifications may be case-sensitive.'.format(fulldir))
+        return
+    
+    #   Read the columns, separator, and start row
+    columns = [c.strip(' ') for c in config[model]['columns'].split(',')]
+    comment = config[model]['comment']
+    separator = config[model]['separator']
+    datetime_format = config[model]['datetime_format']
+    breakpoint()
+    all_data = pd.DataFrame(columns=list(set(columns)-set('datetime')) )
+    for filename in sorted(filenames):
+        
+        file_data = pd.read_csv(fulldir / filename, 
+                                names=columns, 
+                                comment=comment, 
+                                sep=separator)
+        
+        #   Change the index to a datetime, then drop datetime
+        file_data.index = pd.to_datetime(file_data['datetime'], 
+                                         format=datetime_format)
+        file_data = file_data.drop('datetime', axis='columns')
+        
+        #  Ditch unrequested data now so you don't need to hold it all in memory
+        span_data = file_data.loc[(file_data.index >= starttime) &
+                                    (file_data.index < stoptime)]
+        
+        all_data = SWModel_Parameter_Concatenator(all_data, span_data)
+    
+    #   Get parameters from equations
+    all_data = apply_equations(all_data)
+    
+    #   Choose the data resolution
+    all_data = make_DerezzedData(all_data, resolution=resolution)
+    
+    return all_data
+ 
+#   Define some equation for obtaining the values we ultimately want
+#   Missing terms in equations will be ignored
+def apply_equations(df):
+    
+    if 'n_tot' not in df.columns:
+        n_proton = 0. if 'n_proton' not in df.columns else df['n_proton']
+        n_alpha = 0. if 'n_alpha' not in df.columns else df['n_alpha']
+        df['n_tot'] = n_proton + n_alpha
+    
+    if 'u_mag' not in df.columns:
+        u_r = 0. if 'u_r' not in df.columns else df['u_r']
+        u_t = 0. if 'u_t' not in df.columns else df['u_t']
+        u_n = 0. if 'u_n' not in df.columns else df['u_n']
+        df['u_mag'] = np.sqrt(u_r**2 + u_t**2 + u_n**2)
+
+    if 'p_dyn' not in df.columns:
+        p_dyn_proton = 0. if 'p_dyn_proton' not in df.columns else df['p_dyn_proton']
+        p_dyn_alpha = 0. if 'p_dyn_alpha' not in df.columns else df['p_dyn_alpha']
+        df['p_dyn'] = p_dyn_proton + p_dyn_alpha
+        
+    if 'B_mag' not in df.columns:
+        B_r = 0. if 'B_r' not in df.columns else df['B_r']
+        B_t = 0. if 'B_t' not in df.columns else df['B_t']
+        B_n = 0. if 'B_n' not in df.columns else df['B_n']
+        df['B_mag'] = np.sqrt(B_r**2 + B_t**2 + B_n**2)
+        
+    return df
+
+def find_datetime(df):
+    #!!!!! Play around with parse_dates argument in read_csv...
+    return datetime
+
+
+    
 def Tao(target, starttime, stoptime, basedir='', resolution=None):
     
     #  basedir is expected to be the folder /SolarWindEM
