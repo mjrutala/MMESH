@@ -35,16 +35,6 @@ kg_per_amu = 1.66e-27 #
 #                                    'B_r', 'B_t', 'B_n', 'B_pol'])
 
 
-
-
-
-#   Standard column names handled by this code, and descriptions:
-#       datetime  = single string containing both date and time
-#       iyear...... integer year, %Y format
-#       imonth..... integer month, $m format
-#       iday....... integer day, $d format
-#       idoy....... integer day of year, %j format
-#       stime...... string time, %H:%M:%S.$f format
 def read_model(model, target, starttime, stoptime, resolution=None):
     
     #   Read the config file
@@ -63,14 +53,13 @@ def read_model(model, target, starttime, stoptime, resolution=None):
         return
     
     #   Parse the config file into a dictionary, 
-    #   adding 'names' as a list rather than a string form of 'columns'
+    #   adding 'names' as a list rather than the string form of 'columns'
     read_csv_params = {key: config[model][key] for key in config[model].keys()}
+    read_csv_params = _convert_to_int_float(read_csv_params)
+    
     columns = read_csv_params.pop('columns')
     read_csv_params['names'] = [c.strip(' ') for c in columns.split(',')]
-    
-    if 'header' in read_csv_params.keys():
-        read_csv_params['header'] = int(read_csv_params['header'])
-    
+            
     #   If 'parse_dates' is included, parse the string to a dict
     if 'parse_dates' in read_csv_params.keys():
         read_csv_params['parse_dates'] = ast.literal_eval(read_csv_params['parse_dates'])
@@ -125,12 +114,31 @@ def apply_equations(df):
         
     return df
 
-def find_datetime(df):
-    #!!!!! Play around with parse_dates argument in read_csv...
-    return datetime
+def _convert_to_int_float(d):
+    """
+    Attempt to convert a dictionary of strings to integers, then floats
 
+    Parameters
+    ----------
+    d : dict
+        Any dictionary
 
-    
+    Returns
+    -------
+    d,  with strings castable to int returned as int 
+        and string castable to float returned as float
+
+    """
+    for key in d.keys():
+        try:
+            d[key] = int(d[key])
+        except ValueError:
+            try:
+                d[key] = float(d[key])
+            except:
+                d[key] = d[key]
+    return d
+                
 def Tao(target, starttime, stoptime, basedir='', resolution=None):
     
     #  basedir is expected to be the folder /SolarWindEM
