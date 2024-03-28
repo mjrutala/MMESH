@@ -55,7 +55,7 @@ def convert_toCSV_CCMCENLIL(target_dir='', new_dir=''):
         file_data['datetime'] = [file_starttime + dt.timedelta(days=time) for time in file_data['time']]
         
         #   Write this file back out to a CSV
-        file_data.to_csv(new_dir + filename[0:-4]+'.csv')
+        file_data.to_csv(new_dir + filename[0:-4]+'.csv', sep=',', index=False)
     
     return
 
