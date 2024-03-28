@@ -19,6 +19,8 @@ import configparser
 from pathlib import Path
 
 import sys
+import ast
+
 sys.path.append('/Users/mrutala/MMESH/separated_code/')
 from read_SWData import make_DerezzedData
 
@@ -60,24 +62,26 @@ def read_model(model, target, starttime, stoptime, resolution=None):
                         'path specifications may be case-sensitive.'.format(fulldir))
         return
     
-    #   Read the columns, separator, and start row
-    columns = [c.strip(' ') for c in config[model]['columns'].split(',')]
-    comment = config[model]['comment']
-    separator = config[model]['separator']
-    datetime_format = config[model]['datetime_format']
-    breakpoint()
-    all_data = pd.DataFrame(columns=list(set(columns)-set('datetime')) )
+    #   Parse the config file into a dictionary, 
+    #   adding 'names' as a list rather than a string form of 'columns'
+    read_csv_params = {key: config[model][key] for key in config[model].keys()}
+    columns = read_csv_params.pop('columns')
+    read_csv_params['names'] = [c.strip(' ') for c in columns.split(',')]
+    
+    if 'header' in read_csv_params.keys():
+        read_csv_params['header'] = int(read_csv_params['header'])
+    
+    #   If 'parse_dates' is included, parse the string to a dict
+    if 'parse_dates' in read_csv_params.keys():
+        read_csv_params['parse_dates'] = ast.literal_eval(read_csv_params['parse_dates'])
+    
+    all_data = pd.DataFrame(columns=list(set(read_csv_params['names'])-set('datetime')) )
     for filename in sorted(filenames):
         
-        file_data = pd.read_csv(fulldir / filename, 
-                                names=columns, 
-                                comment=comment, 
-                                sep=separator)
+        file_data = pd.read_csv(fulldir / filename, **read_csv_params)
         
         #   Change the index to a datetime, then drop datetime
-        file_data.index = pd.to_datetime(file_data['datetime'], 
-                                         format=datetime_format)
-        file_data = file_data.drop('datetime', axis='columns')
+        file_data = file_data.set_index('datetime')
         
         #  Ditch unrequested data now so you don't need to hold it all in memory
         span_data = file_data.loc[(file_data.index >= starttime) &
