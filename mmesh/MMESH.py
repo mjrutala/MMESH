@@ -1041,7 +1041,7 @@ class Trajectory(_MMESH_mixins.visualization):
         from matplotlib.patches import ConnectionPatch
         
         #   Optionally, choose which models get plotted
-        model_names = ['HUXt']
+        model_names = ['huxt']
         
         fig, axs = plt.subplots(nrows=3, ncols=len(model_names), 
                                 figsize=self.plotprops['figsize'], 
@@ -1208,6 +1208,7 @@ class Trajectory(_MMESH_mixins.visualization):
         """
         import matplotlib.pyplot as plt
         import copy
+        import time
         
         #   We're going to try to do this all with interpolation, rather than 
         #   needing to shift the model dataframe by a constant first
@@ -1216,7 +1217,7 @@ class Trajectory(_MMESH_mixins.visualization):
         
         for model_name in self.model_names:
             try:
-                time = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
+                time_from_index = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
             except:
                 breakpoint()
                 
@@ -1236,12 +1237,13 @@ class Trajectory(_MMESH_mixins.visualization):
                 time_delta_sigmas = self.models[model_name][time_delta_sigma_column].to_numpy('float64')
             
             #   Now we're shifting based on the ordinate, not the abcissa,
-            #   so we have time - time_deltas, not +
+            #   so we have time_from_index - time_deltas, not +
+            t_0 = time.time()
             def shift_function(arr, col_name=''):
-                #   Use the ORIGINAL time with this, not time + delta
+                #   Use the ORIGINAL time_from_index with this, not time_from_index + delta
                 if (time_delta_sigmas == 0.).all():
-                    arr_shifted = np.interp(time - time_deltas, time, arr)
-                    #arr_shifted = np.interp(time, time+time_deltas, arr)
+                    arr_shifted = np.interp(time_from_index - time_deltas, time_from_index, arr)
+                    #arr_shifted = np.interp(time_from_index, time_from_index+time_deltas, arr)
                     arr_shifted_pos_unc = arr_shifted * 0.
                     arr_shifted_neg_unc = arr_shifted * 0.
                 else:
@@ -1249,8 +1251,8 @@ class Trajectory(_MMESH_mixins.visualization):
                     r = np.random.default_rng()
                     for i in range(n_mc):
                         time_deltas_perturb = r.normal(time_deltas, time_delta_sigmas)
-                        arr_perturb_list.append(np.interp(time - time_deltas_perturb, time, arr))
-                        #arr_perturb_list.append(np.interp(time, time+time_deltas_perturb, arr))
+                        arr_perturb_list.append(np.interp(time_from_index - time_deltas_perturb, time_from_index, arr))
+                        #arr_perturb_list.append(np.interp(time_from_index, time_from_index+time_deltas_perturb, arr))
 
                     arr_shifted = np.mean(arr_perturb_list, axis=0)
                     arr_shifted_sigma = np.std(arr_perturb_list, axis=0)
@@ -1265,19 +1267,20 @@ class Trajectory(_MMESH_mixins.visualization):
                     #     ax.axvline(arr_shifted[0], color='black')
                     #     ax.axvline(arr_shifted[0] + arr_shifted_sigma[0], color='gray')
                     #     ax.axvline(arr_shifted[0] - arr_shifted_sigma[0], color='gray')
+                print("Time elapsed in shift_function(): {}s".format(time.time()-t_0))
                 output = (arr_shifted, arr_shifted_pos_unc, arr_shifted_neg_unc)
                 return output
             
             # def test_shift_function(arr):
-            #     #   Use the ORIGINAL time with this, not time + delta
+            #     #   Use the ORIGINAL time_from_index with this, not time_from_index + delta
             #     if (time_delta_sigmas == 0.).all():
-            #         arr_shifted = np.interp(time - time_deltas, time, arr)
+            #         arr_shifted = np.interp(time_from_index - time_deltas, time_from_index, arr)
             #         arr_shifted_sigma = arr_shifted * 0.
             #     else:
-            #         arr_shifted = np.interp(time - time_deltas, time, arr)
+            #         arr_shifted = np.interp(time_from_index - time_deltas, time_from_index, arr)
                     
-            #         arr_shifted_plus = np.interp(time - (time_deltas + time_delta_sigmas), time, arr)
-            #         arr_shifted_minus = np.interp(time - (time_deltas - time_delta_sigmas), time, arr)
+            #         arr_shifted_plus = np.interp(time_from_index - (time_deltas + time_delta_sigmas), time_from_index, arr)
+            #         arr_shifted_minus = np.interp(time_from_index - (time_deltas - time_delta_sigmas), time_from_index, arr)
                     
             #         (arr_shifted_plus - arr_shifted_minus)
             #     output = (arr_shifted, arr_shifted_sigma)
