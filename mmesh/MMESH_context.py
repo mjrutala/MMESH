@@ -53,7 +53,7 @@ def make_PlanetaryContext_CSV(target, starttime, stoptime, kernel_paths=kernel_p
     earth_rlonlat = np.array([spice.reclat(xyz) for xyz in earth_xyz])
     
     spice.kclear()
-    print(ets)
+    
     del_r_TSE = target_rlonlat[:,0] - earth_rlonlat[:,0]
     del_lon_TSE = (target_rlonlat[:,1] - earth_rlonlat[:,1])*180/np.pi
     del_lat_TSE = (target_rlonlat[:,2] - earth_rlonlat[:,2])*180/np.pi
