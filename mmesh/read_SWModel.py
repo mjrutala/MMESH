@@ -96,24 +96,24 @@ def apply_equations(df):
     if 'n_tot' not in df.columns:
         n_proton = 0. if 'n_proton' not in df.columns else df['n_proton']
         n_alpha = 0. if 'n_alpha' not in df.columns else df['n_alpha']
-        df['n_tot'] = n_proton + n_alpha
+        df.loc[:,'n_tot'] = n_proton #+ n_alpha
     
     if 'u_mag' not in df.columns:
         u_r = 0. if 'u_r' not in df.columns else df['u_r']
         u_t = 0. if 'u_t' not in df.columns else df['u_t']
         u_n = 0. if 'u_n' not in df.columns else df['u_n']
-        df['u_mag'] = np.sqrt(u_r**2 + u_t**2 + u_n**2)
+        df.loc[:, 'u_mag'] = np.sqrt(u_r**2 + u_t**2 + u_n**2)
 
     if 'p_dyn' not in df.columns:
         p_dyn_proton = 0. if 'p_dyn_proton' not in df.columns else df['p_dyn_proton']
         p_dyn_alpha = 0. if 'p_dyn_alpha' not in df.columns else df['p_dyn_alpha']
-        df['p_dyn'] = p_dyn_proton + p_dyn_alpha
+        df.loc[:, 'p_dyn'] = p_dyn_proton #+ p_dyn_alpha
         
     if 'B_mag' not in df.columns:
         B_r = 0. if 'B_r' not in df.columns else df['B_r']
         B_t = 0. if 'B_t' not in df.columns else df['B_t']
         B_n = 0. if 'B_n' not in df.columns else df['B_n']
-        df['B_mag'] = np.sqrt(B_r**2 + B_t**2 + B_n**2)
+        df.loc[:, 'B_mag'] = np.sqrt(B_r**2 + B_t**2 + B_n**2)
         
     return df
 
