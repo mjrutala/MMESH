@@ -73,8 +73,11 @@ def read_model(model, target, starttime, stoptime, resolution=None):
         file_data = file_data.set_index('datetime')
         
         #  Ditch unrequested data now so you don't need to hold it all in memory
-        span_data = file_data.loc[(file_data.index >= starttime) &
+        try:
+            span_data = file_data.loc[(file_data.index >= starttime) &
                                     (file_data.index < stoptime)]
+        except:
+            breakpoint()
         
         all_data = SWModel_Parameter_Concatenator(all_data, span_data)
     
@@ -601,35 +604,41 @@ def SWModel_Parameter_Concatenator(running_dataframe, current_dataframe):
     if c_df.index.has_duplicates:
         c_df = c_df.groupby(c_df.index).mean()
     
-    #  If both the running and current dataframes are populated
-    # And if the first timestamp in current is later than the last timestamp in running
-    if (len(r_df) > 0) and (len(c_df) > 0) and (c_df.index[0] <= r_df.index[-1]):
-        #  Then there is an overlap
-        
-        #  Find where the running dataframe has dates later or equal to the first in the current dataframe
-        #  And where the current dataframe has points earlier than the last in the running data dataframe
-        r_geq_c = r_df[r_df.index >= c_df.index[0]]
-        c_leq_r = c_df[c_df.index <= r_df.index[-1]]
-        
-        #  Drop the overlap region from the running and current dataframes
-        r_df = r_df.drop(r_geq_c.index, axis='index')
-        c_df = c_df.drop(c_leq_r.index, axis='index')
-        
-        #  Reindex the overlapping running dataframe to the overlapping current
-        #  This follows a general attempt to prefer more recent data
-        r_geq_c = r_geq_c.reindex(index=c_leq_r.index, method='nearest')
-        
-        #  Concatenate the overlapping dataframes, which now have identical indices,
-        #  and average them together by index
-        overlap_df = pd.concat([r_geq_c, c_leq_r])
-        overlap_df = overlap_df.groupby(overlap_df.index).mean()
-        
-        output_df = pd.concat([r_df, overlap_df, c_df])
-    
-    else:
-        output_df = pd.concat([r_df, c_df])        
+    #   If both the running and current dataframes are populated
+    if (len(r_df) > 0) and (len(c_df) > 0):
+        #   And if the first timestamp in current is later than the last timestamp in running
+        if (c_df.index[0] <= r_df.index[-1]):
+            #  Then there is an overlap
             
-    return(output_df)
+            #  Find where the running dataframe has dates later or equal to the first in the current dataframe
+            #  And where the current dataframe has points earlier than the last in the running data dataframe
+            r_geq_c = r_df[r_df.index >= c_df.index[0]]
+            c_leq_r = c_df[c_df.index <= r_df.index[-1]]
+            
+            #  Drop the overlap region from the running and current dataframes
+            r_df = r_df.drop(r_geq_c.index, axis='index')
+            c_df = c_df.drop(c_leq_r.index, axis='index')
+            
+            #  Reindex the overlapping running dataframe to the overlapping current
+            #  This follows a general attempt to prefer more recent data
+            r_geq_c = r_geq_c.reindex(index=c_leq_r.index, method='nearest')
+            
+            #  Concatenate the overlapping dataframes, which now have identical indices,
+            #  and average them together by index
+            overlap_df = pd.concat([r_geq_c, c_leq_r])
+            overlap_df = overlap_df.groupby(overlap_df.index).mean()
+            
+            output_df = pd.concat([r_df, overlap_df, c_df])
+    
+        else:   #   if current is strictly later than running, the concat normally
+            output_df = pd.concat([r_df, c_df])    
+    else:   #   if one or both of the dfs aren't populated, then set the output_df to the one that is
+        if (len(r_df) > 0):
+            output_df = r_df
+        else:
+            output_df = c_df
+            
+    return output_df
 
 def runHUXt(target, metakernel_paths, starttime, stoptime, basedir=''):
     '''
