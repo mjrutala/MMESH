@@ -10,6 +10,8 @@ import datetime as dt
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import tomllib
+import time
 
 import spacecraftdata
 import read_SWModel
@@ -19,29 +21,26 @@ from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
 
 plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
 
-epoch_colors = {"Pioneer11" : '#bb4c41',
-                "Voyager1"  : '#be7a3e',
-                "Voyager2"  : '#c0a83b',
-                "Ulysses_01": '#86b666',
-                "Ulysses_02": '#4bc490',
-                "Ulysses_03": '#5a9ab3',
-                "Juno"      : '#686fd5'}
+# epoch_colors = {"Ulysses_01": '#86b666',
+#                 "Ulysses_02": '#4bc490',
+#                 "Ulysses_03": '#5a9ab3',
+#                 "Juno"      : '#686fd5'}
 
-model_colors = {"ENLIL": '#5e3585',
-                "HUXt" : '#c46cbd',
-                "Tao"  : '#b94973'}
-model_markers =  {"Tao"    : "v",
-                  "HUXt"   : "o",
-                  "ENLIL"  : "s"}
+# model_colors = {"ENLIL": '#5e3585',
+#                 "HUXt" : '#c46cbd',
+#                 "Tao"  : '#b94973'}
+# model_markers =  {"Tao"    : "v",
+#                   "HUXt"   : "o",
+#                   "ENLIL"  : "s"}
 
-r_range = np.array((4.9, 5.5))  #  [4.0, 6.4]
-lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
+# r_range = np.array((4.9, 5.5))  #  [4.0, 6.4]
+# lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
 
 
 # =============================================================================
 # Define the epoch of each trajectory we'll run
 # =============================================================================
-epochs = {}
+# epochs = {}
 # inputs['Pioneer11'] = {'spacecraft_name':'Pioneer 11',
 #                          'span':(dt.datetime(1977, 6, 3), dt.datetime(1977, 7, 29))}
 # inputs['Voyager1'] = {'spacecraft_name':'Voyager 1',
@@ -49,18 +48,18 @@ epochs = {}
 # inputs['Voyager2'] = {'spacecraft_name':'Voyager 2',
 #                          'span':(dt.datetime(1979, 3, 30), dt.datetime(1979, 8, 20))}
 
-epochs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
-                          'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
-epochs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
-                          'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
-epochs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
-                          'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
-epochs['Juno']     = {'spacecraft_name':'Juno',
-                          'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
+# epochs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
+#                           'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
+# epochs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
+#                           'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
+# epochs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
+#                           'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
+# epochs['Juno']     = {'spacecraft_name':'Juno',
+#                           'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
 
-model_names = ['ENLIL', 'HUXt', 'Tao']
+# model_names = ['ENLIL', 'HUXt', 'Tao+']
 
-def MMESH_run(epochs, model_names):
+def MMESH_run(config_path):
     import string
     import numpy as np
     import copy
@@ -71,11 +70,17 @@ def MMESH_run(epochs, model_names):
     import MMESH_context as mmesh_c
     import plot_TaylorDiagram as TD
     
+    timer_t0 = time.time()
+    
     # =============================================================================
-    #     !!!! All of the below should go in a config file
+    #     Parse the config .toml file
     # =============================================================================
-    basefilepath = Path('/Users/mrutala/projects/MMESH/dump/')
-    figurefilepath = basefilepath / 'paper' /'figures'
+    with open(config_path, "rb") as f:
+        init = tomllib.load(f)
+    
+    #   This could go into trajectory class?
+    filepaths = {'output': Path(init['paths']['output']),
+                 'figures': Path(init['paths']['output']) / 'figures'}
     
     # =============================================================================
     #   All of the plotting functions have been encapsulated in inner functions
@@ -649,16 +654,16 @@ def MMESH_run(epochs, model_names):
         return
     
     trajectories = []
-    for epoch_name, val in epochs.items():
-        starttime = val['span'][0]
-        stoptime = val['span'][1]
+    for epoch_name, epoch_info in init['epochs'].items():
+        start = epoch_info['start']
+        stop  = epoch_info['stop']
         
         reference_frame = 'SUN_INERTIAL'
         observer = 'SUN'
         
         #  Load spacecraft data
-        spacecraft = spacecraftdata.SpacecraftData(val['spacecraft_name'])
-        spacecraft.read_processeddata(starttime, stoptime, resolution='60Min')
+        spacecraft = spacecraftdata.SpacecraftData(epoch_info['source'])
+        spacecraft.read_processeddata(start, stop, resolution='60Min')
         pos_TSE = spacecraft.find_StateToEarth()
         
         #!!!!
@@ -666,35 +671,30 @@ def MMESH_run(epochs, model_names):
         
         #  Change start and stop times to reflect spacecraft limits-- with optional padding
         padding = dt.timedelta(days=8)
-        starttime = spacecraft.data.index[0] - padding
-        stoptime = spacecraft.data.index[-1] + padding
+        start = spacecraft.data.index[0] - padding
+        stop  = spacecraft.data.index[-1] + padding
         
         #  Initialize a trajectory class and add the spacecraft data
         traj0 = mmesh.Trajectory(name=epoch_name)
-        traj0.addData(val['spacecraft_name'], spacecraft.data)
-        traj0.set_plotprops('color', 'data', epoch_colors[epoch_name])
+        traj0.addData(epoch_info['source'], spacecraft.data)
+        
+        # traj0.set_plotprops('color', 'data', epoch_colors[epoch_name])
         
         #  Read models and add to trajectory
-        for model_name in model_names:
-            model = read_SWModel.choose(model_name, val['spacecraft_name'], 
-                                        starttime, stoptime, resolution='60Min')
+        for model_ref, model_info in init['models'].items():
             
-            traj0.addModel(model_name, model)
+            model = read_SWModel.read_model(model_info['source'], epoch_info['source'], 
+                                            start, stop, resolution='60Min')
             
-            traj0.set_plotprops('color', model_name, model_colors[model_name])  #  Optional
-            traj0.set_plotprops('marker', model_name, model_markers[model_name])  #  Optional
+            traj0.addModel(model_ref, model)
+            
+            # traj0.set_plotprops('color', model_name, model_colors[model_name])  #  Optional
+            # traj0.set_plotprops('marker', model_name, model_markers[model_name])  #  Optional
         
         # =============================================================================
         #   Plot a Taylor Diagram of the unchanged models
         # =============================================================================
-        
-        # fig = plt.figure(figsize=(6,4.5))
-        # fig, ax = traj0.plot_TaylorDiagram(tag_name='u_mag', fig=fig)
-        # ax.legend(ncols=3, bbox_to_anchor=[0.0,0.05,1.0,0.15], 
-        #           loc='lower left', mode='expand', markerscale=1.0)
-        # plt.show()
-        
-        plot_OriginalModels(figurefilepath/'fig03_OriginalModels')        
+        plot_OriginalModels(filepaths['figures']/'fig03_OriginalModels')        
         
         #breakpoint()
         
@@ -713,13 +713,8 @@ def MMESH_run(epochs, model_names):
             constant_shift_dict[model_name] = (np.arccos(traj0.best_shifts[model_name]['r']), 
                                                traj0.best_shifts[model_name]['stddev'])
         
-        traj0.plot_ConstantTimeShifting_Optimization()
-        
-        #fig = plt.figure(figsize=[6,4.5])
-        #traj0.plot_ConstantTimeShifting_TD(fig=fig)
-        #extent = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted()) 
-        #for suffix in ['.png']:
-        #    plt.savefig('figures/' + 'test_TD', dpi=300, bbox_inches=extent)
+        fig, axs = traj0.plot_ConstantTimeShifting_Optimization()
+        plt.show()
         
         # =============================================================================
         #   Optimize the models via dynamic time warping
@@ -734,7 +729,7 @@ def MMESH_run(epochs, model_names):
         traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3) #  !!!! sigma value can be changed
         
         #traj0.plot_SingleTimeseries('u_mag', starttime, stoptime, filepath=figurefilepath)
-        traj0.plot_SingleTimeseries('jumps', starttime, stoptime, fullfilepath=figurefilepath/'figA1_Binarization')
+        traj0.plot_SingleTimeseries('jumps', start, stop, fullfilepath=filepaths['figures']/'figA1_Binarization')
         
         #   Calculate a whole host of statistics
         dtw_stats = traj0.find_WarpStatistics('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
@@ -752,12 +747,12 @@ def MMESH_run(epochs, model_names):
         
         #filename = basefilepath+'/OptimizedDTWOffset_{}_{}.png'.format(traj0.trajectory_name, '-'.join(traj0.model_names))
         
-        traj0.plot_OptimizedOffset('jumps', 'u_mag', fullfilepath=figurefilepath/'fig04_DTWIllustration')
+        traj0.plot_OptimizedOffset('jumps', 'u_mag', fullfilepath=filepaths['figures']/'fig04_DTWIllustration')
     
         traj0.plot_DynamicTimeWarping_Optimization()
         #traj0.plot_DynamicTimeWarping_TD()
         
-        plot_BothShiftMethodsTD(figurefilepath/'fig05_ShiftMethodComparison_TD')
+        plot_BothShiftMethodsTD(filepaths['figures']/'fig05_ShiftMethodComparison_TD')
         
         #plot_BestShiftWarpedTimeDistribution()
         
@@ -765,8 +760,6 @@ def MMESH_run(epochs, model_names):
         # traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
         # traj0.shift_Models(time_delta_column='empirical_time_delta')
         # traj0.plot_SingleTimeseries('u_mag', starttime, stoptime)
-        
-        #breakpoint()
         
         # =============================================================================
         #             
@@ -781,6 +774,12 @@ def MMESH_run(epochs, model_names):
 
         trajectories.append(traj0)
     
+    print("++++++++++++++++++++++++++++++++++++++++++++++++++")
+    print("Finished initializing MMESH with models. ")
+    print("Time elapsed: {} s".format(time.time()-timer_t0))
+    print("--------------------------------------------------")
+    timer_t0 = time.time()
+    
     # =============================================================================
     #   Initialize a MultiTrajecory object
     #   !!!! N.B. This currently predicts at 'spacecraft', because that's easiest
@@ -790,44 +789,46 @@ def MMESH_run(epochs, model_names):
     
     #plot_Correlations() 
     
+    # #   Set up the prediction interval
+    # #original_spantime = stoptime - starttime
+    # prediction_starttime = dt.datetime(2016, 5, 16)  #  starttime - original_spantime
+    # prediction_stoptime = dt.datetime(2016, 6, 26)  #  stoptime + original_spantime
+    # prediction_target = 'Juno'
+    #
+    # #  Initialize a trajectory class for the predictions
+    # cast_traj_juno = mmesh.Trajectory()
+    #
+    # spacecraft = spacecraftdata.SpacecraftData('Juno')
+    # spacecraft.read_processeddata(prediction_starttime, prediction_stoptime, resolution='60Min')
+    # cast_traj_juno.addData('Juno', spacecraft.data)
+    # #cast_traj_juno.set_plotprops('color', 'data', epoch_colors[epoch_name])
+    #
+    # fullfilepath = mmesh_c.make_PlanetaryContext_CSV(prediction_target, 
+    #                                                  prediction_starttime, 
+    #                                                  prediction_stoptime, 
+    #                                                  filepath=filepaths['output'] / 'context/')
+    # cast_traj_juno.context = pd.read_csv(fullfilepath, index_col='datetime', parse_dates=True)
+    #
+    # #  Read models and add to trajectory
+    # for model_name in init['models']:
+    #    
+    #     model = read_SWModel.read_model(model_name, prediction_target, 
+    #                                     prediction_starttime, prediction_stoptime, resolution='60Min')
+    #    
+    #     cast_traj_juno.addModel(model_name, model)
+    #
+    #     # cast_traj_juno.set_plotprops('color', model_name, model_colors[model_name])  #  Optional
+    #     # cast_traj_juno.set_plotprops('marker', model_name, model_markers[model_name])  #  Optional
+    #    
+    # cast_traj_juno_backup =  copy.deepcopy(cast_traj_juno)
+    #
+    # #   Add prediction Trajectory as simulcast
+    # mtraj.cast_intervals['juno_simulcast'] = cast_traj_juno
+    
     #   Set up the prediction interval
     #original_spantime = stoptime - starttime
-    prediction_starttime = dt.datetime(2016, 5, 16)  #  starttime - original_spantime
-    prediction_stoptime = dt.datetime(2016, 6, 26)  #  stoptime + original_spantime
-    prediction_target = 'Juno'
-    
-    #  Initialize a trajectory class for the predictions
-    cast_traj_juno = mmesh.Trajectory()
-    
-    spacecraft = spacecraftdata.SpacecraftData('Juno')
-    spacecraft.read_processeddata(prediction_starttime, prediction_stoptime, resolution='60Min')
-    cast_traj_juno.addData('Juno', spacecraft.data)
-    cast_traj_juno.set_plotprops('color', 'data', epoch_colors[epoch_name])
-    
-    fullfilepath = mmesh_c.make_PlanetaryContext_CSV(prediction_target, 
-                                                     prediction_starttime, 
-                                                     prediction_stoptime, 
-                                                     filepath=basefilepath / 'context_files/')
-    cast_traj_juno.context = pd.read_csv(fullfilepath, index_col='datetime', parse_dates=True)
-    
-    #  Read models and add to trajectory
-    for model_name in model_names:
-        model = read_SWModel.choose(model_name, prediction_target, 
-                                    prediction_starttime, prediction_stoptime, resolution='60Min')
-        cast_traj_juno.addModel(model_name, model)
-        
-        cast_traj_juno.set_plotprops('color', model_name, model_colors[model_name])  #  Optional
-        cast_traj_juno.set_plotprops('marker', model_name, model_markers[model_name])  #  Optional
-        
-    cast_traj_juno_backup =  copy.deepcopy(cast_traj_juno)
-
-    #   Add prediction Trajectory as simulcast
-    mtraj.cast_intervals['juno_simulcast'] = cast_traj_juno
-    
-    #   Set up the prediction interval
-    #original_spantime = stoptime - starttime
-    forecast_starttime = dt.datetime(2016, 7, 4)  #  starttime - original_spantime
-    forecast_stoptime = dt.datetime(2023, 7, 4)  #  stoptime + original_spantime
+    forecast_starttime = dt.datetime(2016, 3, 1)  #  starttime - original_spantime
+    forecast_stoptime = dt.datetime(2024, 3, 1)  #  stoptime + original_spantime
     forecast_target = 'Jupiter'
     
     #  Initialize a trajectory class for the predictions
@@ -835,36 +836,45 @@ def MMESH_run(epochs, model_names):
     fullfilepath = mmesh_c.make_PlanetaryContext_CSV(forecast_target, 
                                                      forecast_starttime, 
                                                      forecast_stoptime, 
-                                                     filepath=basefilepath / 'context_files/')
+                                                     filepath=filepaths['output'] / 'context/')
     cast_traj_jupiter.context = pd.read_csv(fullfilepath, index_col='datetime', parse_dates=True)
     
     #  Read models and add to trajectory
-    for model_name in model_names:
-        model = read_SWModel.choose(model_name, forecast_target, 
-                                    forecast_starttime, forecast_stoptime, resolution='60Min')
-        cast_traj_jupiter.addModel(model_name, model)
+    for model_ref, model_info in init['models'].items():
         
-        cast_traj_jupiter.set_plotprops('color', model_name, model_colors[model_name])  #  Optional
-        cast_traj_jupiter.set_plotprops('marker', model_name, model_markers[model_name])  #  Optional
+        model = read_SWModel.read_model(model_info['source'], forecast_target, 
+                                        forecast_starttime, forecast_stoptime, 
+                                        resolution='60Min')
+        
+        cast_traj_jupiter.addModel(model_ref, model)
+        
+        # cast_traj_jupiter.set_plotprops('color', model_name, model_colors[model_name])  #  Optional
+        # cast_traj_jupiter.set_plotprops('marker', model_name, model_markers[model_name])  #  Optional
 
     #   Add prediction Trajectory as simulcast
-    mtraj.cast_intervals['jupiter_forecast'] = cast_traj_jupiter
+    mtraj.cast_intervals['jupiter_simulcast'] = cast_traj_jupiter
     
     #formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     #formula = "empirical_time_delta ~ target_sun_earth_lat + u_mag"
     formula = "empirical_time_delta ~ target_sun_earth_lat + solar_radio_flux + u_mag"
     test = mtraj.linear_regression(formula)
     
+    print(time.time() - timer_t0)
+    #breakpoint()
+    
     mtraj.cast_Models(with_error=True)
     
-    plot_TimeDelta_Grid_AllTrajectories(fullfilepath=figurefilepath/'fig07_MLRTimingFits')
+    print(time.time() - timer_t0)
+    #breakpoint()
     
-    mtraj.cast_intervals['juno_simulcast'].ensemble()
-    mtraj.cast_intervals['jupiter_forecast'].ensemble()
+    plot_TimeDelta_Grid_AllTrajectories(fullfilepath=filepaths['figures']/'fig07_MLRTimingFits')
+    
+    #mtraj.cast_intervals['juno_simulcast'].ensemble()
+    mtraj.cast_intervals['jupiter_simulcast'].ensemble()
 
-    plot_MMESHPerformance(mtraj.cast_intervals['juno_simulcast'], 
-                          figurefilepath/'Fig08_MMESHPerformance',
-                          unshifted_trajectory=cast_traj_juno_backup)
+    # plot_MMESHPerformance(mtraj.cast_intervals['juno_simulcast'], 
+    #                       filepaths['figures']/'Fig08_MMESHPerformance',
+    #                       unshifted_trajectory=cast_traj_juno_backup)
     
     #  !!!! ++++++++++++++++++
     #   FOR TESTING ACCURACY
@@ -1006,14 +1016,14 @@ def MMESH_run(epochs, model_names):
         breakpoint()
         
         fig2.legend(ncols=1, bbox_to_anchor=[0.0, 0.4, 0.35, 0.5], loc='upper right', mode='expand', markerscale=1.0)
-        fig2.savefig(figurefilepath / 'Ensemble_TD_JunoComparison.png', 
+        fig2.savefig(filepaths['figures'] / 'Ensemble_TD_JunoComparison.png', 
                      dpi=300)
         
     # plot_EnsembleTD_DTWMLR()
     
     #plt.show()
         
-    plot_TemporalShifts_All_Total(figurefilepath/'fig06_AllTimingUncertainties')
+    plot_TemporalShifts_All_Total(filepaths['figures']/'fig06_AllTimingUncertainties')
     
     # =============================================================================
     #   Fig 09: Example MMESH forecasts
@@ -1084,7 +1094,7 @@ def MMESH_run(epochs, model_names):
         plt.show()
         return
     
-    plot_MMESHExample(mtraj.cast_intervals['jupiter_forecast'], figurefilepath/'fig09_MMESHExample')
+    plot_MMESHExample(mtraj.cast_intervals['jupiter_simulcast'], filepaths['figures']/'fig09_MMESHExample')
     
     return mtraj
 
@@ -1100,7 +1110,7 @@ def write_cast_for_publication(traj, fullfilename):
     output = output.reindex(sorted(output.columns), axis=1)
     #output.index.name = 'datetime'
     
-    ensemble_output = output.drop(['ENLIL', 'HUXt', 'Tao'], axis=1, level=0)
+    ensemble_output = output.drop(['enlil', 'huxt', 'tao'], axis=1, level=0)
     # ensemble_output = output.drop('HUXt', axis=1, level=0)
     # ensemble_output = output.drop('Tao', axis=1, level=0)
     
