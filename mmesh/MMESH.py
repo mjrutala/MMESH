@@ -10,6 +10,7 @@ import datetime as dt
 import logging
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 import plot_TaylorDiagram as TD
 
@@ -179,6 +180,9 @@ class MultiTrajectory:
                     result = cast.summary_frame(alpha_level)
                 
                     #   !!!! N.B. Where data is present, the interval is smaller--
+                    #   The upper and lower confidence intervals ARE SYMMETRIC
+                    #   As expected, these are normally distributed since 
+                    #   negative temporal shifts are acceptable
                     sig = (result['obs_ci_upper'] - result['obs_ci_lower'])/2.
                     
                     #   s_mu = shift_mu = mean shift
@@ -197,7 +201,6 @@ class MultiTrajectory:
             for model_name in models_to_be_removed:
                 self.cast_intervals[cast_interval_name].delModel(model_name)
             
-           # breakpoint()
             #   Second: shift the models according to the time_delta predictions    
             if with_error:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma')
@@ -1216,59 +1219,69 @@ class Trajectory(_MMESH_mixins.visualization):
         shifted_primary_df = copy.deepcopy(self._primary_df)
         
         for model_name in self.model_names:
+            
+            #   temporarily drop all-nan rows from the model-specific df
+            #   This prevents making needlessly large arrays
+            nonnan_row_index = ~self.models[model_name].isnull().all(axis=1)
+            nonnan_model_df = self.models[model_name].dropna(how='all')
+            
+            
             try:
-                time_from_index = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
+                #time_from_index = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
+                time_from_index = ((nonnan_model_df.index - nonnan_model_df.index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
             except:
                 breakpoint()
                 
             #   If no time_delta_column is given, then set it to all zeros
             if time_delta_column == None:
-                time_deltas = np.zeros(len(self.models[model_name]))
+                # time_deltas = np.zeros(len(self.models[model_name]))
+                time_deltas = np.zeros(len(nonnan_model_df))
             else:
-                time_deltas = self.models[model_name][time_delta_column].to_numpy('float64')
+                # time_deltas = self.models[model_name][time_delta_column].to_numpy('float64')
+                time_deltas = nonnan_model_df[time_delta_column].to_numpy('float64')
             
             #   If no time_delta_sigma_column is given
             #   We don't want to do the whole Monte Carlo with zeros
             if time_delta_sigma_column == None:
                 print("Setting time_delta_sigmas to zero")
-                time_delta_sigmas = np.zeros(len(self.models[model_name]))
+                # time_delta_sigmas = np.zeros(len(self.models[model_name]))
+                time_delta_sigmas = np.zeros(len(nonnan_model_df))
             else:
                 print("Using real time_delta_sigmas")
-                time_delta_sigmas = self.models[model_name][time_delta_sigma_column].to_numpy('float64')
+                # time_delta_sigmas = self.models[model_name][time_delta_sigma_column].to_numpy('float64')
+                time_delta_sigmas = nonnan_model_df[time_delta_sigma_column].to_numpy('float64')
             
+            
+            #if time_delta_sigma_column != None: breakpoint()
             #   Now we're shifting based on the ordinate, not the abcissa,
             #   so we have time_from_index - time_deltas, not +
-            t_0 = time.time()
-            def shift_function(arr, col_name=''):
+            
+            def shift_function(col, col_name=''):
                 #   Use the ORIGINAL time_from_index with this, not time_from_index + delta
                 if (time_delta_sigmas == 0.).all():
-                    arr_shifted = np.interp(time_from_index - time_deltas, time_from_index, arr)
+                    col_shifted = np.interp(time_from_index - time_deltas, time_from_index, col)
                     #arr_shifted = np.interp(time_from_index, time_from_index+time_deltas, arr)
-                    arr_shifted_pos_unc = arr_shifted * 0.
-                    arr_shifted_neg_unc = arr_shifted * 0.
+                    col_shifted_pos_unc = col_shifted * 0.
+                    col_shifted_neg_unc = col_shifted * 0.
                 else:
-                    arr_perturb_list = []
+                    #   Randomly perturb the time deltas by their uncertainties (sigma) n_mc times
                     r = np.random.default_rng()
+                    arr2d_perturb = r.normal(time_deltas, time_delta_sigmas, (n_mc, len(time_deltas)))
+                    
+                    #   For each of these random selections, sample the corresponding value of column
+                    col2d_perturb = arr2d_perturb*0.
                     for i in range(n_mc):
-                        time_deltas_perturb = r.normal(time_deltas, time_delta_sigmas)
-                        arr_perturb_list.append(np.interp(time_from_index - time_deltas_perturb, time_from_index, arr))
-                        #arr_perturb_list.append(np.interp(time_from_index, time_from_index+time_deltas_perturb, arr))
+                        col2d_perturb[i,:] = np.interp(time_from_index - arr2d_perturb[i,:], time_from_index, col)
+                    
+                    #   Take the 16th, 50th, and 84th percentiles of the random samples as statistics                
+                    col_16p, col_50p, col_84p = np.percentile(col2d_perturb, [16,50,84], axis=0, overwrite_input=True)
+                    
+                    col_shifted = col_50p
+                    col_shifted_pos_unc = col_84p - col_50p
+                    col_shifted_neg_unc = col_50p - col_16p
 
-                    arr_shifted = np.mean(arr_perturb_list, axis=0)
-                    arr_shifted_sigma = np.std(arr_perturb_list, axis=0)
-                    
-                    arr_shifted = np.percentile(arr_perturb_list, 50, axis=0)
-                    arr_shifted_pos_unc = np.percentile(arr_perturb_list, 84, axis=0) - arr_shifted
-                    arr_shifted_neg_unc = arr_shifted - np.percentile(arr_perturb_list, 16, axis=0)
-                    
-                    # if col_name == 'u_mag':
-                    #     fig, ax = plt.subplots()
-                    #     ax.hist(np.array(arr_perturb_list)[:,0], range=[100, 900], bins=800)
-                    #     ax.axvline(arr_shifted[0], color='black')
-                    #     ax.axvline(arr_shifted[0] + arr_shifted_sigma[0], color='gray')
-                    #     ax.axvline(arr_shifted[0] - arr_shifted_sigma[0], color='gray')
-                print("Time elapsed in shift_function(): {}s".format(time.time()-t_0))
-                output = (arr_shifted, arr_shifted_pos_unc, arr_shifted_neg_unc)
+                
+                output = (col_shifted, col_shifted_pos_unc, col_shifted_neg_unc)
                 return output
             
             # def test_shift_function(arr):
@@ -1288,7 +1301,10 @@ class Trajectory(_MMESH_mixins.visualization):
             
             #self.best_shift_functions[model_name] = shift_function
             
-            for i, (col_name, col) in enumerate(self.models[model_name].items()):
+            len_items = len(nonnan_model_df.columns)
+            for col_name, col in tqdm(nonnan_model_df.items(), 
+                                      desc='Shifting Columns', 
+                                      total=len_items):
                 #   Skip columns of all NaNs and columns which don't appear
                 #   in list of tracked variables
                 #if len(col.dropna() > 0) and (col_name in self.variables):
@@ -1296,9 +1312,12 @@ class Trajectory(_MMESH_mixins.visualization):
                     
                     col_shifted = shift_function(col.to_numpy('float64'), col_name=col_name)
                     
-                    shifted_primary_df.loc[:, (model_name, col_name)] = col_shifted[0]
-                    shifted_primary_df.loc[:, (model_name, col_name+'_pos_unc')] = col_shifted[1]
-                    shifted_primary_df.loc[:, (model_name, col_name+'_neg_unc')] = col_shifted[2]
+                    try:
+                        shifted_primary_df.loc[nonnan_row_index, (model_name, col_name)] = col_shifted[0]
+                    except:
+                        breakpoint()
+                    shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_pos_unc')] = col_shifted[1]
+                    shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_neg_unc')] = col_shifted[2]
                     
         return shifted_primary_df
     
