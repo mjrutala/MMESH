@@ -19,45 +19,10 @@ import read_SWModel
 import matplotlib.pyplot as plt
 from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
 
-plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
-
-# epoch_colors = {"Ulysses_01": '#86b666',
-#                 "Ulysses_02": '#4bc490',
-#                 "Ulysses_03": '#5a9ab3',
-#                 "Juno"      : '#686fd5'}
-
-# model_colors = {"ENLIL": '#5e3585',
-#                 "HUXt" : '#c46cbd',
-#                 "Tao"  : '#b94973'}
-# model_markers =  {"Tao"    : "v",
-#                   "HUXt"   : "o",
-#                   "ENLIL"  : "s"}
-
-# r_range = np.array((4.9, 5.5))  #  [4.0, 6.4]
-# lat_range = np.array((-6.1, 6.1))  #  [-10, 10]
-
-
-# =============================================================================
-# Define the epoch of each trajectory we'll run
-# =============================================================================
-# epochs = {}
-# inputs['Pioneer11'] = {'spacecraft_name':'Pioneer 11',
-#                          'span':(dt.datetime(1977, 6, 3), dt.datetime(1977, 7, 29))}
-# inputs['Voyager1'] = {'spacecraft_name':'Voyager 1',
-#                          'span':(dt.datetime(1979, 1, 3), dt.datetime(1979, 5, 5))}
-# inputs['Voyager2'] = {'spacecraft_name':'Voyager 2',
-#                          'span':(dt.datetime(1979, 3, 30), dt.datetime(1979, 8, 20))}
-
-# epochs['Ulysses_01']  = {'spacecraft_name':'Ulysses',
-#                           'span':(dt.datetime(1991,12, 8), dt.datetime(1992, 2, 2))}
-# epochs['Ulysses_02']  = {'spacecraft_name':'Ulysses',
-#                           'span':(dt.datetime(1997, 8,14), dt.datetime(1998, 4,16))}
-# epochs['Ulysses_03']  = {'spacecraft_name':'Ulysses',
-#                           'span':(dt.datetime(2003,10,24), dt.datetime(2004, 6,22))}
-# epochs['Juno']     = {'spacecraft_name':'Juno',
-#                           'span':(dt.datetime(2016, 5,16), dt.datetime(2016, 6,26))}
-
-# model_names = ['ENLIL', 'HUXt', 'Tao+']
+try:
+    plt.style.use('/Users/mrutala/code/python/mjr.mplstyle')
+except:
+    pass
 
 def MMESH_run(config_path):
     import string
