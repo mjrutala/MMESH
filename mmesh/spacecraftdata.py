@@ -10,6 +10,14 @@ import pandas as pd
 import numpy as np
 import logging
 
+import sys, os
+from pathlib import Path
+#p = Path(os.getcwd()).parent / 'separated_code/'
+p = Path('/Users/mrutala/projects/MMESH/mmesh/').parent / 'separated_code/'
+sys.path.append(str(p))
+
+import read_SWData
+
 scd_log = logging.getLogger('SpacecraftData')
 
 class SpacecraftData:
