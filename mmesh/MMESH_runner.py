@@ -32,9 +32,9 @@ def MMESH_run(config_path):
     #import sys
     #sys.path.append('/Users/mrutala/projects/SolarWindEM/')
     import MMESH as mmesh
-    import MMESH_context as mmesh_c
+    #import MMESH_context as mmesh_c
     import plot_TaylorDiagram as TD
-    
+    #breakpoint()
     timer_t0 = time.time()
     
     # =============================================================================
