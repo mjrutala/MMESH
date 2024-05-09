@@ -66,16 +66,16 @@ class MultiTrajectory:
                                     #   i.e. hindcast, nowcast, forecase, simulcast
                                     #   all relative to data span (although cound be between data spans)
         
-        possible_models = []
+        #   The MultiTrajectory contains the superset of all trajectory models
+        all_model_sources = {}
         for trajectory in trajectories:
             self.spacecraft_names.append(trajectory.spacecraft_name)
             self.trajectories[trajectory.trajectory_name] = trajectory
-            possible_models += trajectory.model_names
+            #possible_models += trajectory.model_names
+            all_model_sources.update(trajectory.model_sources)  #  overwritten by latest
         
-        self.model_names = list(set(possible_models))
-        self.model_names.sort()
-        
-        breakpoint()
+        self.model_refs = all_model_sources.keys()
+        self.model_sources = all_model_sources
         
         self.offset_times = []  #   offset_times + (constant_offset) + np.linspace(0, total_hours, n_steps) give interpolation index
         self.optimized_shifts = []
@@ -92,7 +92,7 @@ class MultiTrajectory:
         # =============================================================================
         predictions_dict = {}
         nowcast_dict = {}
-        for model_name in self.model_names:
+        for model_ref in self.model_refs:
             
             #   !!! This should be dynamic based on input equation
             d = {'datetime':[], 
@@ -103,8 +103,8 @@ class MultiTrajectory:
                  'u_mag':[]}
             
             for trajectory_name, trajectory in self.trajectories.items():
-                d['empirical_time_delta'].extend(trajectory.models[model_name]['empirical_time_delta'].loc[trajectory.data_index])
-                d['u_mag'].extend(trajectory.models[model_name]['u_mag'].loc[trajectory.data_index])
+                d['empirical_time_delta'].extend(trajectory.models[model_ref]['empirical_time_delta'].loc[trajectory.data_index])
+                d['u_mag'].extend(trajectory.models[model_ref]['u_mag'].loc[trajectory.data_index])
                 
                 #   Need to write a better getter/setter for 'context'
                 d['solar_radio_flux'].extend(trajectory._primary_df[('context', 'solar_radio_flux')].loc[trajectory.data_index])
@@ -121,7 +121,7 @@ class MultiTrajectory:
             #   DataFrame if they have null values for any equation terms
             
             #   !!! Might need to allow different formulae for different models...
-            #   !!! i.e. formula = formulae[model_name]
+            #   !!! i.e. formula = formulae[model_ref]
             #   !!! Also, should catch all acceptable arithmetic symbols, not just plus
             self.mlr_formula = formula
             self.mlr_formula_terms = re.findall(r"[\w']+", formula)
@@ -139,8 +139,8 @@ class MultiTrajectory:
             result = nowcast.summary_frame(alpha_level)
             result = result.set_index(training_df.index)
             
-            predictions_dict[model_name] = mlr_fit
-            nowcast_dict[model_name] = result
+            predictions_dict[model_ref] = mlr_fit
+            nowcast_dict[model_ref] = result
             
         self.predictions_dict = predictions_dict
         self.nowcast_dict = nowcast_dict
