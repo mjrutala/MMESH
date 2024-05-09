@@ -32,7 +32,7 @@ def MMESH_run(config_path):
     #import sys
     #sys.path.append('/Users/mrutala/projects/SolarWindEM/')
     import MMESH as mmesh
-    #import MMESH_context as mmesh_c
+    import MMESH_context as mmesh_c
     import plot_TaylorDiagram as TD
     #breakpoint()
     timer_t0 = time.time()
@@ -399,14 +399,14 @@ def MMESH_run(config_path):
     #   Fig 06: All temporal shifts
     # =============================================================================
     def plot_TemporalShifts_All_Total(fullfilename=''):
-        fig, axs = plt.subplots(figsize=(3,4.5), nrows=len(mtraj.model_names), sharex=True, sharey=True)
+        fig, axs = plt.subplots(figsize=(3,4.5), nrows=len(mtraj.model_refs), sharex=True, sharey=True)
         plt.subplots_adjust(left=0.2, top=0.8, right=0.95, hspace=0.075)
-        for i, model_name in enumerate(sorted(mtraj.model_names)):
+        for i, model_ref in enumerate(sorted(mtraj.model_refs)):
             l = []
             c = []
             n = []
             for traj_name, traj in mtraj.trajectories.items():
-                l.append(traj.models[model_name].loc[traj.data_index, 'empirical_time_delta'])  #  Only when overlapping w/ data
+                l.append(traj.models[model_ref].loc[traj.data_index, 'empirical_time_delta'])  #  Only when overlapping w/ data
                 c.append(traj.gpp('color','data'))
                 n.append(traj.trajectory_name.replace('_',' '))
             
@@ -416,7 +416,7 @@ def MMESH_run(config_path):
             axs[i].hist(l, range=(-120, 120), bins=20,
                         density=True,
                         histtype='barstacked', stacked=True, label=n, color=c)
-            axs[i].annotate('({}) {}'.format(string.ascii_lowercase[i], model_name), 
+            axs[i].annotate('({}) {}'.format(string.ascii_lowercase[i], model_ref), 
                         (0,1), (1,-1), ha='left', va='center', 
                         xycoords='axes fraction', textcoords='offset fontsize')
     
@@ -534,35 +534,35 @@ def MMESH_run(config_path):
         length_list = []
         for traj_name, traj in mtraj.trajectories.items():
             length_list.append(len(traj.data))
-            figsize = (6, 4.5) # traj.plotprops['figsize']
+            figsize = (6, 4) # traj.plotprops['figsize']
             adjustments = {'left': 0.1, 'right':0.95, 'bottom':0.1, 'top':0.95, 
                            'wspace':0.1, 'hspace':0.0} #traj.plotprops['adjustments']
         
         #mtraj_model_names = mtraj.model_names
-        mtraj_model_names = mtraj.model_names  #  ['Tao']  #  OVERRIDE
+        mtraj_model_refs = mtraj.model_refs  #  ['Tao']  #  OVERRIDE
         
-        fig, axs = plt.subplots(figsize=figsize, nrows=len(mtraj_model_names), ncols=len(mtraj.trajectories), 
+        fig, axs = plt.subplots(figsize=figsize, nrows=len(mtraj_model_refs), ncols=len(mtraj.trajectories), 
                                 sharex='col', sharey=True, width_ratios=length_list, squeeze=False)
         plt.subplots_adjust(**adjustments)
         for i, (traj_name, traj) in enumerate(mtraj.trajectories.items()):
-            for j, model_name in enumerate(mtraj_model_names):
+            for j, model_ref in enumerate(mtraj_model_refs):
                 
                 #   Get the indices as decimal days of year
                 #   And have that of the trajectory start at the same point as multitrajectory
-                mtraj_index = traj.index_ddoy(mtraj.nowcast_dict[model_name].index)
-                traj_index = traj.index_ddoy(traj.models[model_name].loc[traj.data_index].index, 
-                                             start_ref=mtraj.nowcast_dict[model_name].index[0])
+                mtraj_index = traj.index_ddoy(mtraj.nowcast_dict[model_ref].index)
+                traj_index = traj.index_ddoy(traj.models[model_ref].loc[traj.data_index].index, 
+                                             start_ref=mtraj.nowcast_dict[model_ref].index[0])
                 
                 axs[j,i].plot(mtraj_index, 
-                              mtraj.nowcast_dict[model_name]['mean'], color='C0')
+                              mtraj.nowcast_dict[model_ref]['mean'], color='C0')
                 
                 axs[j,i].fill_between(mtraj_index, 
-                                      mtraj.nowcast_dict[model_name]['obs_ci_lower'], 
-                                      mtraj.nowcast_dict[model_name]['obs_ci_upper'], 
+                                      mtraj.nowcast_dict[model_ref]['obs_ci_lower'], 
+                                      mtraj.nowcast_dict[model_ref]['obs_ci_upper'], 
                                       color='C0', alpha=0.5)
                 
                 axs[j,i].scatter(traj_index,
-                                 traj.models[model_name]['empirical_time_delta'].loc[traj.data_index], 
+                                 traj.models[model_ref]['empirical_time_delta'].loc[traj.data_index], 
                                  color='black', marker='o', s=4)
                 
                 axs[j,i].axhline(0, linestyle='--', color='gray', alpha=0.6, zorder=-1, linewidth=1)
@@ -577,17 +577,18 @@ def MMESH_run(config_path):
                                       bbox=label_bbox)
                     
                 if i == len(mtraj.trajectories)-1:
-                    #axs[j,i].set_ylabel(model_name)
-                    label_bbox = dict(facecolor=traj.gpp('color',model_name), 
-                                      edgecolor=traj.gpp('color',model_name), 
+                    #axs[j,i].set_ylabel(model_ref)
+                    label_bbox = dict(facecolor=traj.gpp('color',model_ref), 
+                                      edgecolor=traj.gpp('color',model_ref), 
                                       pad=0.1, boxstyle='round')
-                    axs[j,i].annotate('{}'.format(model_name),
+                    
+                    axs[j,i].annotate('{}'.format(mtraj.model_sources[model_ref]),
                                       (1.0, 0.5), xytext=(1, 0), va='center', ha='center',
                                       xycoords='axes fraction', textcoords='offset fontsize',
                                       rotation='vertical', bbox=label_bbox)
                     
-                # axs[j,i].set_xlim(traj.models[model_name].index[0], 
-                #                   traj.models[model_name].index[-1])
+                # axs[j,i].set_xlim(traj.models[model_ref].index[0], 
+                #                   traj.models[model_ref].index[-1])
                 
             # tick_interval = 50
             # subtick_interval = 10
@@ -608,12 +609,13 @@ def MMESH_run(config_path):
         for i, ax in enumerate(axs.flatten()):
             ax.annotate('({})'.format(string.ascii_lowercase[i]),
                         (0,1), (1, -1), xycoords='axes fraction', textcoords='offset fontsize')
-        fig.supxlabel('Day of Year {}'.format(mtraj.nowcast_dict[model_name].index[0].year))
+        fig.supxlabel('Days Since Jan. 1, {}'.format(mtraj.nowcast_dict[model_name].index[0].year))
         fig.supylabel('Measured Timing Differences [hours]')
         
         for suffix in ['.png', '.jpg']:
             fig.savefig(str(fullfilepath)+suffix, 
-                        dpi=300)
+                        transparent=True,
+                        dpi=600)
         plt.plot()
         
         return
@@ -651,10 +653,10 @@ def MMESH_run(config_path):
             model = read_SWModel.read_model(model_info['source'], epoch_info['source'], 
                                             start, stop, resolution='60Min')
             
-            traj0.addModel(model_ref, model)
+            traj0.addModel(model_ref, model, model_source=model_info['source'])
             
-            # traj0.set_plotprops('color', model_name, model_colors[model_name])  #  Optional
-            # traj0.set_plotprops('marker', model_name, model_markers[model_name])  #  Optional
+            # traj0.set_plotprops('color', model_ref, model_info['color'])  #  Optional
+            # traj0.set_plotprops('marker', model_ref, model_info['marker'])  #  Optional
         
         # =============================================================================
         #   Plot a Taylor Diagram of the unchanged models
@@ -756,15 +758,15 @@ def MMESH_run(config_path):
     
     # #   Set up the prediction interval
     # #original_spantime = stoptime - starttime
-    # prediction_starttime = dt.datetime(2016, 5, 16)  #  starttime - original_spantime
-    # prediction_stoptime = dt.datetime(2016, 6, 26)  #  stoptime + original_spantime
-    # prediction_target = 'Juno'
+    prediction_starttime = dt.datetime(2016, 5, 16)  #  starttime - original_spantime
+    prediction_stoptime = dt.datetime(2016, 6, 26)  #  stoptime + original_spantime
+    prediction_target = 'Juno'
     #
     # #  Initialize a trajectory class for the predictions
     # cast_traj_juno = mmesh.Trajectory()
     #
-    # spacecraft = spacecraftdata.SpacecraftData('Juno')
-    # spacecraft.read_processeddata(prediction_starttime, prediction_stoptime, resolution='60Min')
+    spacecraft = spacecraftdata.SpacecraftData('Juno')
+    spacecraft.read_processeddata(prediction_starttime, prediction_stoptime, resolution='60Min')
     # cast_traj_juno.addData('Juno', spacecraft.data)
     # #cast_traj_juno.set_plotprops('color', 'data', epoch_colors[epoch_name])
     #
@@ -793,7 +795,7 @@ def MMESH_run(config_path):
     #   Set up the prediction interval
     #original_spantime = stoptime - starttime
     forecast_starttime = dt.datetime(2016, 3, 1)  #  starttime - original_spantime
-    forecast_stoptime = dt.datetime(2024, 3, 1)  #  stoptime + original_spantime
+    forecast_stoptime = dt.datetime(2017, 3, 1)  #  stoptime + original_spantime
     forecast_target = 'Jupiter'
     
     #  Initialize a trajectory class for the predictions
@@ -811,7 +813,7 @@ def MMESH_run(config_path):
                                         forecast_starttime, forecast_stoptime, 
                                         resolution='60Min')
         
-        cast_traj_jupiter.addModel(model_ref, model)
+        cast_traj_jupiter.addModel(model_ref, model, model_source=model_info['source'])
         
         # cast_traj_jupiter.set_plotprops('color', model_name, model_colors[model_name])  #  Optional
         # cast_traj_jupiter.set_plotprops('marker', model_name, model_markers[model_name])  #  Optional
@@ -995,20 +997,22 @@ def MMESH_run(config_path):
     # =============================================================================
     def plot_MMESHExample(traj, fullfilename=''):
         
-        fig, axs = plt.subplots(figsize=(6,4.5),
+        fig, axs = plt.subplots(figsize=(6,4),
                                 nrows=len(traj.model_names),
                                 sharex=True, sharey=True)
         plt.subplots_adjust(left=0.125, bottom=0.125, right=0.95, top=0.90, 
-                            hspace=0.05)
+                            hspace=0.1)
         
         # plt.subplots_adjust(**mtraj.cast_intervals['juno_simulcast'].plotprops['adjustments'])
         
         lines = []
         for i, model_name in enumerate(traj.model_names):
             
-            model_name_for_paper = model_name
-            if model_name_for_paper == 'Tao': 
-                model_name_for_paper += '+'
+            # model_name_for_paper = model_name
+            # if model_name_for_paper == 'Tao': 
+            #     model_name_for_paper += '+'
+            model_name_for_paper = traj.model_sources[model_name]
+            #breakpoint()
             
             index = traj.index_ddoy(traj.models[model_name].index)
             
@@ -1021,8 +1025,8 @@ def MMESH_run(config_path):
             
             l = axs[i].plot(index, 
                             traj.models[model_name]['u_mag'],
-                            color=traj.gpp('color', model_name), linewidth=1.0,
-                            label=model_name_for_paper)
+                            color=traj.gpp('color', model_name), linewidth=2.0)
+                            #label=model_name_for_paper)
             
             lines.append(l[0])
             
@@ -1035,17 +1039,16 @@ def MMESH_run(config_path):
             axs[i].xaxis.set_major_locator(MultipleLocator(25))
             axs[i].xaxis.set_minor_locator(MultipleLocator(5))
             
-            axs[i].yaxis.set_major_locator(MultipleLocator(100))
+            axs[i].yaxis.set_major_locator(MultipleLocator(200))
             axs[i].yaxis.set_minor_locator(MultipleLocator(20))
             
-        axs[0].set_ylim(350,650)
+        axs[0].set_ylim(250,700)
         
-        
-        fig.supxlabel('Day of Year {}'.format(traj._primary_df.index[0].year))
+        fig.supxlabel('Days since Jan. 1, {}'.format(traj._primary_df.index[0].year))
         fig.supylabel('Solar Wind Flow Speed $u_{mag}$ [km/s]')
         
         handles = lines
-        labels = traj.model_names
+        labels = list(traj.model_sources.values())
         
         bbox = axs[0].get_position()
         fig.legend(handles, labels, loc='lower left', 
@@ -1054,8 +1057,8 @@ def MMESH_run(config_path):
                                              bbox.width, 
                                              0.1], mode='expand')
         
-        for suffix in ['.png', '.jpg']:
-            plt.savefig(str(fullfilename)+suffix, dpi=300)
+        for suffix in ['.png', '.jpg', '.svg']:
+            plt.savefig(str(fullfilename)+suffix, dpi=600, transparent=True)
         plt.show()
         return
     
