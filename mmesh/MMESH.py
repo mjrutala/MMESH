@@ -16,6 +16,8 @@ import plot_TaylorDiagram as TD
 
 from matplotlib.ticker import MultipleLocator
 import string
+import MMESH_context as mmesh_c
+
 
 # spacecraft_colors = {'Pioneer 10': '#F6E680',
 #                      'Pioneer 11': '#FFD485',
@@ -72,6 +74,8 @@ class MultiTrajectory:
         
         self.model_names = list(set(possible_models))
         self.model_names.sort()
+        
+        breakpoint()
         
         self.offset_times = []  #   offset_times + (constant_offset) + np.linspace(0, total_hours, n_steps) give interpolation index
         self.optimized_shifts = []
@@ -203,7 +207,8 @@ class MultiTrajectory:
             
             #   Second: shift the models according to the time_delta predictions    
             if with_error:
-                cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma')
+                cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma',
+                                           uncertainty_characterization=True)
             else:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta')
                 
@@ -372,6 +377,7 @@ class Trajectory(_MMESH_mixins.visualization):
         self.spacecraft_name = ''
         self.spacecraft_df = ''
         
+        self.model_sources = {}
         self.model_names = []
         self.model_dfs = {}
         
@@ -458,10 +464,12 @@ class Trajectory(_MMESH_mixins.visualization):
         
         self._add_to_primary_df(self.model_names[-1], df)
         
-    def addModel(self, model_name, model_df):
+    def addModel(self, model_name, model_df, model_source=''):
         self.model_names.append(model_name)
         #self.model_names = sorted(self.model_names)
         self.models = model_df
+        if model_source != '':
+            self.model_sources[model_name] = model_source
         
     # @deleter
     # def models(self, model_name):
@@ -1192,14 +1200,15 @@ class Trajectory(_MMESH_mixins.visualization):
         plt.show()
         return
     
-    def shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000):
+    def shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, uncertainty_characterization=False):
         
         result = self._shift_Models(time_delta_column=time_delta_column, 
                                     time_delta_sigma_column=time_delta_sigma_column,
-                                    n_mc=n_mc)
+                                    n_mc=n_mc,
+                                    uncertainty_characterization=uncertainty_characterization)
         self._primary_df = result
     
-    def _shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000):
+    def _shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, uncertainty_characterization=False):
         """
         Shifts models by the specified column, expected to contain delta times in hours.
         Shifted models are only valid during the interval where data is present,
@@ -1256,7 +1265,7 @@ class Trajectory(_MMESH_mixins.visualization):
             #   Now we're shifting based on the ordinate, not the abcissa,
             #   so we have time_from_index - time_deltas, not +
             
-            def shift_function(col, col_name=''):
+            def shift_function(col, col_name='', model_name='', uncertainty_characterization=False):
                 #   Use the ORIGINAL time_from_index with this, not time_from_index + delta
                 if (time_delta_sigmas == 0.).all():
                     col_shifted = np.interp(time_from_index - time_deltas, time_from_index, col)
@@ -1273,12 +1282,84 @@ class Trajectory(_MMESH_mixins.visualization):
                     for i in range(n_mc):
                         col2d_perturb[i,:] = np.interp(time_from_index - arr2d_perturb[i,:], time_from_index, col)
                     
+                    #   UNCERTAINTY CHARACTERIZATION !!!!
+                    if uncertainty_characterization == True:
+                        import scipy.stats as stats
+                        
+                        #df = pd.DataFrame(col2d_perturb)
+                        
+                        uc_dict = {'r2_norm': [], 'r2_lognorm': []}
+                        for j in tqdm(range(len(time_from_index)), position=0):
+                            coords, res = stats.probplot(col2d_perturb[:,j])
+                            uc_dict['r2_norm'].append(res[2]**2)
+                            
+                            coords, res = stats.probplot(np.log10(col2d_perturb[:,j]))
+                            uc_dict['r2_lognorm'].append(res[2]**2)
+                        uc_df = pd.DataFrame.from_dict(uc_dict)
+                        
+                        uc_filename = '/Users/mrutala/projects/MMESH/uncertainty_characterization/'
+                        uc_filename += model_name + '_' + col_name + '_' + str(n_mc) + 'perturbations_r2.csv'
+                        uc_df.to_csv(uc_filename, header=False, index=False, float_format='%.3E')
+                        # import matplotlib.pyplot as plt
+                        # import scipy.stats as stats
+                        
+                        # r2_norm = []
+                        # r2_lognorm = []
+                        # for j in tqdm(range(len(time_from_index)), position=0):
+                        #     coords, res = stats.probplot(col2d_perturb[:,j])
+                        #     r2_norm.append(res[2]**2)
+                            
+                        #     coords, res = stats.probplot(np.log10(col2d_perturb[:,j]))
+                        #     r2_lognorm.append(res[2]**2)
+                        
+                        # fig, axs = plt.subplots(figsize=(4,4.5), nrows=2, height_ratios=[3.5,1])
+                        # plt.subplots_adjust(hspace=0.3)
+                        
+                        # r2_norm_dist, edges = np.histogram(r2_norm, bins=np.linspace(0,1,101), density=True)
+                        # r2_lognorm_dist, edges = np.histogram(r2_lognorm, bins=np.linspace(0,1,101), density=True)
+                        # bin_widths = edges[1:] - edges[:-1]
+                        # left_edges = edges[:-1]
+                        
+                        # axs[0].stairs(r2_norm_dist, edges, linewidth=2, label='$R^2$ from normal dist.')
+                        # axs[0].stairs(r2_lognorm_dist, edges, linewidth=2, label='$R^2$ from lognormal dist.')
+                        
+                        # axs[0].annotate('{}: {} uncertainties'.format(model_name, col_name), 
+                        #             (0,1), (0,1), 
+                        #             xycoords='axes fraction', textcoords='offset fontsize')
+                        # axs[0].set(xlabel='$R^2$ Values',
+                        #            ylabel='Density')
+                        
+                        # cell_values = [[], []]
+                        # for val in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
+                        #     prob_norm = np.sum((r2_norm_dist * bin_widths)[left_edges >= val])
+                        #     prob_lognorm = np.sum((r2_lognorm_dist * bin_widths)[left_edges >= val])
+                            
+                        #     cell_values[0].append('{:.2f}'.format(prob_norm*100))
+                        #     cell_values[1].append('{:.2f}'.format(prob_lognorm*100))
+                        
+                        
+                        # axs[1].table(cellText=cell_values, 
+                        #              rowLabels=['Norm', 'LogNorm'], 
+                        #              colLabels=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+                        #              bbox=[0.2,0,0.8,1])  #  bbox here is fraction of ax
+                        # axs[1].set_axis_off()
+                        # axs[1].annotate('%age of obs. > $R^2$ value', (0.5,0), (0,-2),
+                        #                 xycoords='axes fraction', textcoords='offset fontsize',
+                        #                 va = 'center', ha = 'center')
+                        
+                        # axs[0].legend()
+                        # plt.show()
+                    
+                    
+                    #   Return to normally scheduled programming
                     #   Take the 16th, 50th, and 84th percentiles of the random samples as statistics                
                     col_16p, col_50p, col_84p = np.percentile(col2d_perturb, [16,50,84], axis=0, overwrite_input=True)
                     
                     col_shifted = col_50p
                     col_shifted_pos_unc = col_84p - col_50p
                     col_shifted_neg_unc = col_50p - col_16p
+                    
+                   
 
                 
                 output = (col_shifted, col_shifted_pos_unc, col_shifted_neg_unc)
@@ -1310,12 +1391,10 @@ class Trajectory(_MMESH_mixins.visualization):
                 #if len(col.dropna() > 0) and (col_name in self.variables):
                 if (col_name in self.variables):
                     
-                    col_shifted = shift_function(col.to_numpy('float64'), col_name=col_name)
+                    col_shifted = shift_function(col.to_numpy('float64'), col_name=col_name, model_name=model_name,
+                                                 uncertainty_characterization=uncertainty_characterization)
                     
-                    try:
-                        shifted_primary_df.loc[nonnan_row_index, (model_name, col_name)] = col_shifted[0]
-                    except:
-                        breakpoint()
+                    shifted_primary_df.loc[nonnan_row_index, (model_name, col_name)] = col_shifted[0]
                     shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_pos_unc')] = col_shifted[1]
                     shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_neg_unc')] = col_shifted[2]
                     
@@ -1399,7 +1478,7 @@ class Trajectory(_MMESH_mixins.visualization):
         #   !!!! This doesn't add error properly
         # ensemble = reduce(lambda a,b: a.add(b, fill_value=0.), partials_list)
 
-        self.addModel('ensemble', ensemble)
+        self.addModel('ensemble', ensemble, model_source='MME')
         
     # =============================================================================
     #   Plotting stuff
