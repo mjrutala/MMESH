@@ -393,9 +393,7 @@ class Trajectory(_MMESH_mixins.visualization):
         #self.model_dtw_times = {}
         
         #self.trajectory = pd.Dataframe(index=index)
-        
-        
-        
+
         self._data = None
         self._primary_df = pd.DataFrame()
     
