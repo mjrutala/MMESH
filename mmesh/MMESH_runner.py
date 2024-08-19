@@ -632,10 +632,7 @@ def MMESH_run(config_path):
         spacecraft = spacecraftdata.SpacecraftData(epoch_info['source'])
         spacecraft.read_processeddata(start, stop, resolution='60Min')
         pos_TSE = spacecraft.find_StateToEarth()
-        
-        #!!!!
-        #  NEED ROBUST in-SW-subset TOOL! ADD HERE!
-        
+
         #  Change start and stop times to reflect spacecraft limits-- with optional padding
         padding = dt.timedelta(days=8)
         start = spacecraft.data.index[0] - padding
@@ -661,27 +658,104 @@ def MMESH_run(config_path):
         # =============================================================================
         #   Plot a Taylor Diagram of the unchanged models
         # =============================================================================
-        plot_OriginalModels(filepaths['figures']/'fig03_OriginalModels')        
         
-        #breakpoint()
+        #plot_OriginalModels(filepaths['figures']/'fig03_OriginalModels')        
         
-        # =============================================================================
-        #   Optimize the models via constant temporal shifting
-        #   Then plot:
-        #       - The changes in correlation coefficient 
-        #         (more generically, whatever combination is being optimized)
-        #       - The changes on a Taylor Diagram
-        # =============================================================================
+        def poster_plot_1(fullfilename):
+            param = 'u_mag'  #  what to plot
+            
+            params = {"ytick.color" : "w",
+                      "xtick.color" : "w",
+                      "axes.labelcolor" : "w",
+                      "axes.edgecolor" : "w"}
+            plt.rcParams.update(params)
+            
+            #   Plot as one row
+            # mosaic = [[]]
+            # for model_ref in traj0.model_names:
+            #     mosaic[0].append(model_ref)
+            #
+            # fig, axd = plt.subplot_mosaic(mosaic, figsize=(12,1.5), sharex=True, sharey=True)
+            # plt.subplots_adjust(bottom=0.15, left=0.05625, right=1-0.00625, top=0.95, 
+            #                     wspace=0.025)
+            
+            #   Plot as one column
+            mosaic = []
+            for model_ref in traj0.model_names:
+                mosaic.append([model_ref])
+            
+            fig, axd = plt.subplot_mosaic(mosaic, figsize=(4,3), sharex=True, sharey=True)
+            plt.subplots_adjust(bottom=0.16, left=0.120, right=0.9925, top=0.99, 
+                                hspace=0.1)
+            
+            for i, model_ref in enumerate(traj0.model_names):
+                
+                for axis in ['top','bottom','left','right']:
+                    axd[model_ref].spines[axis].set_linewidth(2)
+                axd[model_ref].tick_params(width=2, which='major')
+                axd[model_ref].tick_params(width=1.5, which='minor')
+                
+                axd[model_ref].plot(traj0.index_ddoy(traj0.data.index), 
+                                     traj0.data[param],
+                                     color='black', alpha=1.0, linewidth=1.5,
+                                     marker='o', markersize=0.01,
+                                     label=traj0.spacecraft_name)
+                    
+                axd[model_ref].plot(traj0.index_ddoy(traj0.models[model_ref].index),
+                                     traj0.models[model_ref][param],
+                                     color=traj0.gpp('color',model_ref), linewidth=2,
+                                     #marker=traj0.gpp('marker',model_ref), markersize=0.01,
+                                     label = traj0.model_sources[model_ref])
+                
+                label_bbox = dict(facecolor = traj0.gpp('color',model_ref), 
+                                  edgecolor = traj0.gpp('color',model_ref), 
+                                  pad = 0.1, boxstyle = 'round')
+                axd[model_ref].annotate('{}'.format(traj0.model_sources[model_ref]),
+                                (0,1), (0.5,-0.5), ha='left', va='top',
+                                xycoords='axes fraction', 
+                                textcoords='offset fontsize',
+                                bbox = label_bbox)
+            
+            axd[model_ref].set_xlim(traj0.index_ddoy(traj0.data.index)[0], traj0.index_ddoy(traj0.data.index)[-1])
+            
+            axd[model_ref].xaxis.set_major_locator(MultipleLocator(10))
+            axd[model_ref].xaxis.set_minor_locator(MultipleLocator(2))
+            
+            fig.supxlabel('Day of Year {}'.format(traj0._primary_df.index[0].year),
+                          fontsize=plt.rcParams['figure.labelsize'], color='w')
+            
+            axd[model_ref].set_ylim((350, 650))
+            axd[model_ref].yaxis.set_major_locator(MultipleLocator(100))
+            axd[model_ref].yaxis.set_minor_locator(MultipleLocator(25))
+            fig.supylabel(r'Flow Speed $u_{mag}$ [km/s]', x=0.00625, fontsize=plt.rcParams['figure.labelsize'], color='w')
+            
+            for suffix in ['.png', '.jpg']:
+                plt.savefig(str(fullfilename)+suffix, 
+                            dpi = 800,
+                            transparent = True)
+            plt.show()
+            
+            return
+        
+        poster_plot_1(filepaths['figures']/'poster01_OriginalModels')
+        
+        # # =============================================================================
+        # #   Optimize the models via constant temporal shifting
+        # #   Then plot:
+        # #       - The changes in correlation coefficient 
+        # #         (more generically, whatever combination is being optimized)
+        # #       - The changes on a Taylor Diagram
+        # # =============================================================================
         shifts = np.arange(-96, 96+6, 6)    #  in hours
         shift_stats = traj0.optimize_shifts('u_mag', shifts=shifts)
         
         constant_shift_dict = {}
         for model_name in traj0.model_names:
             constant_shift_dict[model_name] = (np.arccos(traj0.best_shifts[model_name]['r']), 
-                                               traj0.best_shifts[model_name]['stddev'])
+                                                traj0.best_shifts[model_name]['stddev'])
         
-        fig, axs = traj0.plot_ConstantTimeShifting_Optimization()
-        plt.show()
+        # fig, axs = traj0.plot_ConstantTimeShifting_Optimization()
+        # plt.show()
         
         # =============================================================================
         #   Optimize the models via dynamic time warping
@@ -696,7 +770,81 @@ def MMESH_run(config_path):
         traj0.binarize('u_mag', smooth = smoothing_widths, sigma=3) #  !!!! sigma value can be changed
         
         #traj0.plot_SingleTimeseries('u_mag', starttime, stoptime, filepath=figurefilepath)
-        traj0.plot_SingleTimeseries('jumps', start, stop, fullfilepath=filepaths['figures']/'figA1_Binarization')
+        #traj0.plot_SingleTimeseries('jumps', start, stop, fullfilepath=filepaths['figures']/'figA1_Binarization')
+        
+        def poster_plot_2(fullfilename):
+            params = {"ytick.color" : "w",
+                      "xtick.color" : "w",
+                      "axes.labelcolor" : "w",
+                      "axes.edgecolor" : "w"}
+            plt.rcParams.update(params)
+            
+            #   Plot as one row
+            # mosaic = [[]]
+            # for model_ref in traj0.model_names:
+            #     mosaic[0].append(model_ref)
+            # fig, axd = plt.subplot_mosaic(mosaic, figsize=(12,1.5), sharex=True, sharey=True)
+            # plt.subplots_adjust(bottom=0.15, left=0.05625, right=1-0.00625, top=0.95, 
+            #                     wspace=0.025)
+            
+            #   Plot as one column
+            mosaic = []
+            for model_ref in traj0.model_names:
+                mosaic.append([model_ref])
+            fig, axd = plt.subplot_mosaic(mosaic, figsize=(4,3), sharex=True, sharey=True)
+            plt.subplots_adjust(bottom=0.16, left=0.120, right=0.9925, top=0.99, 
+                                hspace=0.1)
+            
+            for i, model_ref in enumerate(traj0.model_names):
+                
+                for axis in ['top','bottom','left','right']:
+                    axd[model_ref].spines[axis].set_linewidth(2)
+                axd[model_ref].tick_params(width=2, which='major')
+                axd[model_ref].tick_params(width=1.5, which='minor')
+                
+                axd[model_ref].scatter(traj0.index_ddoy(traj0.data.index), 
+                                      (traj0.data['jumps']-0.5)*2,
+                                      color = 'black', alpha = 1.0,
+                                      marker = 'x', s = 100.0,
+                                      label = traj0.spacecraft_name)
+
+                axd[model_ref].scatter(traj0.index_ddoy(traj0.models[model_ref].index),
+                                      (traj0.models[model_ref]['jumps']-0.5)*4,
+                                      color = traj0.gpp('color',model_ref),
+                                      marker = 'x', s = 100.0,
+                                      label = traj0.model_sources[model_ref])
+                
+                label_bbox = dict(facecolor = traj0.gpp('color',model_ref), 
+                                  edgecolor = traj0.gpp('color',model_ref), 
+                                  pad = 0.1, boxstyle = 'round')
+                axd[model_ref].annotate('{}'.format(traj0.model_sources[model_ref]),
+                                (0,1), (0.5,-0.5), ha='left', va='top',
+                                xycoords='axes fraction', 
+                                textcoords='offset fontsize',
+                                bbox = label_bbox)
+            
+            axd[model_ref].set_xlim(traj0.index_ddoy(traj0.data.index)[0], traj0.index_ddoy(traj0.data.index)[-1])
+            
+            axd[model_ref].xaxis.set_major_locator(MultipleLocator(10))
+            axd[model_ref].xaxis.set_minor_locator(MultipleLocator(2))
+            
+            fig.supxlabel('Day of Year {}'.format(traj0._primary_df.index[0].year),
+                          fontsize=plt.rcParams['figure.labelsize'], color='w')
+            
+            axd[model_ref].set_ylim((0.5,3))
+            axd[model_ref].set(yticks=(1, 2), yticklabels=('Data', 'Model'))
+            
+            # fig.supylabel(r'Binarized Time Series', x=0.00625, fontsize=plt.rcParams['figure.labelsize'], color='w')
+            
+            for suffix in ['.png', '.jpg']:
+                plt.savefig(str(fullfilename)+suffix, 
+                            dpi=800,
+                            transparent=True)
+            plt.show()
+            
+            return
+        
+        poster_plot_2(filepaths['figures']/'poster02_Binarized')
         
         #   Calculate a whole host of statistics
         dtw_stats = traj0.find_WarpStatistics('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
@@ -714,8 +862,230 @@ def MMESH_run(config_path):
         
         #filename = basefilepath+'/OptimizedDTWOffset_{}_{}.png'.format(traj0.trajectory_name, '-'.join(traj0.model_names))
         
-        traj0.plot_OptimizedOffset('jumps', 'u_mag', fullfilepath=filepaths['figures']/'fig04_DTWIllustration')
-    
+        # traj0.plot_OptimizedOffset('jumps', 'u_mag', fullfilepath=filepaths['figures']/'fig04_DTWIllustration')
+        
+        def poster_plot_3(fullfilename):
+            import matplotlib.dates as mdates
+            from matplotlib import collections  as mc
+            from matplotlib.patches import ConnectionPatch
+            
+            params = {"ytick.color" : "w",
+                      "xtick.color" : "w",
+                      "axes.labelcolor" : "w",
+                      "axes.edgecolor" : "w"}
+            plt.rcParams.update(params)
+            
+            #   Plot as one row
+            # mosaic = [[]]
+            # for model_ref in traj0.model_names:
+            #     mosaic[0].append(model_ref)
+            # fig, axd = plt.subplot_mosaic(mosaic, figsize=(12,1.5), sharex=True, sharey=True)
+            # plt.subplots_adjust(bottom=0.15, left=0.05625, right=1-0.00625, top=0.95, 
+            #                     wspace=0.025)
+            
+            #   Plot as one column
+            mosaic = []
+            for model_ref in traj0.model_names:
+                mosaic.append([model_ref])
+            fig, axd = plt.subplot_mosaic(mosaic, figsize=(4,3), sharex=True, sharey=True)
+            plt.subplots_adjust(bottom=0.16, left=0.120, right=0.9925, top=0.99, 
+                                hspace=0.1)
+            
+            for i, model_ref in enumerate(traj0.model_names):
+                
+                for axis in ['top','bottom','left','right']:
+                    axd[model_ref].spines[axis].set_linewidth(2)
+                axd[model_ref].tick_params(width=2, which='major')
+                axd[model_ref].tick_params(width=1.5, which='minor')
+                
+                axd[model_ref].scatter(traj0.index_ddoy(traj0.data.loc[traj0.data['jumps']!=0, 'jumps'].index), 
+                                  traj0.data.loc[traj0.data['jumps']!=0, 'jumps'].values,
+                                  color='black', edgecolors='black',
+                                  marker='x', s = 100,
+                                  zorder=3)
+            
+                axd[model_ref].scatter(traj0.index_ddoy(traj0.models[model_ref].loc[traj0.models[model_ref]['jumps']!=0, 'jumps'].index), 
+                                  traj0.models[model_ref].loc[traj0.models[model_ref]['jumps']!=0, 'jumps'].values*2,
+                                  color = traj0.gpp('color',model_ref), edgecolors='black',
+                                  marker = 'x', s = 100,
+                                  zorder=2)
+                
+                label_bbox = dict(facecolor = traj0.gpp('color',model_ref), 
+                                  edgecolor = traj0.gpp('color',model_ref), 
+                                  pad = 0.1, boxstyle = 'round')
+                axd[model_ref].annotate('{}'.format(traj0.model_sources[model_ref]),
+                                (0,1), (0.5,-0.5), ha='left', va='top',
+                                xycoords='axes fraction', 
+                                textcoords='offset fontsize',
+                                bbox = label_bbox)
+                                                     
+                connections_basis = []
+                for i, (index, value) in enumerate(traj0.models[model_ref].loc[traj0.models[model_ref]['jumps']!=0, 'jumps'].items()):
+                    
+                    #  Find the time-coordinate for where each 'jump' got shifted to
+                    t_elapsed = (traj0.models[model_ref].index - traj0.models[model_ref].index[0]).total_seconds()/3600.
+                    x = t_elapsed - traj0.models[model_ref].loc[:, 'empirical_time_delta'].values
+                    x_tie = (index - traj0.models[model_ref].index[0]).total_seconds()/3600.
+                    shift_index_elapsed = np.interp(x_tie, x, t_elapsed)
+                    
+                    shift_index = index + dt.timedelta(hours=(shift_index_elapsed-x_tie))
+                    
+                    #   !!! Can't use built-in self.index_ddoy with an individual entry...
+                    #   
+                    index_ddoy = (index - dt.datetime(traj0.data_index[0].year,1,1)).total_seconds()/(24*60*60) + 1/24.
+                    shift_index_ddoy = (shift_index - dt.datetime(traj0.data_index[0].year,1,1)).total_seconds()/(24*60*60) + 1/24.
+                    
+                    #   This first plot shows the matched features, so only add
+                    #   the connection if both features exist                
+                    if shift_index in traj0.data.index:
+                        if traj0.data.loc[shift_index, 'jumps'] == 1:
+                            pair1 = (index_ddoy, 2)
+                            pair2 = (shift_index_ddoy, 1)
+                            
+                            connections_basis.append([pair1, pair2])
+                
+                lc = mc.LineCollection(connections_basis, 
+                                        linewidths=1.5, linestyles="-", color='gray', linewidth=1.5, zorder=1)
+                axd[model_ref].add_collection(lc)
+            
+            axd[model_ref].set_xlim(traj0.index_ddoy(traj0.data.index)[0], traj0.index_ddoy(traj0.data.index)[-1])
+            
+            axd[model_ref].xaxis.set_major_locator(MultipleLocator(10))
+            axd[model_ref].xaxis.set_minor_locator(MultipleLocator(2))
+            
+            fig.supxlabel('Day of Year {}'.format(traj0._primary_df.index[0].year),
+                          fontsize=plt.rcParams['figure.labelsize'], color='w')
+            
+            axd[model_ref].set_ylim((0.5,3))
+            axd[model_ref].set(yticks=(1, 2), yticklabels=('Data', 'Model'))
+            
+            # fig.supylabel(r'Binarized Time Series', x=0.00625, fontsize=plt.rcParams['figure.labelsize'])
+            
+            for suffix in ['.png', '.eps', '.jpg']:
+                fig.savefig(fullfilename, dpi=800, transparent=True)
+            plt.show()
+            return
+        
+        def poster_plot_4(fullfilename):
+            import matplotlib.dates as mdates
+            from matplotlib import collections  as mc
+            from matplotlib.patches import ConnectionPatch
+            
+            params = {"ytick.color" : "w",
+                      "xtick.color" : "w",
+                      "axes.labelcolor" : "w",
+                      "axes.edgecolor" : "w"}
+            plt.rcParams.update(params)
+            
+            #   Plot as one row
+            # mosaic = [[]]
+            # for model_ref in traj0.model_names:
+            #     mosaic[0].append(model_ref)
+            # fig, axd = plt.subplot_mosaic(mosaic, figsize=(12,1.5), sharex=True, sharey=True)
+            # plt.subplots_adjust(bottom=0.15, left=0.05625, right=1-0.00625, top=0.95, 
+            #                     wspace=0.025)
+            
+            #   Plot as one column
+            mosaic = []
+            for model_ref in traj0.model_names:
+                mosaic.append([model_ref])
+            fig, axd = plt.subplot_mosaic(mosaic, figsize=(4,3), sharex=True, sharey=True)
+            plt.subplots_adjust(bottom=0.16, left=0.120, right=0.9925, top=0.99, 
+                                hspace=0.1)
+            
+            for i, model_ref in enumerate(traj0.model_names):
+                
+                for axis in ['top','bottom','left','right']:
+                    axd[model_ref].spines[axis].set_linewidth(2)
+                axd[model_ref].tick_params(width=2, which='major')
+                axd[model_ref].tick_params(width=1.5, which='minor')
+                
+                axd[model_ref].plot(traj0.index_ddoy(traj0.data.index), 
+                                     traj0.data['u_mag'],
+                                     color='black', alpha=1.0, linewidth=1.5,
+                                     marker='o', markersize=0.01,
+                                     label=traj0.spacecraft_name)
+                    
+                axd[model_ref].plot(traj0.index_ddoy(traj0.models[model_ref].index),
+                                     traj0.models[model_ref]['u_mag'],
+                                     color=traj0.gpp('color',model_ref), linewidth=2, linestyle=':',
+                                     #marker=traj0.gpp('marker',model_ref), markersize=0.01,
+                                     label = traj0.model_sources[model_ref])
+                
+                temp_shift = traj0._shift_Models(time_delta_column='empirical_time_delta')       
+                axd[model_ref].plot(traj0.index_ddoy(traj0.models[model_ref].index), temp_shift[(model_ref, 'u_mag')],
+                               color = traj0.gpp('color',model_ref), linewidth=2)  
+                
+                label_bbox = dict(facecolor = traj0.gpp('color',model_ref), 
+                                  edgecolor = traj0.gpp('color',model_ref), 
+                                  pad = 0.1, boxstyle = 'round')
+                axd[model_ref].annotate('{}'.format(traj0.model_sources[model_ref]),
+                                (0,1), (0.5,-0.5), ha='left', va='top',
+                                xycoords='axes fraction', 
+                                textcoords='offset fontsize',
+                                bbox = label_bbox)
+                                                     
+                connections_metric = []
+                for i, (index, value) in enumerate(traj0.models[model_ref].loc[traj0.models[model_ref]['jumps']!=0, 'jumps'].items()):
+                    
+                    #  Find the time-coordinate for where each 'jump' got shifted to
+                    t_elapsed = (traj0.models[model_ref].index - traj0.models[model_ref].index[0]).total_seconds()/3600.
+                    x = t_elapsed - traj0.models[model_ref].loc[:, 'empirical_time_delta'].values
+                    x_tie = (index - traj0.models[model_ref].index[0]).total_seconds()/3600.
+                    shift_index_elapsed = np.interp(x_tie, x, t_elapsed)
+                    
+                    shift_index = index + dt.timedelta(hours=(shift_index_elapsed-x_tie))
+                    
+                    #   !!! Can't use built-in self.index_ddoy with an individual entry...
+                    #   
+                    index_ddoy = (index - dt.datetime(traj0.data_index[0].year,1,1)).total_seconds()/(24*60*60) + 1/24.
+                    shift_index_ddoy = (shift_index - dt.datetime(traj0.data_index[0].year,1,1)).total_seconds()/(24*60*60) + 1/24.
+                    
+                    #   For the shifted abcissa (y) value, just take the unshifted y value
+                    #   Shifts only change x, not y, so the y value should not change
+                    #   And this saves having to interpolate
+                    pair3 = (index_ddoy, traj0.models[model_ref].loc[index, 'u_mag'])
+                    pair4 = (shift_index_ddoy, traj0.models[model_ref].loc[index, 'u_mag'])
+                    
+                    connections_metric.append([pair3, pair4])
+                    
+                    # axd[model_ref].plot(pair3, pair4,
+                    #                     linewidth=1.5, color='gray')
+                    axd[model_ref].annotate("", xy=pair4, xytext=pair3,
+                                            arrowprops=dict(arrowstyle="->", linewidth=1, color='xkcd:orange red'))
+                    
+                    # con = ConnectionPatch(xyA=pair3, xyB=pair4, 
+                    #                      coordsA="data", coordsB="data",
+                    #                      axesA=ax_col[1], axesB=ax_col[2],
+                    #                      color="gray", linewidth=1.5, linestyle=":", alpha=0.8, zorder=5)
+                    # ax_col[2].add_artist(con)
+                
+                lc = mc.LineCollection(connections_metric, 
+                                       linewidths=1.5, linestyles="-", color='gray', linewidth=1.5, zorder=1)
+                #axd[model_ref].add_collection(lc)
+            
+            axd[model_ref].set_xlim(traj0.index_ddoy(traj0.data.index)[0], traj0.index_ddoy(traj0.data.index)[-1])
+            
+            axd[model_ref].xaxis.set_major_locator(MultipleLocator(10))
+            axd[model_ref].xaxis.set_minor_locator(MultipleLocator(2))
+            
+            fig.supxlabel('Day of Year {}'.format(traj0._primary_df.index[0].year),
+                          fontsize=plt.rcParams['figure.labelsize'], color='w')
+            
+            axd[model_ref].set_ylim((350, 650))
+            axd[model_ref].yaxis.set_major_locator(MultipleLocator(100))
+            axd[model_ref].yaxis.set_minor_locator(MultipleLocator(25))
+            fig.supylabel(r'Flow Speed $u_{mag}$ [km/s]', x=0.00625, fontsize=plt.rcParams['figure.labelsize'], color='w')
+            
+            for suffix in ['.png', '.jpg']:
+                fig.savefig(fullfilename, dpi=800, transparent=True)
+            plt.show()
+            return
+
+        poster_plot_3(filepaths['figures']/'poster03_DTWLinks')
+        poster_plot_4(filepaths['figures']/'poster04_TimeSeriesShifts')
+        
+        
         traj0.plot_DynamicTimeWarping_Optimization()
         #traj0.plot_DynamicTimeWarping_TD()
         
@@ -761,36 +1131,37 @@ def MMESH_run(config_path):
     prediction_starttime = dt.datetime(2016, 5, 16)  #  starttime - original_spantime
     prediction_stoptime = dt.datetime(2016, 6, 26)  #  stoptime + original_spantime
     prediction_target = 'Juno'
-    #
-    # #  Initialize a trajectory class for the predictions
-    # cast_traj_juno = mmesh.Trajectory()
-    #
+    
+    #  Initialize a trajectory class for the predictions
+    cast_traj_juno = mmesh.Trajectory()
+    
     spacecraft = spacecraftdata.SpacecraftData('Juno')
     spacecraft.read_processeddata(prediction_starttime, prediction_stoptime, resolution='60Min')
-    # cast_traj_juno.addData('Juno', spacecraft.data)
-    # #cast_traj_juno.set_plotprops('color', 'data', epoch_colors[epoch_name])
-    #
-    # fullfilepath = mmesh_c.make_PlanetaryContext_CSV(prediction_target, 
-    #                                                  prediction_starttime, 
-    #                                                  prediction_stoptime, 
-    #                                                  filepath=filepaths['output'] / 'context/')
-    # cast_traj_juno.context = pd.read_csv(fullfilepath, index_col='datetime', parse_dates=True)
-    #
-    # #  Read models and add to trajectory
-    # for model_name in init['models']:
-    #    
-    #     model = read_SWModel.read_model(model_name, prediction_target, 
-    #                                     prediction_starttime, prediction_stoptime, resolution='60Min')
-    #    
-    #     cast_traj_juno.addModel(model_name, model)
-    #
-    #     # cast_traj_juno.set_plotprops('color', model_name, model_colors[model_name])  #  Optional
-    #     # cast_traj_juno.set_plotprops('marker', model_name, model_markers[model_name])  #  Optional
-    #    
+    cast_traj_juno.addData('Juno', spacecraft.data)
+    #cast_traj_juno.set_plotprops('color', 'data', epoch_colors[epoch_name])
+    
+    fullfilepath = mmesh_c.make_PlanetaryContext_CSV(prediction_target, 
+                                                     prediction_starttime, 
+                                                     prediction_stoptime, 
+                                                     filepath=filepaths['output'] / 'context/')
+    cast_traj_juno.context = pd.read_csv(fullfilepath, index_col='datetime', parse_dates=True)
+    
+    #  Read models and add to trajectory
+    for model_ref, model_info in init['models'].items():
+        
+        model = read_SWModel.read_model(model_info['source'], prediction_target, 
+                                        prediction_starttime, prediction_stoptime, 
+                                        resolution='60Min')
+        
+        cast_traj_juno.addModel(model_ref, model, model_source=model_info['source'])
+    
+        # cast_traj_juno.set_plotprops('color', model_name, model_colors[model_name])  #  Optional
+        # cast_traj_juno.set_plotprops('marker', model_name, model_markers[model_name])  #  Optional
+        
     # cast_traj_juno_backup =  copy.deepcopy(cast_traj_juno)
-    #
-    # #   Add prediction Trajectory as simulcast
-    # mtraj.cast_intervals['juno_simulcast'] = cast_traj_juno
+    
+    #   Add prediction Trajectory as simulcast
+    mtraj.cast_intervals['juno_hindcast'] = cast_traj_juno
     
     #   Set up the prediction interval
     #original_spantime = stoptime - starttime
@@ -819,25 +1190,160 @@ def MMESH_run(config_path):
         # cast_traj_jupiter.set_plotprops('marker', model_name, model_markers[model_name])  #  Optional
 
     #   Add prediction Trajectory as simulcast
-    mtraj.cast_intervals['jupiter_simulcast'] = cast_traj_jupiter
+    mtraj.cast_intervals['jupiter_hindcast'] = cast_traj_jupiter
     
     #formula = "empirical_time_delta ~ solar_radio_flux + target_sun_earth_lon"  #  This can be input
     #formula = "empirical_time_delta ~ target_sun_earth_lat + u_mag"
     formula = "empirical_time_delta ~ target_sun_earth_lat + solar_radio_flux + u_mag"
     test = mtraj.linear_regression(formula)
-    
+    breakpoint()
     print(time.time() - timer_t0)
     #breakpoint()
     
     mtraj.cast_Models(with_error=True)
+    
+    breakpoint()
+    
+    #   "Reacceleration Section"
+    variable = 'p_dyn'
+    trajectory_name = list(mtraj.trajectories.keys())[0]
+    
+    subset_df = mtraj.trajectories[trajectory_name]._primary_df.xs(variable, axis=1, level=1)
+    
+    #   Plot cumulative distribution functions
+    fig, ax = plt.subplots()
+    
+    #   Data CDF
+    cdf_y = np.linspace(0, 1, 100)
+    temp_x = np.sort(subset_df['Juno'].dropna()).astype('float64')
+    temp_y = np.linspace(0, 1, len(temp_x))
+    cdf_data = np.interp(cdf_y, temp_y, temp_x)
+    
+    #   Model CDFs
+    cdf_models = {}
+    for col in subset_df.columns:
+        # bins = np.logspace(-3, 1, 101)
+        # hist, _ = np.histogram(subset_df[col], bins=bins, 
+        #                        density = True)
+        # ax.plot(bins[1:], np.cumsum(hist)*(bins[-1] - bins[:-1]),
+        #         label = col)
+        
+        temp_x = np.sort(subset_df[col].dropna()).astype('float64')
+        temp_y = np.linspace(0, 1, len(temp_x))
+        cdf_model = np.interp(cdf_y, temp_y, temp_x)
+        cdf_models[col] = cdf_model
+        
+        ax.plot(cdf_model, cdf_y, label = col)
+        
+    ax.set(xscale = 'log')
+    ax.legend()
+        
     
     print(time.time() - timer_t0)
     #breakpoint()
     
     plot_TimeDelta_Grid_AllTrajectories(fullfilepath=filepaths['figures']/'fig07_MLRTimingFits')
     
-    #mtraj.cast_intervals['juno_simulcast'].ensemble()
-    mtraj.cast_intervals['jupiter_simulcast'].ensemble()
+    def poster_plot_5(fullfilename):
+        import matplotlib.dates as mdates
+        
+        params = {"ytick.color" : "w",
+                  "xtick.color" : "w",
+                  "axes.labelcolor" : "w",
+                  "axes.edgecolor" : "w"}
+        plt.rcParams.update(params)
+            
+        #   Loop over trajectories, getting length of data for plotting
+        length_list = []
+        for traj_name, traj in mtraj.trajectories.items():
+            length_list.append(len(traj.data))
+            
+        #   Separate plot for each trajectory
+        for i, (traj_name, traj) in enumerate(mtraj.trajectories.items()):
+            
+            #   Plot as one row
+            # mosaic = [[]]
+            # for model_ref in traj.model_names:
+            #     mosaic[0].append(model_ref)
+            # fig, axd = plt.subplot_mosaic(mosaic, figsize=(12,1.5), sharex=True, sharey=True)
+            # plt.subplots_adjust(bottom=0.15, left=0.05625, right=1-0.00625, top=0.95, 
+            #                     wspace=0.025)
+            
+            #   Plot as one column
+            mosaic = []
+            for model_ref in traj0.model_names:
+                mosaic.append([model_ref])
+            fig, axd = plt.subplot_mosaic(mosaic, figsize=(4,3), sharex=True, sharey=True)
+            plt.subplots_adjust(bottom=0.16, left=0.120, right=0.9925, top=0.99, 
+                                hspace=0.1)
+            
+            traj_model_refs = traj.model_names  #  !!!! Rename this in trajectory class eventurally
+            for j, model_ref in enumerate(traj_model_refs):
+                
+                for axis in ['top','bottom','left','right']:
+                    axd[model_ref].spines[axis].set_linewidth(2)
+                axd[model_ref].tick_params(width=2, which='major')
+                axd[model_ref].tick_params(width=1.5, which='minor')
+                
+                #   Get the indices as decimal days of year
+                #   And have that of the trajectory start at the same point as multitrajectory
+                mtraj_index = traj.index_ddoy(mtraj.nowcast_dict[model_ref].index)
+                traj_index = traj.index_ddoy(traj.models[model_ref].loc[traj.data_index].index, 
+                                             start_ref=mtraj.nowcast_dict[model_ref].index[0])
+                
+                axd[model_ref].plot(traj.index_ddoy(traj.data.index), 
+                                    mtraj.nowcast_dict[model_ref].loc[traj.data.index, 'mean'], 
+                                    color='xkcd:orange red')
+                
+                axd[model_ref].fill_between(traj.index_ddoy(traj.data.index), 
+                                            mtraj.nowcast_dict[model_ref].loc[traj.data.index, 'obs_ci_lower'], 
+                                            mtraj.nowcast_dict[model_ref].loc[traj.data.index, 'obs_ci_upper'], 
+                                            color='xkcd:orange red', alpha=0.5)
+                
+                axd[model_ref].scatter(traj.index_ddoy(traj.data.index),
+                                       traj.models[model_ref]['empirical_time_delta'].loc[traj.data.index], 
+                                       color='black', marker='*', s=4)
+                
+                axd[model_ref].axhline(0, linestyle='--', color='gray', alpha=0.6, zorder=-1, linewidth=1)
+                
+                label_bbox = dict(facecolor = traj.gpp('color',model_ref), 
+                                  edgecolor = traj.gpp('color',model_ref), 
+                                  pad = 0.1, boxstyle = 'round')
+                axd[model_ref].annotate('{}'.format(traj.model_sources[model_ref]),
+                                (0,1), (0.5,-0.5), ha='left', va='top',
+                                xycoords='axes fraction', 
+                                textcoords='offset fontsize',
+                                bbox = label_bbox)
+            
+            axd[model_ref].set_xlim(traj.index_ddoy(traj.data.index)[0], traj0.index_ddoy(traj.data.index)[-1])
+            
+            axd[model_ref].xaxis.set_major_locator(MultipleLocator(10))
+            axd[model_ref].xaxis.set_minor_locator(MultipleLocator(2))
+            
+            # fig.supxlabel('Day of Year {}'.format(traj0._primary_df.index[0].year),
+            #               fontsize=plt.rcParams['figure.labelsize'])
+            
+            axd[model_ref].set_ylim((-100,100))
+            axd[model_ref].yaxis.set_major_locator(MultipleLocator(48))
+            axd[model_ref].yaxis.set_minor_locator(MultipleLocator(12))
+                
+            fig.supxlabel('Days Since Jan. 1, {}'.format(traj.data.index.year[0]),
+                          fontsize=plt.rcParams['figure.labelsize'], color='w')
+            fig.supylabel('Timing Offsets [hrs]',  x=0.00625, fontsize=plt.rcParams['figure.labelsize'], color='w')
+            
+            for suffix in ['.png', '.jpg']:
+                fig.savefig(str(fullfilename)+traj_name+suffix, 
+                            transparent=True,
+                            dpi=800)
+            plt.show()
+        
+        return
+    
+    poster_plot_5(filepaths['figures']/'poster05_MLR')
+    breakpoint()
+    
+    mtraj.cast_intervals['juno_hindcast'].ensemble()
+    mtraj.cast_intervals['jupiter_hindcast'].ensemble()
 
     # plot_MMESHPerformance(mtraj.cast_intervals['juno_simulcast'], 
     #                       filepaths['figures']/'Fig08_MMESHPerformance',
@@ -1062,7 +1568,154 @@ def MMESH_run(config_path):
         plt.show()
         return
     
-    plot_MMESHExample(mtraj.cast_intervals['jupiter_simulcast'], filepaths['figures']/'fig09_MMESHExample')
+    plot_MMESHExample(mtraj.cast_intervals['jupiter_hindcast'], filepaths['figures']/'fig09_MMESHExample')
+    
+    def poster_plot_6(fullfilename):
+        param = 'u_mag'  #  what to plot
+        
+        traj0 = mtraj.cast_intervals['juno_hindcast']
+    
+        params = {"ytick.color" : "w",
+                  "xtick.color" : "w",
+                  "axes.labelcolor" : "w",
+                  "axes.edgecolor" : "w"}
+        plt.rcParams.update(params)
+        
+        #   Plot as one row
+        # mosaic = [[]]
+        # for model_ref in list(set(traj0.model_names) - set(['ensemble'])):
+        #     mosaic[0].append(model_ref)
+        # fig, axd = plt.subplot_mosaic(mosaic, figsize=(12,1.5), sharex=True, sharey=True)
+        # plt.subplots_adjust(bottom=0.15, left=0.05625, right=1-0.00625, top=0.95, 
+        #                     wspace=0.025)
+        
+        #   Plot as one column
+        mosaic = []
+        for model_ref in list(set(traj0.model_names) - set(['ensemble'])):
+            mosaic.append([model_ref])
+        fig, axd = plt.subplot_mosaic(mosaic, figsize=(4,3), sharex=True, sharey=True)
+        plt.subplots_adjust(bottom=0.16, left=0.120, right=0.9925, top=0.99, 
+                            hspace=0.1)
+        
+        for i, model_ref in enumerate(list(set(traj0.model_names) - set(['ensemble']))):
+            
+            for axis in ['top','bottom','left','right']:
+                axd[model_ref].spines[axis].set_linewidth(2)
+            axd[model_ref].tick_params(width=2, which='major')
+            axd[model_ref].tick_params(width=1.5, which='minor')
+            
+            axd[model_ref].plot(traj0.index_ddoy(traj0.data.index), 
+                                traj0.data[param],
+                                color='black', alpha=1.0, linewidth=1.5,
+                                marker='o', markersize=0.01)
+                
+            axd[model_ref].plot(traj0.index_ddoy(traj0.models[model_ref].index),
+                                 traj0.models[model_ref][param],
+                                 color=traj0.gpp('color',model_ref), linewidth=2)
+                                 #marker=traj0.gpp('marker',model_ref), markersize=0.01)
+            
+            axd[model_ref].fill_between(traj0.index_ddoy(traj0.models[model_ref].index),
+                                        traj0.models[model_ref][param] - traj0.models[model_ref][param+'_neg_unc'],
+                                        traj0.models[model_ref][param] + traj0.models[model_ref][param+'_pos_unc'],
+                                        color=traj0.gpp('color',model_ref), linewidth=1.5, alpha=0.5)
+                                        #marker=traj0.gpp('marker',model_ref), markersize=0.01)
+            
+            label_bbox = dict(facecolor = traj0.gpp('color',model_ref), 
+                              edgecolor = traj0.gpp('color',model_ref), 
+                              pad = 0.1, boxstyle = 'round')
+            
+            axd[model_ref].annotate('{}'.format(traj0.model_sources[model_ref]),
+                                    (0,1), (0.5,-0.5), ha='left', va='top',
+                                    xycoords='axes fraction', 
+                                    textcoords='offset fontsize',
+                                    bbox = label_bbox)
+        
+        axd[model_ref].set_xlim(traj0.index_ddoy(traj0.data.index)[0], traj0.index_ddoy(traj0.data.index)[-1])
+        
+        axd[model_ref].xaxis.set_major_locator(MultipleLocator(10))
+        axd[model_ref].xaxis.set_minor_locator(MultipleLocator(2))
+        
+        axd[model_ref].set_ylim((350, 650))
+        axd[model_ref].yaxis.set_major_locator(MultipleLocator(100))
+        axd[model_ref].yaxis.set_minor_locator(MultipleLocator(25))
+        fig.supxlabel('Days Since Jan. 1 {}'.format(traj0._primary_df.index[0].year),
+                      fontsize=plt.rcParams['figure.labelsize'], color='w')
+        fig.supylabel(r'Flow Speed $u_{mag}$ [km/s]', x=0.00625, 
+                      fontsize=plt.rcParams['figure.labelsize'], color='w')
+        
+        for suffix in ['.png', '.jpg']:
+            plt.savefig(str(fullfilename)+suffix, 
+                        dpi = 800,
+                        transparent = True)
+        plt.show()
+        
+        #  Plot the ensemble separately
+        mosaic = [[]]
+        for model_ref in ['ensemble']:
+            mosaic[0].append(model_ref)
+        
+        #   We want the plot itself to be ~3.55 across, ~1.2 vertical
+        fig, axd = plt.subplot_mosaic(mosaic, figsize=(4,1.5), sharex=True, sharey=True)
+        plt.subplots_adjust(bottom=0.15, left=0.12, right=0.9925, top=0.99,
+                            hspace=0)
+        
+        for i, model_ref in enumerate(['ensemble']):
+            
+            for axis in ['top','bottom','left','right']:
+                axd[model_ref].spines[axis].set_linewidth(2)
+            axd[model_ref].tick_params(width=2, which='major')
+            axd[model_ref].tick_params(width=1.5, which='minor')
+            
+            axd[model_ref].plot(traj0.index_ddoy(traj0.data.index), 
+                                traj0.data[param],
+                                color='black', alpha=1.0, linewidth=1.5,
+                                marker='o', markersize=0.01,
+                                label=traj0.spacecraft_name)
+                
+            axd[model_ref].plot(traj0.index_ddoy(traj0.models[model_ref].index),
+                                 traj0.models[model_ref][param],
+                                 color=traj0.gpp('color',model_ref), linewidth=2,
+                                 #marker=traj0.gpp('marker',model_ref), markersize=0.01,
+                                 label = traj0.model_sources[model_ref])
+            
+            axd[model_ref].fill_between(traj0.index_ddoy(traj0.models[model_ref].index),
+                                        traj0.models[model_ref][param] - traj0.models[model_ref][param+'_neg_unc'],
+                                        traj0.models[model_ref][param] + traj0.models[model_ref][param+'_pos_unc'],
+                                        color=traj0.gpp('color',model_ref), linewidth=1.5, alpha=0.5,
+                                        #marker=traj0.gpp('marker',model_ref), markersize=0.01,
+                                        label = traj0.model_sources[model_ref])
+            
+            label_bbox = dict(facecolor = traj0.gpp('color',model_ref), 
+                              edgecolor = traj0.gpp('color',model_ref), 
+                              pad = 0.1, boxstyle = 'round')
+            axd[model_ref].annotate('{}'.format(traj0.model_sources[model_ref]),
+                            (0,1), (0.5,-0.5), ha='left', va='top',
+                            xycoords='axes fraction', 
+                            textcoords='offset fontsize',
+                            bbox = label_bbox)
+        
+        axd[model_ref].set_xlim(traj0.index_ddoy(traj0.data.index)[0], traj0.index_ddoy(traj0.data.index)[-1])
+        
+        axd[model_ref].xaxis.set_major_locator(MultipleLocator(10))
+        axd[model_ref].xaxis.set_minor_locator(MultipleLocator(2))
+        
+        # fig.supxlabel('Day of Year {}'.format(traj0._primary_df.index[0].year),
+        #               fontsize=plt.rcParams['figure.labelsize'])
+        
+        axd[model_ref].set_ylim((350, 650))
+        axd[model_ref].yaxis.set_major_locator(MultipleLocator(100))
+        axd[model_ref].yaxis.set_minor_locator(MultipleLocator(25))
+        #fig.supylabel(r'Flow Speed $u_{mag}$ [km/s]', x=0.00625, fontsize=plt.rcParams['figure.labelsize'])
+        
+        for suffix in ['.png', '.jpg']:
+            plt.savefig(str(fullfilename)+'_'+model_ref+suffix, 
+                        dpi = 800,
+                        transparent = True)
+        plt.show()
+        
+        return
+    
+    poster_plot_6(filepaths['figures']/'poster06_AdjustedModels')
     
     return mtraj
 
