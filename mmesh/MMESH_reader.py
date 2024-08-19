@@ -6,7 +6,7 @@ Created on Fri Mar 22 12:09:49 2024
 @author: mrutala
 """
 
-def readMMESH_fromFile(fullfilename):
+def fromFile(fullfilename):
     """
     
 
