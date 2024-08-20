@@ -144,7 +144,7 @@ class MultiTrajectory:
             
         self.predictions_dict = predictions_dict
         self.nowcast_dict = nowcast_dict
-            
+        
         return predictions_dict
     
     def cast_Models(self, with_error=True):
@@ -1283,21 +1283,61 @@ class Trajectory(_MMESH_mixins.visualization):
                     #   UNCERTAINTY CHARACTERIZATION !!!!
                     if uncertainty_characterization == True:
                         import scipy.stats as stats
+                        import tqdm
+                        
+                        #   Test a normal, gamma, and beta distribution for uncertainties
+                        #   Only do the test if the column has any value here
+                        if not (col == 0).all():
+                            ks_stats = {'normal':[], 'gamma':[], 'beta':[], 'skew':[]}
+                            for instant_perturb in tqdm.tqdm(col2d_perturb.T):
+                                #   Normal
+                                try:
+                                    normal_fit_args = stats.norm.fit(instant_perturb )
+                                    normal_kstest = stats.kstest(instant_perturb , stats.norm.cdf, args=normal_fit_args)
+                                    ks_stats['normal'].append(normal_kstest.statistic)
+                                except stats.FitError:
+                                    ks_stats['normal'].append(np.nan)
+                                
+                                #   Gamma
+                                try:
+                                    gamma_fit_args = stats.gamma.fit(instant_perturb )
+                                    gamma_kstest = stats.kstest(instant_perturb , stats.gamma.cdf, args=gamma_fit_args)
+                                    ks_stats['gamma'].append(gamma_kstest.statistic)
+                                except stats.FitError:
+                                    ks_stats['gamma'].append(np.nan)
+                                
+                                #   Beta
+                                try:
+                                    beta_fit_args = stats.beta.fit(instant_perturb )
+                                    beta_kstest = stats.kstest(instant_perturb , stats.beta.cdf, args=beta_fit_args)
+                                    ks_stats['beta'].append(beta_kstest.statistic)
+                                except stats.FitError:
+                                    ks_stats['beta'].append(np.nan)
+                        
+                                try:
+                                    skew_fit_args = stats.skewnorm.fit(instant_perturb )
+                                    skew_kstest = stats.kstest(instant_perturb , stats.skewnorm.cdf, args=skew_fit_args)
+                                    ks_stats['skew'].append(skew_kstest.statistic)
+                                except stats.FitError:
+                                    ks_stats['skew'].append(np.nan)
+                        
+                        breakpoint()
                         
                         #df = pd.DataFrame(col2d_perturb)
                         
-                        uc_dict = {'r2_norm': [], 'r2_lognorm': []}
-                        for j in tqdm(range(len(time_from_index)), position=0):
-                            coords, res = stats.probplot(col2d_perturb[:,j])
-                            uc_dict['r2_norm'].append(res[2]**2)
+                        # uc_dict = {'r2_norm': [], 'r2_lognorm': []}
+                        # for j in tqdm(range(len(time_from_index)), position=0):
+                        #     coords, res = stats.probplot(col2d_perturb[:,j])
+                        #     uc_dict['r2_norm'].append(res[2]**2)
                             
-                            coords, res = stats.probplot(np.log10(col2d_perturb[:,j]))
-                            uc_dict['r2_lognorm'].append(res[2]**2)
-                        uc_df = pd.DataFrame.from_dict(uc_dict)
+                        #     coords, res = stats.probplot(np.log10(col2d_perturb[:,j]))
+                        #     uc_dict['r2_lognorm'].append(res[2]**2)
+                        # uc_df = pd.DataFrame.from_dict(uc_dict)
                         
                         uc_filename = '/Users/mrutala/projects/MMESH/uncertainty_characterization/'
-                        uc_filename += model_name + '_' + col_name + '_' + str(n_mc) + 'perturbations_r2.csv'
-                        uc_df.to_csv(uc_filename, header=False, index=False, float_format='%.3E')
+                        # uc_filename += model_name + '_' + col_name + '_' + str(n_mc) + 'perturbations_r2.csv'
+                        # uc_df.to_csv(uc_filename, header=False, index=False, float_format='%.3E')
+                        
                         # import matplotlib.pyplot as plt
                         # import scipy.stats as stats
                         
