@@ -399,7 +399,7 @@ def MMESH_run(config_path):
     #   Fig 06: All temporal shifts
     # =============================================================================
     def plot_TemporalShifts_All_Total(fullfilename=''):
-        fig, axs = plt.subplots(figsize=(3,4.5), nrows=len(mtraj.model_refs), sharex=True, sharey=True)
+        fig, axs = plt.subplots(figsize=(3,4.5), nrows=len(mtraj.model_refs), sharex=True, sharey=True, squeeze=False)
         plt.subplots_adjust(left=0.2, top=0.8, right=0.95, hspace=0.075)
         for i, model_ref in enumerate(sorted(mtraj.model_refs)):
             l = []
@@ -413,22 +413,22 @@ def MMESH_run(config_path):
             #  Hacky
             #c = ['#5d9dd5', '#447abc', '#4034f4', '#75036b'][0:len(mtraj.trajectories)]
             
-            axs[i].hist(l, range=(-120, 120), bins=20,
+            axs[i,0].hist(l, range=(-120, 120), bins=20,
                         density=True,
                         histtype='barstacked', stacked=True, label=n, color=c)
-            axs[i].annotate('({}) {}'.format(string.ascii_lowercase[i], model_ref), 
+            axs[i,0].annotate('({}) {}'.format(string.ascii_lowercase[i], model_ref), 
                         (0,1), (1,-1), ha='left', va='center', 
                         xycoords='axes fraction', textcoords='offset fontsize')
     
-        axs[0].xaxis.set_major_locator(MultipleLocator(48))
-        axs[0].xaxis.set_minor_locator(MultipleLocator(12))
+        axs[0,0].xaxis.set_major_locator(MultipleLocator(48))
+        axs[0,0].xaxis.set_minor_locator(MultipleLocator(12))
         
-        axs[0].yaxis.set_minor_locator(MultipleLocator(0.001))
+        axs[0,0].yaxis.set_minor_locator(MultipleLocator(0.001))
         
         fig.supylabel('Density')
         fig.supxlabel('Measured Timing Differences [hours]')
         
-        handles, labels = axs[0].get_legend_handles_labels()
+        handles, labels = axs[0,0].get_legend_handles_labels()
         fig.legend(handles, labels, ncols=2,
                    bbox_to_anchor=[0.2, 0.825, 0.75, 0.175], loc='lower left',
                    mode="expand", borderaxespad=0.)
@@ -609,7 +609,7 @@ def MMESH_run(config_path):
         for i, ax in enumerate(axs.flatten()):
             ax.annotate('({})'.format(string.ascii_lowercase[i]),
                         (0,1), (1, -1), xycoords='axes fraction', textcoords='offset fontsize')
-        fig.supxlabel('Days Since Jan. 1, {}'.format(mtraj.nowcast_dict[model_name].index[0].year))
+        fig.supxlabel('Days Since Jan. 1, {}'.format(mtraj.nowcast_dict[model_ref].index[0].year))
         fig.supylabel('Measured Timing Differences [hours]')
         
         for suffix in ['.png', '.jpg']:
@@ -661,7 +661,7 @@ def MMESH_run(config_path):
         # =============================================================================
         #   Plot a Taylor Diagram of the unchanged models
         # =============================================================================
-        plot_OriginalModels(filepaths['figures']/'fig03_OriginalModels')        
+        # plot_OriginalModels(filepaths['figures']/'fig03_OriginalModels')        
         
         #breakpoint()
         
@@ -672,16 +672,16 @@ def MMESH_run(config_path):
         #         (more generically, whatever combination is being optimized)
         #       - The changes on a Taylor Diagram
         # =============================================================================
-        shifts = np.arange(-96, 96+6, 6)    #  in hours
-        shift_stats = traj0.optimize_shifts('u_mag', shifts=shifts)
+        # shifts = np.arange(-96, 96+6, 6)    #  in hours
+        # shift_stats = traj0.optimize_shifts('u_mag', shifts=shifts)
         
-        constant_shift_dict = {}
-        for model_name in traj0.model_names:
-            constant_shift_dict[model_name] = (np.arccos(traj0.best_shifts[model_name]['r']), 
-                                               traj0.best_shifts[model_name]['stddev'])
+        # constant_shift_dict = {}
+        # for model_name in traj0.model_names:
+        #     constant_shift_dict[model_name] = (np.arccos(traj0.best_shifts[model_name]['r']), 
+        #                                        traj0.best_shifts[model_name]['stddev'])
         
-        fig, axs = traj0.plot_ConstantTimeShifting_Optimization()
-        plt.show()
+        # fig, axs = traj0.plot_ConstantTimeShifting_Optimization()
+        # plt.show()
         
         # =============================================================================
         #   Optimize the models via dynamic time warping
@@ -719,7 +719,7 @@ def MMESH_run(config_path):
         traj0.plot_DynamicTimeWarping_Optimization()
         #traj0.plot_DynamicTimeWarping_TD()
         
-        plot_BothShiftMethodsTD(filepaths['figures']/'fig05_ShiftMethodComparison_TD')
+        # plot_BothShiftMethodsTD(filepaths['figures']/'fig05_ShiftMethodComparison_TD')
         
         #plot_BestShiftWarpedTimeDistribution()
         
