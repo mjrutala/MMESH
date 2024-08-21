@@ -208,7 +208,7 @@ class MultiTrajectory:
             #   Second: shift the models according to the time_delta predictions    
             if with_error:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma',
-                                           uncertainty_characterization=True)
+                                           force_distribution=True)
             else:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta')
                 
@@ -1198,15 +1198,18 @@ class Trajectory(_MMESH_mixins.visualization):
         plt.show()
         return
     
-    def shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, uncertainty_characterization=False):
+    def shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, 
+                     force_distribution=False, compare_distributions=False):
         
         result = self._shift_Models(time_delta_column=time_delta_column, 
                                     time_delta_sigma_column=time_delta_sigma_column,
                                     n_mc=n_mc,
-                                    uncertainty_characterization=uncertainty_characterization)
+                                    force_distribution=force_distribution,
+                                    compare_distributions=compare_distributions)
         self._primary_df = result
     
-    def _shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, uncertainty_characterization=False):
+    def _shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, 
+                      force_distribution=False, compare_distributions=False):
         """
         Shifts models by the specified column, expected to contain delta times in hours.
         Shifted models are only valid during the interval where data is present,
@@ -1219,7 +1222,10 @@ class Trajectory(_MMESH_mixins.visualization):
         import matplotlib.pyplot as plt
         import copy
         import time
-        
+        import scipy.stats as stats
+        # import tqdm
+        import multiprocessing as mp
+
         #   We're going to try to do this all with interpolation, rather than 
         #   needing to shift the model dataframe by a constant first
         
@@ -1231,7 +1237,6 @@ class Trajectory(_MMESH_mixins.visualization):
             #   This prevents making needlessly large arrays
             nonnan_row_index = ~self.models[model_name].isnull().all(axis=1)
             nonnan_model_df = self.models[model_name].dropna(how='all')
-            
             
             try:
                 #time_from_index = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
@@ -1263,13 +1268,22 @@ class Trajectory(_MMESH_mixins.visualization):
             #   Now we're shifting based on the ordinate, not the abcissa,
             #   so we have time_from_index - time_deltas, not +
             
-            def shift_function(col, col_name='', model_name='', uncertainty_characterization=False):
+            def shift_function(col, 
+                               col_name='', model_name='', 
+                               force_distribution=False, 
+                               compare_distributions=False):
                 #   Use the ORIGINAL time_from_index with this, not time_from_index + delta
                 if (time_delta_sigmas == 0.).all():
                     col_shifted = np.interp(time_from_index - time_deltas, time_from_index, col)
                     #arr_shifted = np.interp(time_from_index, time_from_index+time_deltas, arr)
                     col_shifted_pos_unc = col_shifted * 0.
                     col_shifted_neg_unc = col_shifted * 0.
+                    
+                    output = (col_shifted, col_shifted_pos_unc, col_shifted_neg_unc)
+                    
+                    output = pd.DataFrame({'median': col_shifted,
+                                           'pos_unc': col_shifted_pos_unc,
+                                           'neg_unc': col_shifted_neg_unc})
                 else:
                     #   Randomly perturb the time deltas by their uncertainties (sigma) n_mc times
                     r = np.random.default_rng()
@@ -1281,47 +1295,107 @@ class Trajectory(_MMESH_mixins.visualization):
                         col2d_perturb[i,:] = np.interp(time_from_index - arr2d_perturb[i,:], time_from_index, col)
                     
                     #   UNCERTAINTY CHARACTERIZATION !!!!
-                    if uncertainty_characterization == True:
-                        import scipy.stats as stats
-                        import tqdm
+                    if force_distribution == True:
+                        #+++++++++++++++++++++++++++++++++++++++++++++++
+                        #   If all values in a column are the same, 
+                        #       the fit will fail
+                        #   If the fit fails in mp, the whole thing 
+                        #       fails
+                        #   So, filter out all same-value columns to 
+                        #       treat separately
+                        #-----------------------------------------------
+                        usable_cols = np.array([~((row == row[0]) == True).all() for row in col2d_perturb.T])
                         
-                        #   Test a normal, gamma, and beta distribution for uncertainties
-                        #   Only do the test if the column has any value here
-                        if not (col == 0).all():
-                            ks_stats = {'normal':[], 'gamma':[], 'beta':[], 'skew':[]}
-                            for instant_perturb in tqdm.tqdm(col2d_perturb.T):
-                                #   Normal
-                                try:
-                                    normal_fit_args = stats.norm.fit(instant_perturb )
-                                    normal_kstest = stats.kstest(instant_perturb , stats.norm.cdf, args=normal_fit_args)
-                                    ks_stats['normal'].append(normal_kstest.statistic)
-                                except stats.FitError:
-                                    ks_stats['normal'].append(np.nan)
+                        n_cols = len(col)
+                        n_usable_cols = len(np.argwhere(usable_cols))
+                        n_unusable_cols = n_cols - n_usable_cols
+                        
+                        temp_col2d_perturbT = col2d_perturb.T[usable_cols]
+                        
+                        uc_fit = np.zeros((n_cols, 3))
+                        
+                        #   Parallelized fitting
+                        if n_usable_cols > 0:
+                            
+                            #   Map fitting to each col, then iterate
+                            #   which allows a progressbar w/ tqdm
+                            with mp.Pool(mp.cpu_count()) as pool:
+                                mp_results = []
+                                gen = pool.imap(stats.skewnorm.fit, [col for col in temp_col2d_perturbT])
+                                for g in tqdm(gen, total=n_usable_cols):
+                                    mp_results.append(g)
+                            
+                            #   Assign the parallelized results
+                            uc_fit[usable_cols] = np.array(mp_results)
+                            
+                        #   Assign the unparallelized results
+                        uc_fit[~usable_cols] = np.array([[0]*n_unusable_cols, np.mean(col2d_perturb.T[~usable_cols],1), [0]*n_unusable_cols]).T
+                        
+                        
+                        if compare_distributions == True:
+                            breakpoint()
+                        # breakpoint()
+                        
+                        # #   Regular skew-normal fit
+                        # if not (col == 0).all():
+                        #     characterized_col = []
+                        #     for instant_perturb in tqdm.tqdm(col2d_perturb.T):
+                        #         try:
+                        #             skewnorm_params = stats.skewnorm.fit(instant_perturb)
+                        #         except stats.FitError:
+                        #             skewnorm_params = [np.percentile(instant_perturb, 50), 0, 0]
+                        #         characterized_col.append(skewnorm_params) 
+                        
+                        # #   Skew-normal fit w/ guessed parameters
+                        # if not (col == 0).all():
+                        #     characterized_col_2 = []
+                        #     for instant_perturb in tqdm.tqdm(col2d_perturb.T):
+                        #         guess = [0, np.mean(instant_perturb), np.std(instant_perturb)]
+                        #         try:
+                        #             skewnorm_params = stats.skewnorm.fit(instant_perturb)
+                        #         except stats.FitError:
+                        #             skewnorm_params = [np.percentile(instant_perturb, 50), 0, 0]
+                        #         characterized_col_2.append(skewnorm_params) 
                                 
-                                #   Gamma
-                                try:
-                                    gamma_fit_args = stats.gamma.fit(instant_perturb )
-                                    gamma_kstest = stats.kstest(instant_perturb , stats.gamma.cdf, args=gamma_fit_args)
-                                    ks_stats['gamma'].append(gamma_kstest.statistic)
-                                except stats.FitError:
-                                    ks_stats['gamma'].append(np.nan)
+                        
+                        # #breakpoint()
+                        # #   Test a normal, gamma, and beta distribution for uncertainties
+                        # #   Only do the test if the column has any value here
+                        # if not (col == 0).all():
+                        #     ks_stats = {'normal':[], 'gamma':[], 'beta':[], 'skew':[]}
+                        #     for instant_perturb in tqdm.tqdm(col2d_perturb.T):
+                        #         #   Normal
+                        #         try:
+                        #             normal_fit_args = stats.norm.fit(instant_perturb )
+                        #             normal_kstest = stats.kstest(instant_perturb , stats.norm.cdf, args=normal_fit_args)
+                        #             ks_stats['normal'].append(normal_kstest.statistic)
+                        #         except stats.FitError:
+                        #             ks_stats['normal'].append(np.nan)
                                 
-                                #   Beta
-                                try:
-                                    beta_fit_args = stats.beta.fit(instant_perturb )
-                                    beta_kstest = stats.kstest(instant_perturb , stats.beta.cdf, args=beta_fit_args)
-                                    ks_stats['beta'].append(beta_kstest.statistic)
-                                except stats.FitError:
-                                    ks_stats['beta'].append(np.nan)
+                        #         #   Gamma
+                        #         try:
+                        #             gamma_fit_args = stats.gamma.fit(instant_perturb )
+                        #             gamma_kstest = stats.kstest(instant_perturb , stats.gamma.cdf, args=gamma_fit_args)
+                        #             ks_stats['gamma'].append(gamma_kstest.statistic)
+                        #         except stats.FitError:
+                        #             ks_stats['gamma'].append(np.nan)
+                                
+                        #         #   Beta
+                        #         try:
+                        #             beta_fit_args = stats.beta.fit(instant_perturb )
+                        #             beta_kstest = stats.kstest(instant_perturb , stats.beta.cdf, args=beta_fit_args)
+                        #             ks_stats['beta'].append(beta_kstest.statistic)
+                        #         except stats.FitError:
+                        #             ks_stats['beta'].append(np.nan)
                         
-                                try:
-                                    skew_fit_args = stats.skewnorm.fit(instant_perturb )
-                                    skew_kstest = stats.kstest(instant_perturb , stats.skewnorm.cdf, args=skew_fit_args)
-                                    ks_stats['skew'].append(skew_kstest.statistic)
-                                except stats.FitError:
-                                    ks_stats['skew'].append(np.nan)
+                        #         try:
+                        #             skew_fit_args = stats.skewnorm.fit(instant_perturb )
+                        #             skew_kstest = stats.kstest(instant_perturb , stats.skewnorm.cdf, args=skew_fit_args)
+                        #             ks_stats['skew'].append(skew_kstest.statistic)
+                        #         except stats.FitError:
+                        #             ks_stats['skew'].append(np.nan)
                         
-                        breakpoint()
+                        # #breakpoint()
                         
                         #df = pd.DataFrame(col2d_perturb)
                         
@@ -1334,7 +1408,7 @@ class Trajectory(_MMESH_mixins.visualization):
                         #     uc_dict['r2_lognorm'].append(res[2]**2)
                         # uc_df = pd.DataFrame.from_dict(uc_dict)
                         
-                        uc_filename = '/Users/mrutala/projects/MMESH/uncertainty_characterization/'
+                        # uc_filename = '/Users/mrutala/projects/MMESH/uncertainty_characterization/'
                         # uc_filename += model_name + '_' + col_name + '_' + str(n_mc) + 'perturbations_r2.csv'
                         # uc_df.to_csv(uc_filename, header=False, index=False, float_format='%.3E')
                         
@@ -1388,7 +1462,6 @@ class Trajectory(_MMESH_mixins.visualization):
                         # axs[0].legend()
                         # plt.show()
                     
-                    
                     #   Return to normally scheduled programming
                     #   Take the 16th, 50th, and 84th percentiles of the random samples as statistics                
                     col_16p, col_50p, col_84p = np.percentile(col2d_perturb, [16,50,84], axis=0, overwrite_input=True)
@@ -1397,10 +1470,14 @@ class Trajectory(_MMESH_mixins.visualization):
                     col_shifted_pos_unc = col_84p - col_50p
                     col_shifted_neg_unc = col_50p - col_16p
                     
-                   
-
-                
-                output = (col_shifted, col_shifted_pos_unc, col_shifted_neg_unc)
+                    # output = (col_shifted, col_shifted_pos_unc, col_shifted_neg_unc,
+                    #           uc_fit.T[0], uc_fit.T[1], uc_fit.T[2])
+                    
+                    output = pd.DataFrame({'a': uc_fit.T[0],
+                                           'loc': uc_fit.T[1],
+                                           'scale': uc_fit.T[2],
+                                           'median': [stats.skewnorm.mean(*params) for params in uc_fit]})
+               
                 return output
             
             # def test_shift_function(arr):
@@ -1429,12 +1506,28 @@ class Trajectory(_MMESH_mixins.visualization):
                 #if len(col.dropna() > 0) and (col_name in self.variables):
                 if (col_name in self.variables):
                     
-                    col_shifted = shift_function(col.to_numpy('float64'), col_name=col_name, model_name=model_name,
-                                                 uncertainty_characterization=uncertainty_characterization)
+                    col_shifted = shift_function(col.to_numpy('float64'), 
+                                                 col_name=col_name, model_name=model_name,
+                                                 force_distribution=force_distribution,
+                                                 compare_distributions=compare_distributions)
                     
-                    shifted_primary_df.loc[nonnan_row_index, (model_name, col_name)] = col_shifted[0]
-                    shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_pos_unc')] = col_shifted[1]
-                    shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_neg_unc')] = col_shifted[2]
+                    col_shifted_df = col_shifted.set_index(nonnan_row_index.index)
+                    
+                    c_name_mapper = dict()
+                    c_names = list(col_shifted_df.columns)
+                    for c_name in c_names:
+                        if c_name == 'median':
+                            c_name_mapper[c_name] = col_name
+                        else:
+                            c_name_mapper[c_name] = col_name + '_' + c_name
+                    
+                    col_shifted_df = col_shifted_df.rename(c_name_mapper, axis='columns')
+                    
+                    for c_name, c in col_shifted_df.items():
+                        shifted_primary_df.loc[nonnan_row_index, (model_name, c_name)] = c
+                    # shifted_primary_df.loc[nonnan_row_index, (model_name, col_name)] = col_shifted[0]
+                    # shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_pos_unc')] = col_shifted[1]
+                    # shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_neg_unc')] = col_shifted[2]
                     
         return shifted_primary_df
     
@@ -1448,7 +1541,7 @@ class Trajectory(_MMESH_mixins.visualization):
             Parameters Weights: account for better performance of individual parameters within a model
                 i.e., Model 1 velocity may outperform Model 2, but Model 2 pressure may outperform Model 1
             Timestep Weights: Certain models may relatively outperform others at specific times. 
-                Also allows inclusion of partial models, i.e., HUXt velocity but with 0 weight in pressure
+                Also allows inclusion of partial models, i.e., HUXt velocity but with 0 weight in e.g. pressure
 
         Parameters
         ----------
