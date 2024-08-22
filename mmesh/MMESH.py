@@ -11,6 +11,7 @@ import logging
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import scipy
 
 import plot_TaylorDiagram as TD
 
@@ -387,6 +388,8 @@ class Trajectory(_MMESH_mixins.visualization):
         self.model_shift_method = None
         self.best_shifts = {}
         self.best_shift_functions = {}
+        
+        self.distribution_function = scipy.stats.skewnorm
         
         #self.model_shift_stats = {}
         #self.model_dtw_stats = {}
@@ -1321,7 +1324,7 @@ class Trajectory(_MMESH_mixins.visualization):
                             #   which allows a progressbar w/ tqdm
                             with mp.Pool(mp.cpu_count()) as pool:
                                 mp_results = []
-                                gen = pool.imap(stats.skewnorm.fit, [col for col in temp_col2d_perturbT])
+                                gen = pool.imap(self.distribution_function.fit, [col for col in temp_col2d_perturbT])
                                 for g in tqdm(gen, total=n_usable_cols):
                                     mp_results.append(g)
                             
@@ -1331,8 +1334,72 @@ class Trajectory(_MMESH_mixins.visualization):
                         #   Assign the unparallelized results
                         uc_fit[~usable_cols] = np.array([[0]*n_unusable_cols, np.mean(col2d_perturb.T[~usable_cols],1), [0]*n_unusable_cols]).T
                         
-                        
+                        if not (col == 0).all():
+                            compare_distributions = True
                         if compare_distributions == True:
+                            breakpoint()
+                            #   Normal
+                            norm_fits_list = []
+                            
+                            with mp.Pool(mp.cpu_count()) as pool:
+                                
+                                gen = pool.imap(stats.norm.fit, [col for col in temp_col2d_perturbT])
+                                for g in tqdm(gen, total=n_usable_cols):
+                                    norm_fits_list.append(g)
+                            norm_ks = [stats.kstest(col, stats.norm.cdf, args=args).statistic for col, args in zip(temp_col2d_perturbT, norm_fits_list)]
+                            
+                            #   Skew-Normal
+                            skew_fits_list = []
+                    
+                            with mp.Pool(mp.cpu_count()) as pool:
+                                
+                                gen = pool.imap(stats.skewnorm.fit, [col for col in temp_col2d_perturbT])
+                                for g in tqdm(gen, total=n_usable_cols):
+                                    skew_fits_list.append(g)
+                            skew_ks = [stats.kstest(col, stats.skewnorm.cdf, args=args).statistic for col, args in zip(temp_col2d_perturbT, skew_fits_list)]
+                            
+                            # #   Beta
+                            # beta_fits_list = []
+                            
+                            # with mp.Pool(mp.cpu_count()) as pool:
+                                
+                            #     gen = pool.imap(stats.beta.fit, [col for col in temp_col2d_perturbT])
+                            #     for g in gen:
+                            #         beta_fits_list.append(g)
+                            # beta_ks = [stats.kstest(col, stats.beta.cdf, args=args) for col, args in zip(temp_col2d_perturbT, beta_fits_list)]
+                            
+                            #   Gamma
+                            gamma_fits_list = []
+                            
+                            with mp.Pool(mp.cpu_count()) as pool:
+                                
+                                gen = pool.imap(stats.gamma.fit, [col for col in temp_col2d_perturbT])
+                                for g in tqdm(gen, total=n_usable_cols):
+                                    gamma_fits_list.append(g)
+                            gamma_ks = [stats.kstest(col, stats.gamma.cdf, args=args).statistic for col, args in zip(temp_col2d_perturbT, gamma_fits_list)]
+                            
+                            
+                            
+                            breakpoint()
+                            import matplotlib.pyplot as plt
+                            fig, axs = plt.subplots(nrows = 3)
+                            x0 = np.linspace(0.0, 0.1, 100)
+                            x1 = np.linspace(0.0, 1.0, 100)
+                            x2 = np.linspace(0.9, 1.0, 100)
+                            
+                            for name, dist in {'Normal':norm_ks, 'Skew-Normal':skew_ks, 'Gamma':gamma_ks}.items():
+                                axs[0].hist(dist, bins=x0, label=name, histtype='step')
+                                axs[1].hist(dist, bins=x1, label=name, histtype='step')
+                                axs[2].hist(dist, bins=x2, label=name, histtype='step')
+                            for ax in axs:
+                                ax.legend(loc='upper right')
+                            
+                            fig.supxlabel('K-S Statistic')
+                            fig.supylabel('Number of Fits')
+                            
+                            plt.show()
+                            
+                            
                             breakpoint()
                         # breakpoint()
                         
@@ -1476,7 +1543,7 @@ class Trajectory(_MMESH_mixins.visualization):
                     output = pd.DataFrame({'a': uc_fit.T[0],
                                            'loc': uc_fit.T[1],
                                            'scale': uc_fit.T[2],
-                                           'median': [stats.skewnorm.mean(*params) for params in uc_fit]})
+                                           'median': [self.distribution_function.mean(*params) for params in uc_fit]})
                
                 return output
             
@@ -1530,6 +1597,61 @@ class Trajectory(_MMESH_mixins.visualization):
                     # shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_neg_unc')] = col_shifted[2]
                     
         return shifted_primary_df
+    
+    def sample(self, model_names = [], variables = [], n_samples=1, mu=False):
+        """
+        
+
+        Parameters
+        ----------
+        model_ref : TYPE, optional
+            DESCRIPTION. The default is [].
+        column_ref : TYPE, optional
+            DESCRIPTION. The default is [].
+        n_samples : TYPE, optional
+            DESCRIPTION. The default is 1.
+
+        Returns
+        -------
+        None.
+
+        """
+        import scipy.stats as stats
+        
+        model_names = list(model_names)
+        variables = list(variables)
+        
+        if len(model_names) == 0:
+            model_names = self.model_names
+        if len(variables) == 0:
+            variables= self.variables
+        
+        for i_sample in range(n_samples): 
+            
+            #   Make an empty dataframe to hold the sample
+            multiindex = pd.MultiIndex.from_product([self.model_names,
+                                                     self.variables])
+            sample_df = pd.DataFrame(index = self.models.index,
+                                     columns = multiindex)
+            for model_name in model_names:
+                for variable in variables:
+                    
+                    #   For this variable, get the names of parameters describing the distribution
+                    param_names = self.models[model_name].columns[self.models[model_name].columns.str.contains(variable)].to_list()
+                    param_names.remove(variable)
+                    
+                    #   Now get the parameters themselves
+                    params = self.models[model_name].loc[:, param_names]
+                    
+                    #
+                    def apply_fn(row):
+                        return stats.skewnorm.mean(*row.to_numpy())
+                    
+                    sample_df.loc[:, (model_name, variable)] = params.apply(apply_fn, axis='columns')
+                    
+            breakpoint()
+                
+        return
     
     def ensemble(self, weights = None):
         """
@@ -1599,7 +1721,7 @@ class Trajectory(_MMESH_mixins.visualization):
         
         #   Empty dataframe of correct dimensions for ensemble
         ensemble = partials_list[0].mul(0.)
-        
+        breakpoint()
         #   Sum weighted variables, and RSS weighted errors
         for partial in partials_list:
             ensemble.loc[:, self.variables] += partial.loc[:, self.variables].astype('float64')
