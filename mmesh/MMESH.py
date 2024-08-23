@@ -59,7 +59,10 @@ How I imagine this framework to work:
 """ 
 class MultiTrajectory:
     
-    def __init__(self, trajectories=[]):
+    def __init__(self, config_fullfilepath=None, trajectories=[]):
+        
+        self.config_fullfilepath = config_fillfilepath
+        self.config()
         
         self.spacecraft_names = []
         self.trajectories = {}   #  dict of Instances of Trajectory class
@@ -80,6 +83,9 @@ class MultiTrajectory:
         
         self.offset_times = []  #   offset_times + (constant_offset) + np.linspace(0, total_hours, n_steps) give interpolation index
         self.optimized_shifts = []
+        
+    def config(self):
+        
         
         
     def linear_regression(self, formula):
@@ -1297,6 +1303,38 @@ class Trajectory(_MMESH_mixins.visualization):
                     for i in range(n_mc):
                         col2d_perturb[i,:] = np.interp(time_from_index - arr2d_perturb[i,:], time_from_index, col)
                     
+                    
+                    def fit_dist_wmp(func, arr2d):
+                        """
+                        fit dist(ributions) w(ith) m(ulti)p(rocessing)
+
+                        Parameters
+                        ----------
+                        func : function
+                            scipy.stats.*.fit function, for any distribution
+                        arr2d : n x n_mc np.array
+                            2D array where n is iterated over
+
+                        Returns
+                        -------
+                        results : n x m np.array
+                            2D array of same length as arr2d, where m is the 
+                            number of fitting parameters returned by func
+
+                        """
+                        
+                        results = []
+                        
+                        #   Find out how many cores can be used
+                        with mp.Pool(mp.cpu_count()) as pool:
+                            #   Map the fitting function to each column in a generator
+                            gen = pool.imap(func, [col for col in temp_col2d_perturbT])
+                            #   Perform the fitting & print a progress bar
+                            for entry in tqdm(gen, total=len(arr2d)):
+                                results.append(entry)
+                                
+                        return np.array(results)
+                                
                     #   UNCERTAINTY CHARACTERIZATION !!!!
                     if force_distribution == True:
                         #+++++++++++++++++++++++++++++++++++++++++++++++
@@ -1320,13 +1358,14 @@ class Trajectory(_MMESH_mixins.visualization):
                         #   Parallelized fitting
                         if n_usable_cols > 0:
                             
-                            #   Map fitting to each col, then iterate
-                            #   which allows a progressbar w/ tqdm
-                            with mp.Pool(mp.cpu_count()) as pool:
-                                mp_results = []
-                                gen = pool.imap(self.distribution_function.fit, [col for col in temp_col2d_perturbT])
-                                for g in tqdm(gen, total=n_usable_cols):
-                                    mp_results.append(g)
+                            mp_results = fit_dist_wmp(self.distribution_function.fit, temp_col2d_perturbT)
+                            # #   Map fitting to each col, then iterate
+                            # #   which allows a progressbar w/ tqdm
+                            # with mp.Pool(mp.cpu_count()) as pool:
+                            #     mp_results = []
+                            #     gen = pool.imap(self.distribution_function.fit, [col for col in temp_col2d_perturbT])
+                            #     for g in tqdm(gen, total=n_usable_cols):
+                            #         mp_results.append(g)
                             
                             #   Assign the parallelized results
                             uc_fit[usable_cols] = np.array(mp_results)
@@ -1334,200 +1373,46 @@ class Trajectory(_MMESH_mixins.visualization):
                         #   Assign the unparallelized results
                         uc_fit[~usable_cols] = np.array([[0]*n_unusable_cols, np.mean(col2d_perturb.T[~usable_cols],1), [0]*n_unusable_cols]).T
                         
-                        if not (col == 0).all():
-                            compare_distributions = True
-                        if compare_distributions == True:
-                            breakpoint()
-                            #   Normal
-                            norm_fits_list = []
-                            
-                            with mp.Pool(mp.cpu_count()) as pool:
-                                
-                                gen = pool.imap(stats.norm.fit, [col for col in temp_col2d_perturbT])
-                                for g in tqdm(gen, total=n_usable_cols):
-                                    norm_fits_list.append(g)
-                            norm_ks = [stats.kstest(col, stats.norm.cdf, args=args).statistic for col, args in zip(temp_col2d_perturbT, norm_fits_list)]
-                            
-                            #   Skew-Normal
-                            skew_fits_list = []
-                    
-                            with mp.Pool(mp.cpu_count()) as pool:
-                                
-                                gen = pool.imap(stats.skewnorm.fit, [col for col in temp_col2d_perturbT])
-                                for g in tqdm(gen, total=n_usable_cols):
-                                    skew_fits_list.append(g)
-                            skew_ks = [stats.kstest(col, stats.skewnorm.cdf, args=args).statistic for col, args in zip(temp_col2d_perturbT, skew_fits_list)]
-                            
-                            # #   Beta
-                            # beta_fits_list = []
-                            
-                            # with mp.Pool(mp.cpu_count()) as pool:
-                                
-                            #     gen = pool.imap(stats.beta.fit, [col for col in temp_col2d_perturbT])
-                            #     for g in gen:
-                            #         beta_fits_list.append(g)
-                            # beta_ks = [stats.kstest(col, stats.beta.cdf, args=args) for col, args in zip(temp_col2d_perturbT, beta_fits_list)]
-                            
-                            #   Gamma
-                            gamma_fits_list = []
-                            
-                            with mp.Pool(mp.cpu_count()) as pool:
-                                
-                                gen = pool.imap(stats.gamma.fit, [col for col in temp_col2d_perturbT])
-                                for g in tqdm(gen, total=n_usable_cols):
-                                    gamma_fits_list.append(g)
-                            gamma_ks = [stats.kstest(col, stats.gamma.cdf, args=args).statistic for col, args in zip(temp_col2d_perturbT, gamma_fits_list)]
-                            
-                            
-                            
-                            breakpoint()
-                            import matplotlib.pyplot as plt
-                            fig, axs = plt.subplots(nrows = 3)
-                            x0 = np.linspace(0.0, 0.1, 100)
-                            x1 = np.linspace(0.0, 1.0, 100)
-                            x2 = np.linspace(0.9, 1.0, 100)
-                            
-                            for name, dist in {'Normal':norm_ks, 'Skew-Normal':skew_ks, 'Gamma':gamma_ks}.items():
-                                axs[0].hist(dist, bins=x0, label=name, histtype='step')
-                                axs[1].hist(dist, bins=x1, label=name, histtype='step')
-                                axs[2].hist(dist, bins=x2, label=name, histtype='step')
-                            for ax in axs:
-                                ax.legend(loc='upper right')
-                            
-                            fig.supxlabel('K-S Statistic')
-                            fig.supylabel('Number of Fits')
-                            
-                            plt.show()
-                            
-                            
-                            breakpoint()
+                    if compare_distributions == True:
+                        #   Normal
+                        norm_fits = fit_dist_wmp(stats.norm.fit, temp_col2d_perturbT)
+                        norm_ks = [stats.kstest(col, stats.norm.cdf, args=args).statistic for col, args in zip(temp_col2d_perturbT, norm_fits)]
+                        
+                        #   Skew-Normal
+                        skew_fits = fit_dist_wmp(stats.skewnorm.fit, temp_col2d_perturbT)
+                        skew_ks = [stats.kstest(col, stats.skewnorm.cdf, args=args).statistic for col, args in zip(temp_col2d_perturbT, skew_fits)]
+                        
+                        # #   Beta
+                        # #   Not currently supported, as it throws FitErrors
+                        # beta_fits_list = fit_dist_wmp(stats.bera.fit, temp_col2d_perturbT)
+                        # beta_ks = [stats.kstest(col, stats.beta.cdf, args=args) for col, args in zip(temp_col2d_perturbT, beta_fits_list)]
+                        
+                        #   Gamma
+                        gamma_fits = fit_dist_wmp(stats.gamma.fit, temp_col2d_perturbT)
+                        gamma_ks = [stats.kstest(col, stats.gamma.cdf, args=args).statistic for col, args in zip(temp_col2d_perturbT, gamma_fits)]
+                        
+                        #   Save these distributions + ks test
+                        breakpoint()
+                        
                         # breakpoint()
-                        
-                        # #   Regular skew-normal fit
-                        # if not (col == 0).all():
-                        #     characterized_col = []
-                        #     for instant_perturb in tqdm.tqdm(col2d_perturb.T):
-                        #         try:
-                        #             skewnorm_params = stats.skewnorm.fit(instant_perturb)
-                        #         except stats.FitError:
-                        #             skewnorm_params = [np.percentile(instant_perturb, 50), 0, 0]
-                        #         characterized_col.append(skewnorm_params) 
-                        
-                        # #   Skew-normal fit w/ guessed parameters
-                        # if not (col == 0).all():
-                        #     characterized_col_2 = []
-                        #     for instant_perturb in tqdm.tqdm(col2d_perturb.T):
-                        #         guess = [0, np.mean(instant_perturb), np.std(instant_perturb)]
-                        #         try:
-                        #             skewnorm_params = stats.skewnorm.fit(instant_perturb)
-                        #         except stats.FitError:
-                        #             skewnorm_params = [np.percentile(instant_perturb, 50), 0, 0]
-                        #         characterized_col_2.append(skewnorm_params) 
-                                
-                        
-                        # #breakpoint()
-                        # #   Test a normal, gamma, and beta distribution for uncertainties
-                        # #   Only do the test if the column has any value here
-                        # if not (col == 0).all():
-                        #     ks_stats = {'normal':[], 'gamma':[], 'beta':[], 'skew':[]}
-                        #     for instant_perturb in tqdm.tqdm(col2d_perturb.T):
-                        #         #   Normal
-                        #         try:
-                        #             normal_fit_args = stats.norm.fit(instant_perturb )
-                        #             normal_kstest = stats.kstest(instant_perturb , stats.norm.cdf, args=normal_fit_args)
-                        #             ks_stats['normal'].append(normal_kstest.statistic)
-                        #         except stats.FitError:
-                        #             ks_stats['normal'].append(np.nan)
-                                
-                        #         #   Gamma
-                        #         try:
-                        #             gamma_fit_args = stats.gamma.fit(instant_perturb )
-                        #             gamma_kstest = stats.kstest(instant_perturb , stats.gamma.cdf, args=gamma_fit_args)
-                        #             ks_stats['gamma'].append(gamma_kstest.statistic)
-                        #         except stats.FitError:
-                        #             ks_stats['gamma'].append(np.nan)
-                                
-                        #         #   Beta
-                        #         try:
-                        #             beta_fit_args = stats.beta.fit(instant_perturb )
-                        #             beta_kstest = stats.kstest(instant_perturb , stats.beta.cdf, args=beta_fit_args)
-                        #             ks_stats['beta'].append(beta_kstest.statistic)
-                        #         except stats.FitError:
-                        #             ks_stats['beta'].append(np.nan)
-                        
-                        #         try:
-                        #             skew_fit_args = stats.skewnorm.fit(instant_perturb )
-                        #             skew_kstest = stats.kstest(instant_perturb , stats.skewnorm.cdf, args=skew_fit_args)
-                        #             ks_stats['skew'].append(skew_kstest.statistic)
-                        #         except stats.FitError:
-                        #             ks_stats['skew'].append(np.nan)
-                        
-                        # #breakpoint()
-                        
-                        #df = pd.DataFrame(col2d_perturb)
-                        
-                        # uc_dict = {'r2_norm': [], 'r2_lognorm': []}
-                        # for j in tqdm(range(len(time_from_index)), position=0):
-                        #     coords, res = stats.probplot(col2d_perturb[:,j])
-                        #     uc_dict['r2_norm'].append(res[2]**2)
-                            
-                        #     coords, res = stats.probplot(np.log10(col2d_perturb[:,j]))
-                        #     uc_dict['r2_lognorm'].append(res[2]**2)
-                        # uc_df = pd.DataFrame.from_dict(uc_dict)
-                        
-                        # uc_filename = '/Users/mrutala/projects/MMESH/uncertainty_characterization/'
-                        # uc_filename += model_name + '_' + col_name + '_' + str(n_mc) + 'perturbations_r2.csv'
-                        # uc_df.to_csv(uc_filename, header=False, index=False, float_format='%.3E')
-                        
                         # import matplotlib.pyplot as plt
-                        # import scipy.stats as stats
+                        # fig, axs = plt.subplots(nrows = 3)
+                        # x0 = np.linspace(0.0, 0.1, 100)
+                        # x1 = np.linspace(0.0, 1.0, 100)
+                        # x2 = np.linspace(0.9, 1.0, 100)
                         
-                        # r2_norm = []
-                        # r2_lognorm = []
-                        # for j in tqdm(range(len(time_from_index)), position=0):
-                        #     coords, res = stats.probplot(col2d_perturb[:,j])
-                        #     r2_norm.append(res[2]**2)
-                            
-                        #     coords, res = stats.probplot(np.log10(col2d_perturb[:,j]))
-                        #     r2_lognorm.append(res[2]**2)
+                        # for name, dist in {'Normal':norm_ks, 'Skew-Normal':skew_ks, 'Gamma':gamma_ks}.items():
+                        #     axs[0].hist(dist, bins=x0, label=name, histtype='step')
+                        #     axs[1].hist(dist, bins=x1, label=name, histtype='step')
+                        #     axs[2].hist(dist, bins=x2, label=name, histtype='step')
+                        # for ax in axs:
+                        #     ax.legend(loc='upper right')
                         
-                        # fig, axs = plt.subplots(figsize=(4,4.5), nrows=2, height_ratios=[3.5,1])
-                        # plt.subplots_adjust(hspace=0.3)
+                        # fig.supxlabel('K-S Statistic')
+                        # fig.supylabel('Number of Fits')
                         
-                        # r2_norm_dist, edges = np.histogram(r2_norm, bins=np.linspace(0,1,101), density=True)
-                        # r2_lognorm_dist, edges = np.histogram(r2_lognorm, bins=np.linspace(0,1,101), density=True)
-                        # bin_widths = edges[1:] - edges[:-1]
-                        # left_edges = edges[:-1]
-                        
-                        # axs[0].stairs(r2_norm_dist, edges, linewidth=2, label='$R^2$ from normal dist.')
-                        # axs[0].stairs(r2_lognorm_dist, edges, linewidth=2, label='$R^2$ from lognormal dist.')
-                        
-                        # axs[0].annotate('{}: {} uncertainties'.format(model_name, col_name), 
-                        #             (0,1), (0,1), 
-                        #             xycoords='axes fraction', textcoords='offset fontsize')
-                        # axs[0].set(xlabel='$R^2$ Values',
-                        #            ylabel='Density')
-                        
-                        # cell_values = [[], []]
-                        # for val in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
-                        #     prob_norm = np.sum((r2_norm_dist * bin_widths)[left_edges >= val])
-                        #     prob_lognorm = np.sum((r2_lognorm_dist * bin_widths)[left_edges >= val])
-                            
-                        #     cell_values[0].append('{:.2f}'.format(prob_norm*100))
-                        #     cell_values[1].append('{:.2f}'.format(prob_lognorm*100))
-                        
-                        
-                        # axs[1].table(cellText=cell_values, 
-                        #              rowLabels=['Norm', 'LogNorm'], 
-                        #              colLabels=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
-                        #              bbox=[0.2,0,0.8,1])  #  bbox here is fraction of ax
-                        # axs[1].set_axis_off()
-                        # axs[1].annotate('%age of obs. > $R^2$ value', (0.5,0), (0,-2),
-                        #                 xycoords='axes fraction', textcoords='offset fontsize',
-                        #                 va = 'center', ha = 'center')
-                        
-                        # axs[0].legend()
                         # plt.show()
+                        
                     
                     #   Return to normally scheduled programming
                     #   Take the 16th, 50th, and 84th percentiles of the random samples as statistics                
