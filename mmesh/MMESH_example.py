@@ -43,7 +43,7 @@ def MMESH_run(config_path):
     with open(config_path, "rb") as f:
         init = tomllib.load(f)
     
-    #   This could go into trajectory class?
+    #   This could go into multitrajectory class?
     filepaths = {'output': Path(init['paths']['output']),
                  'figures': Path(init['paths']['output']) / 'figures'}
     
@@ -749,8 +749,6 @@ def MMESH_run(config_path):
     
     # =============================================================================
     #   Initialize a MultiTrajecory object
-    #   !!!! N.B. This currently predicts at 'spacecraft', because that's easiest
-    #   with everything I've set up. We want predictions at 'planet' in the end, though
     # =============================================================================
     mtraj = mmesh.MultiTrajectory(trajectories=trajectories)
     
@@ -831,12 +829,15 @@ def MMESH_run(config_path):
     
     mtraj.cast_Models(with_error=True)
     
+    mtraj.cast_intervals['jupiter_simulcast'].sample()
+    
     print(time.time() - timer_t0)
     #breakpoint()
     
     plot_TimeDelta_Grid_AllTrajectories(fullfilepath=filepaths['figures']/'fig07_MLRTimingFits')
     
     #mtraj.cast_intervals['juno_simulcast'].ensemble()
+    breakpoint()
     mtraj.cast_intervals['jupiter_simulcast'].ensemble()
 
     # plot_MMESHPerformance(mtraj.cast_intervals['juno_simulcast'], 
