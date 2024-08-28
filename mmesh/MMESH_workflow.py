@@ -51,7 +51,7 @@ def workflow():
             model = read_SWModel.read_model(model_source, trajectory.source, trajectory.start - padding, trajectory.stop + padding, resolution = resolution)
             
             trajectory.addModel(model_name, model, model_source=model_source)
-            
+           
         #   Finally, add context   
         #   Here, we make a CSV file to hold the context info
         #   The spatial geometry comes from SPICE (via SpiceyPy)
@@ -62,7 +62,8 @@ def workflow():
         context_df.set_index('datetime', inplace=True)
         context_df.index.name = None
         trajectory.context = context_df
-    
+        
+        
         
         # =============================================================================
         #   Optimize the models via dynamic time warping
@@ -81,7 +82,7 @@ def workflow():
         
         #   Calculate a whole host of statistics
         dtw_stats = trajectory.find_WarpStatistics('jumps', 'u_mag', shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
-    
+        
         #   Write an equation describing the optimization equation
         #   This can be played with
         def optimization_eqn(df):
