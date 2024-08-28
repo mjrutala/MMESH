@@ -275,34 +275,10 @@ class MultiTrajectory:
             
             #   Second: shift the models according to the time_delta predictions    
             if with_error:
-                breakpoint()
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma',
                                            force_distribution=True, compare_distributions=False)
             else:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta')
-        
-        
-        # if with_error:
-        #     for cast_interval_name, cast_interval in self.cast_intervals.items():
-        #         cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma')
-        # else:
-        #     for cast_interval_name, cast_interval in self.cast_intervals.items():
-        #         cast_interval.shift_Models(time_delta_column='mlr_time_delta')
-        # return
-        
-    #   We want to characterize linear relationships independently and together
-    #   Via single-target (for now) multiple linear regression
-        
-    # #     #   For now: single-target MLR within each model-- treat models fully independently
-    # #     lr_dict = {}
-    # #     for i, model_name in enumerate(traj0.model_names):
-    #         print('For model: {} ----------'.format(model_name))
-    #         label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
-            
-    #         #   For each model, loop over each dataset (i.e. each Trajectory class)
-    #         #   for j, trajectory in self.trajectories...
-            
-    #         
             
     def ensemble(self, weights = None, as_skewnorm = True):   
         """
@@ -314,99 +290,10 @@ class MultiTrajectory:
 
         """
         
-        for trajectory in self.trajectories:
+        for trajectory_name, trajectory in self.trajectories.items():
             trajectory.ensemble(weights = weights,
                                 as_skewnorm = as_skewnorm)
-        
-        
-    #         #   Reindex the radio data to the cadence of the model
-    #         srf_training = solar_radio_flux.reindex(index=total_dtimes_inh.index)['adjusted_flux']
-            
-    #         # training_values, target_values = TD.make_NaNFree(solar_radio_flux.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
-    #         # training_values = training_values.reshape(-1, 1)
-    #         # target_values = target_values.reshape(-1, 1)
-    #         # reg = LinearRegression().fit(training_values, target_values)
-    #         # print(reg.score(training_values, target_values))
-    #         # print(reg.coef_)
-    #         # print(reg.intercept_)
-    #         # print('----------')
-            
-    #         TSE_lon = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lon']
-            
-    #         # training_values, target_values = TD.make_NaNFree(TSE_lon.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
-    #         # training_values = training_values.reshape(-1, 1)
-    #         # target_values = target_values.reshape(-1, 1)
-    #         # reg = LinearRegression().fit(training_values, target_values)
-    #         # print(reg.score(training_values, target_values))
-    #         # print(reg.coef_)
-    #         # print(reg.intercept_)
-    #         # print('----------')
-            
-    #         TSE_lat = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lat']
-            
-    #         # training_values, target_values = TD.make_NaNFree(TSE_lat.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
-    #         # training_values = training_values.reshape(-1, 1)
-    #         # target_values = target_values.reshape(-1, 1)
-    #         # reg = LinearRegression().fit(training_values, target_values)
-    #         # print(reg.score(training_values, target_values))
-    #         # print(reg.coef_)
-    #         # print(reg.intercept_)
-    #         # print('----------')
-            
-    #         training_df = pd.DataFrame({'total_dtimes': total_dtimes_inh,
-    #                                     'f10p7_flux': srf_training,
-    #                                     'TSE_lon': TSE_lon,
-    #                                     'TSE_lat': TSE_lat}, index=total_dtimes_inh.index)
-    #         training_df.dropna(axis='index')
-            
-    #         #training1, training3, target = TD.make_NaNFree(solar_radio_flux, TSE_lat, total_dtimes_inh.to_numpy('float64'))
-    #         #training = np.array([training1, training3]).T
-    #         #target = target.reshape(-1, 1)
-            
-    #         # n = int(1e4)
-    #         # mlr_arr = np.zeros((n, 4))
-    #         # for sample in range(n):
-    #         #     rand_indx = np.random.Generator.integers(0, len(target), len(target))
-    #         #     reg = LinearRegression().fit(training[rand_indx,:], target[rand_indx])
-    #         #     mlr_arr[sample,:] = np.array([reg.score(training, target), 
-    #         #                                   reg.intercept_[0], 
-    #         #                                   reg.coef_[0,0], 
-    #         #                                   reg.coef_[0,1]])
-                
-    #         # fig, axs = plt.subplots(nrows = 4)
-    #         # axs[0].hist(mlr_arr[:,0], bins=np.arange(0, 1+0.01, 0.01))
-    #         # axs[1].hist(mlr_arr[:,1])
-    #         # axs[2].hist(mlr_arr[:,2])
-    #         # axs[3].hist(mlr_arr[:,3])
-            
-    #         # lr_dict[model_name] = [np.mean(mlr_arr[:,0]), np.std(mlr_arr[:,0]),
-    #         #                        np.mean(mlr_arr[:,1]), np.std(mlr_arr[:,1]),
-    #         #                        np.mean(mlr_arr[:,2]), np.std(mlr_arr[:,2]),
-    #         #                        np.mean(mlr_arr[:,3]), np.std(mlr_arr[:,3])]
-    #         # print(lr_dict[model_name])
-    #         # print('------------------------------------------')
-            
-    #         #print(reg.predict({trai}))
-            
-    #         # print('Training data is shape: {}'.format(np.shape(sm_training)))
-    #         # ols = sm.OLS(target, sm_training)
-    #         # ols_result = ols.fit()
-    #         # summ = ols_result.summary()
-    #         # print(summ)
-            
-    #         # mlr_df = pd.DataFrame.from_dict(lr_dict, orient='index',
-    #         #                                 columns=['r2', 'r2_sigma', 
-    #         #                                          'c0', 'c0_sigma',
-    #         #                                          'c1', 'c1_sigma', 
-    #         #                                          'c2', 'c2_sigma'])
-            
-    #         fig, ax = plt.subplots()
-    #         ax.plot(prediction_df.index, pred['mean'], color='red')
-    #         ax.fill_between(prediction_df.index, pred['obs_ci_lower'], pred['obs_ci_upper'], color='red', alpha=0.5)
-    #         ax.plot(training_df.index, training_df['total_dtimes'], color='black')
-    #         ax.set_ylim((-24*10, 24*10))
-    #     return training_df, prediction_df, pred
-        
+ 
     # # def addData(self, spacecraft_name, spacecraft_df):
         
     # #     self.spacecraft_names.append(spacecraft_name)
@@ -1731,11 +1618,14 @@ class Trajectory(_MMESH_mixins.visualization):
             
             for variable in self.variables:
                 
+                breakpoint()
+                
                 #   Estimate the full dynamic range of this variable
                 var_min = np.min(self._secondary_df.filter(like=variable + '_loc')) - \
                           3 * np.min(self._secondary_df.filter(like=variable + '_scale'))
                 var_max = np.max(self._secondary_df.filter(like=variable + '_loc')) + \
                           3 * np.max(self._secondary_df.filter(like=variable + '_scale'))
+                
                 
                 #   n x m numpy array, where:
                 #   n = length of _primary_df
