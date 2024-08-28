@@ -304,7 +304,7 @@ class MultiTrajectory:
             
     #         
             
-    def ensemble(self):   
+    def ensemble(self, weights = None, as_skewnorm = True):   
         """
         Iteratively run Trajectory.ensemble()
 
@@ -313,7 +313,10 @@ class MultiTrajectory:
         None.
 
         """
-        breakpoint()
+        
+        for trajectory in self.trajectories:
+            trajectory.ensemble(weights = weights,
+                                as_skewnorm = as_skewnorm)
         
         
     #         #   Reindex the radio data to the cadence of the model
