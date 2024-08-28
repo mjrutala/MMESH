@@ -290,7 +290,7 @@ class MultiTrajectory:
 
         """
         
-        for trajectory_name, trajectory in self.trajectories.items():
+        for trajectory_name, trajectory in self.cast_intervals.items():
             trajectory.ensemble(weights = weights,
                                 as_skewnorm = as_skewnorm)
  
