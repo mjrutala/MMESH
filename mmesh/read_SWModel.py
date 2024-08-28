@@ -94,26 +94,38 @@ def read_model(model, target, starttime, stoptime, resolution=None):
 def apply_equations(df):
     
     if 'n_tot' not in df.columns:
-        n_proton = 0. if 'n_proton' not in df.columns else df['n_proton']
-        n_alpha = 0. if 'n_alpha' not in df.columns else df['n_alpha']
-        df.loc[:,'n_tot'] = n_proton #+ n_alpha
+        n_proton = np.zeros(len(df)) if 'n_proton' not in df.columns else df['n_proton']
+        n_alpha = np.zeros(len(df)) if 'n_alpha' not in df.columns else df['n_alpha']
+        n_tot = n_proton #+ n_alpha
+        if (n_tot == 0).all():
+            n_tot += np.nan
+        df.loc[:, 'n_tot'] = n_tot
     
     if 'u_mag' not in df.columns:
-        u_r = 0. if 'u_r' not in df.columns else df['u_r']
-        u_t = 0. if 'u_t' not in df.columns else df['u_t']
-        u_n = 0. if 'u_n' not in df.columns else df['u_n']
-        df.loc[:, 'u_mag'] = np.sqrt(u_r**2 + u_t**2 + u_n**2)
+        u_r = np.zeros(len(df)) if 'u_r' not in df.columns else df['u_r']
+        u_t = np.zeros(len(df)) if 'u_t' not in df.columns else df['u_t']
+        u_n = np.zeros(len(df)) if 'u_n' not in df.columns else df['u_n']
+        u_mag = np.sqrt(u_r**2 + u_t**2 + u_n**2)
+        if (u_mag == 0).all():
+            u_mag += np.nan
+        df.loc[:, 'u_mag'] = u_mag
 
     if 'p_dyn' not in df.columns:
-        p_dyn_proton = 0. if 'p_dyn_proton' not in df.columns else df['p_dyn_proton']
-        p_dyn_alpha = 0. if 'p_dyn_alpha' not in df.columns else df['p_dyn_alpha']
-        df.loc[:, 'p_dyn'] = p_dyn_proton #+ p_dyn_alpha
+        p_dyn_proton = np.zeros(len(df)) if 'p_dyn_proton' not in df.columns else df['p_dyn_proton']
+        p_dyn_alpha = np.zeros(len(df)) if 'p_dyn_alpha' not in df.columns else df['p_dyn_alpha']
+        p_dyn = p_dyn_proton #+ p_dyn_alpha
+        if (p_dyn == 0).all():
+            p_dyn += np.nan
+        df.loc[:, 'p_dyn'] = p_dyn
         
     if 'B_mag' not in df.columns:
-        B_r = 0. if 'B_r' not in df.columns else df['B_r']
-        B_t = 0. if 'B_t' not in df.columns else df['B_t']
-        B_n = 0. if 'B_n' not in df.columns else df['B_n']
-        df.loc[:, 'B_mag'] = np.sqrt(B_r**2 + B_t**2 + B_n**2)
+        B_r = np.zeros(len(df)) if 'B_r' not in df.columns else df['B_r']
+        B_t = np.zeros(len(df)) if 'B_t' not in df.columns else df['B_t']
+        B_n = np.zeros(len(df)) if 'B_n' not in df.columns else df['B_n']
+        B_mag = np.sqrt(B_r**2 + B_t**2 + B_n**2)
+        if (B_mag == 0).all():
+            B_mag += np.nan
+        df.loc[:, 'B_mag'] = B_mag
         
     return df
 
