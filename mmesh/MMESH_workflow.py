@@ -129,5 +129,7 @@ def workflow():
     
     mtraj.cast_Models(with_error=True)
     
+    mtraj.ensemble()
+    
     
     return mtraj
