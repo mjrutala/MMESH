@@ -339,7 +339,8 @@ class Trajectory(_MMESH_mixins.visualization):
         
         self.metric_tags = ['u_mag', 'p_dyn', 'n_tot', 'B_mag']
         self.variables =  ['u_mag', 'n_tot', 'p_dyn', 'B_mag']
-        self.variables_unc = [var+'_pos_unc' for var in self.variables] + [var+'_neg_unc' for var in self.variables]
+        
+        self.distribution_function = scipy.stats.skewnorm
         
         self.trajectory_name = name
         self.start = None
@@ -361,7 +362,7 @@ class Trajectory(_MMESH_mixins.visualization):
         self.best_shifts = {}
         self.best_shift_functions = {}
         
-        self.distribution_function = scipy.stats.skewnorm
+        
         
         #self.model_shift_stats = {}
         #self.model_dtw_stats = {}
@@ -380,6 +381,13 @@ class Trajectory(_MMESH_mixins.visualization):
     @property
     def _secondary_df(self):
         return self._primary_df.query('@self.start <= index < @self.stop')
+    
+    @property
+    def variables_unc(self):
+        if self.distribution_function is not None:
+            return [var + suffix for suffix in ['_a', '_loc', '_scale'] for var in self.variables]
+        else:
+            return [var+'_pos_unc' for var in self.variables] + [var+'_neg_unc' for var in self.variables]
     
     def _add_to_primary_df(self, label, df):
         
@@ -1210,6 +1218,8 @@ class Trajectory(_MMESH_mixins.visualization):
         import scipy.stats as stats
         # import tqdm
         import multiprocessing as mp
+        
+        np.seterr(invalid='ignore')
 
         #   We're going to try to do this all with interpolation, rather than 
         #   needing to shift the model dataframe by a constant first
@@ -1343,14 +1353,8 @@ class Trajectory(_MMESH_mixins.visualization):
                             #   Parallelized fitting
                             if n_usable_cols > 0:
                                 
-                                mp_results = fit_dist_wmp(self.distribution_function.fit, temp_col2d_perturbT)
-                                # #   Map fitting to each col, then iterate
-                                # #   which allows a progressbar w/ tqdm
-                                # with mp.Pool(mp.cpu_count()) as pool:
-                                #     mp_results = []
-                                #     gen = pool.imap(self.distribution_function.fit, [col for col in temp_col2d_perturbT])
-                                #     for g in tqdm(gen, total=n_usable_cols):
-                                #         mp_results.append(g)
+                                tqdm_desc = 'Characterizing uncertainties: {}|{}|{}'.format(self.trajectory_name, model_name, col_name)
+                                mp_results = self._fit_DistributionToList_wmp(temp_col2d_perturbT, desc=tqdm_desc)
                                 
                                 #   Assign the parallelized results
                                 uc_fit[usable_cols] = np.array(mp_results)
@@ -1440,12 +1444,8 @@ class Trajectory(_MMESH_mixins.visualization):
             #     output = (arr_shifted, arr_shifted_sigma)
             #     return output
             
-            #self.best_shift_functions[model_name] = shift_function
-            
             len_items = len(nonnan_model_df.columns)
-            for col_name, col in tqdm(nonnan_model_df.items(), 
-                                      desc='Shifting Columns', 
-                                      total=len_items):
+            for col_name, col in nonnan_model_df.items():
                 #   Skip columns of all NaNs and columns which don't appear
                 #   in list of tracked variables
                 #if len(col.dropna() > 0) and (col_name in self.variables):
@@ -1476,7 +1476,7 @@ class Trajectory(_MMESH_mixins.visualization):
                     
         return shifted_primary_df
                         
-    def _fit_DistributionToList_wmp(self, list_of_data):
+    def _fit_DistributionToList_wmp(self, list_of_data, desc=''):
         """
         fit dist(ributions) w(ith) m(ulti)p(rocessing)
     
@@ -1506,65 +1506,65 @@ class Trajectory(_MMESH_mixins.visualization):
             #   Map the fitting function to each entry in the list in a generator
             gen = pool.imap(func, [entry for entry in list_of_data])
             #   Perform the fitting & print a progress bar
-            for entry in tqdm(gen, total=len(list_of_data)):
+            for entry in tqdm(gen, total=len(list_of_data), desc=desc):
                 results.append(entry)
                 
         return np.array(results)
 
-    def sample(self, model_names = [], variables = [], n_samples=1, mu=False):
-        """
+    # def sample(self, model_names = [], variables = [], n_samples=1, mu=False):
+    #     """
         
 
-        Parameters
-        ----------
-        model_name : TYPE, optional
-            DESCRIPTION. The default is [].
-        column_ref : TYPE, optional
-            DESCRIPTION. The default is [].
-        n_samples : TYPE, optional
-            DESCRIPTION. The default is 1.
+    #     Parameters
+    #     ----------
+    #     model_name : TYPE, optional
+    #         DESCRIPTION. The default is [].
+    #     column_ref : TYPE, optional
+    #         DESCRIPTION. The default is [].
+    #     n_samples : TYPE, optional
+    #         DESCRIPTION. The default is 1.
 
-        Returns
-        -------
-        None.
+    #     Returns
+    #     -------
+    #     None.
 
-        """
-        import scipy.stats as stats
+    #     """
+    #     import scipy.stats as stats
         
-        model_names = list(model_names)
-        variables = list(variables)
+    #     model_names = list(model_names)
+    #     variables = list(variables)
         
-        if len(model_names) == 0:
-            model_names = self.model_names
-        if len(variables) == 0:
-            variables= self.variables
+    #     if len(model_names) == 0:
+    #         model_names = self.model_names
+    #     if len(variables) == 0:
+    #         variables= self.variables
         
-        for i_sample in range(n_samples): 
+    #     for i_sample in range(n_samples): 
             
-            #   Make an empty dataframe to hold the sample
-            multiindex = pd.MultiIndex.from_product([self.model_names,
-                                                     self.variables])
-            sample_df = pd.DataFrame(index = self.models.index,
-                                     columns = multiindex)
-            for model_name in model_names:
-                for variable in variables:
+    #         #   Make an empty dataframe to hold the sample
+    #         multiindex = pd.MultiIndex.from_product([self.model_names,
+    #                                                  self.variables])
+    #         sample_df = pd.DataFrame(index = self.models.index,
+    #                                  columns = multiindex)
+    #         for model_name in model_names:
+    #             for variable in variables:
                     
-                    #   For this variable, get the names of parameters describing the distribution
-                    param_names = self.models[model_name].columns[self.models[model_name].columns.str.contains(variable)].to_list()
-                    param_names.remove(variable)
+    #                 #   For this variable, get the names of parameters describing the distribution
+    #                 param_names = self.models[model_name].columns[self.models[model_name].columns.str.contains(variable)].to_list()
+    #                 param_names.remove(variable)
                     
-                    #   Now get the parameters themselves
-                    params = self.models[model_name].loc[:, param_names]
+    #                 #   Now get the parameters themselves
+    #                 params = self.models[model_name].loc[:, param_names]
                     
-                    #
-                    def apply_fn(row):
-                        return stats.skewnorm.mean(*row.to_numpy())
+    #                 #
+    #                 def apply_fn(row):
+    #                     return stats.skewnorm.mean(*row.to_numpy())
                     
-                    sample_df.loc[:, (model_name, variable)] = params.apply(apply_fn, axis='columns')
+    #                 sample_df.loc[:, (model_name, variable)] = params.apply(apply_fn, axis='columns')
                     
-            breakpoint()
+    #         breakpoint()
                 
-        return
+    #     return
     
     def weights(self, how='default'):
         
@@ -1608,6 +1608,9 @@ class Trajectory(_MMESH_mixins.visualization):
         import pandas as pd
         from functools import reduce
         
+        #   Ignores math warnings in numpy that clutter the terminal
+        np.seterr(invalid='ignore')
+        
         #   Initialize an empty ensmeble data frame
         ensemble = pd.DataFrame(index = self._primary_df.index)
         
@@ -1618,15 +1621,26 @@ class Trajectory(_MMESH_mixins.visualization):
             
             for variable in self.variables:
                 
-                breakpoint()
+                #   Estimate the bounds of this variable from the minimum and maximum of the 95% confidence interval
+                dynamic_range = []
+                for model_name in self.model_names:
+                    
+                    dist_params = self._secondary_df[model_name].loc[:, [variable+'_a', variable+'_loc', variable+'_scale']].to_numpy()
+                    
+                    interval95 = np.array([np.percentile(self.distribution_function.rvs(*dist_param, size=1000), (2.5, 97.5)) if (~np.isnan(dist_param)).all() else [np.nan, np.nan] for dist_param in dist_params])
+                    
+                    # interval95 = np.array([self.distribution_function.interval(0.95, *dist_param) for dist_param in dist_params])
+                    
+                    # #   The skew-normal distribution can cause errors in the interval function, causing the right hand bound to go negative
+                    # #   These are not physical-- simply NaN them
+                    # if (interval95[:,1] < 0).any():
+                    #     interval95[interval95[:,1] < 0, 1] = np.nan
+                    
+                    dynamic_range.extend(interval95.flatten())
                 
-                #   Estimate the full dynamic range of this variable
-                var_min = np.min(self._secondary_df.filter(like=variable + '_loc')) - \
-                          3 * np.min(self._secondary_df.filter(like=variable + '_scale'))
-                var_max = np.max(self._secondary_df.filter(like=variable + '_loc')) + \
-                          3 * np.max(self._secondary_df.filter(like=variable + '_scale'))
-                
-                
+                #   np.perceniles prevents single large or small numbers form biasing these
+                var_min, var_max = np.nanpercentile(dynamic_range, (2.5, 97.5))
+                    
                 #   n x m numpy array, where:
                 #   n = length of _primary_df
                 #   m = length of values sampled over, arbitrary
@@ -1669,8 +1683,6 @@ class Trajectory(_MMESH_mixins.visualization):
                 ensemble.loc[self._secondary_df.index, variable + '_a'] = fit_list.T[0]
                 ensemble.loc[self._secondary_df.index, variable + '_loc'] = fit_list.T[1]
                 ensemble.loc[self._secondary_df.index, variable + '_scale'] = fit_list.T[2]
-                
-            breakpoint()
             
         else:
             #weights_df = pd.DataFrame(columns = self.em_parameters)
@@ -1725,8 +1737,103 @@ class Trajectory(_MMESH_mixins.visualization):
             ensemble.loc[:, variables_unc] = np.sqrt(ensemble.loc[:, variables_unc])
             #   !!!! This doesn't add error properly
             # ensemble = reduce(lambda a,b: a.add(b, fill_value=0.), partials_list)
-
+        
+        
         self.addModel('ensemble', ensemble, model_source='MME')
+    
+    # =============================================================================
+    #     Statistical convenience functions   
+    # =============================================================================
+    def _parse_stats_inputs(self, model_names, variables):
+        model_names = self.model_names if model_names is None else model_names
+        model_names = [model_names] if isinstance(model_names, str) else model_names
+        
+        variables = self.variables if variables is None else variables
+        variables = [variables] if isinstance(variables, str) else variables
+        
+        return model_names, variables
+    
+    def _scipy_stats_method_apply(self, method, model_names, variables):
+        from pandas import IndexSlice as idx
+        
+        model_names, variables = self._parse_stats_inputs(model_names, variables)
+        
+        #   Create a df to hold the output and set all to 0
+        output_df = self._primary_df.loc[:, idx[model_names, variables]]
+        for col in output_df.columns:
+            output_df['col'] = np.nan
+        
+        for model_name in model_names:
+            for variable in variables:
+                #   This makes sure that all the distribution params are ordered in the expected way
+                dist_param_names = [variable + suffix for suffix in ['_a', '_loc', '_scale']]
+                df = self.models[model_name].loc[:, dist_param_names]
+                
+                #   Only take the defined bits
+                defined_indx = [~np.isnan(row).all() for _, row in df.iterrows()]
+                dist_params = df.loc[defined_indx, :].to_numpy()
+                    
+                statistics = [method(*dist_param) for dist_param in dist_params]
+                statistics = np.array(statistics).flatten()
+                
+                output_df.loc[defined_indx, idx[model_name, variable]] = statistics
+        
+        return output_df
+    
+    def median(self, model_names=None, variables=None):
+        
+        method = self.distribution_function.median
+        result = self._scipy_stats_method_apply(method, model_names, variables)
+        
+        return result
+    
+    def ci(self, percentile=50, model_names=None, variables=None):
+        
+        #   Percent Point Function needs an extra argument, 
+        #   so define a new function
+        def method(*args):
+            return self.distribution_function.ppf(percentile/100, *args)
+        result = self._scipy_stats_method_apply(method, model_names, variables)
+        
+        return result
+    
+    def mean(self, model_names=None, variables=None):
+        
+        method = self.distribution_function.mean
+        result = self._scipy_stats_method_apply(method, model_names, variables)
+        
+        return result
+    
+    def sigma(self, model_names=None, variables=None):
+        
+        method = self.distribution_function.std
+        result = self._scipy_stats_method_apply(method, model_names, variables)
+        
+        return result
+    
+    def nsigma(self, n=1, model_names=None, variables=None):
+        
+        mu = self.mean(model_names, variables)
+        sigma = self.sigma(model_names, variables)
+        
+        return mu + n * sigma
+        
+    def sample(self, size=1, model_names=None, variables=None):
+        
+        def method(*args):
+            return self.distribution_function.rvs(*args, size=1)
+        
+        #   Consider looping over this to sample more?
+        result = self._scipy_stats_method_apply(method, model_names, variables)
+        
+        return result
+    
+    def taylor_statistics(self, model_names=None, variables=None):
+        #   r
+        breakpoint()
+        
+        return
+    
         
     # =============================================================================
     #   Plotting stuff
