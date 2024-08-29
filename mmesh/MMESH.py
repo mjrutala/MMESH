@@ -1756,12 +1756,15 @@ class Trajectory(_MMESH_mixins.visualization):
     def _scipy_stats_method_apply(self, method, model_names, variables):
         from pandas import IndexSlice as idx
         
+        #   This falsely 
+        pd.options.mode.chained_assignment = None  # default='warn'
+        
         model_names, variables = self._parse_stats_inputs(model_names, variables)
         
         #   Create a df to hold the output and set all to 0
         output_df = self._primary_df.loc[:, idx[model_names, variables]]
         for col in output_df.columns:
-            output_df['col'] = np.nan
+            output_df.loc[:, col] = np.nan
         
         for model_name in model_names:
             for variable in variables:
@@ -1818,21 +1821,92 @@ class Trajectory(_MMESH_mixins.visualization):
         
         return mu + n * sigma
         
-    def sample(self, size=1, model_names=None, variables=None):
+    def sample(self, model_names=None, variables=None, size=1):
         
         def method(*args):
             return self.distribution_function.rvs(*args, size=1)
         
         #   Consider looping over this to sample more?
-        result = self._scipy_stats_method_apply(method, model_names, variables)
+        result = []
+        for i in tqdm(range(size)):
+            result.append(self._scipy_stats_method_apply(method, model_names, variables))
+    
+        if size == 1:
+            result = result[0]
         
         return result
     
-    def taylor_statistics(self, model_names=None, variables=None):
-        #   r
+    def taylor_statistics(self, model_names=None, variables=None, with_error=True):
+        import plot_TaylorDiagram as TD
+        
+        model_names, variables = self._parse_stats_inputs(model_names, variables)
+        
+        if with_error:
+            index = ['r_mu', 'r_sigma', 'sig_mu', 'sig_sigma', 'rmsd_mu', 'rmsd_sigma']
+            n_mc = 100
+        else:
+            index = ['r', 'sig', 'rmsd']
+            n_mc = 1
+        
+        output_cols = pd.MultiIndex.from_product([model_names, variables])
+        output_df = pd.DataFrame(index=index,
+                                 columns=output_cols)
+        
+        #   Sample the df, making sure its a list
+        sampled_dfs = self.sample(size = n_mc)
+        if not with_error:
+            sampled_dfs = [sampled_dfs]
+        
+        for variable in variables:
+            
+            #   Drop all NaN rows, *unless* the whole column is NaN
+            #   This ensures the corr. coeffs. can be compared between models
+            usable_cols = self.model_names
+            for col in usable_cols:
+                if self.models[col][variable].isnull().all():
+                    usable_cols.remove(col)
+            
+            #   Get a df only looking at variable
+            isolated_variable_dfs = [df.xs(variable, axis='columns', level=1) for df in sampled_dfs]
+            
+            isolated_variable_dfs = [df.dropna(axis = 'index', how = 'any', subset = usable_cols) for df in isolated_variable_dfs]
+            
+            for model_name in model_names:
+                
+                isolated_model_dfs = [df[model_name] for df in isolated_variable_dfs]
+                
+                r_list, sig_list, rmsd_list = [], [], []
+                for i, df in enumerate(isolated_model_dfs):
+                    
+                    #   Squeeze forces this to be a series, so can be directly compared to spacecraft data
+                    (r, sig), rmsd = TD.find_TaylorStatistics(test_data = df.squeeze(),
+                                                              ref_data = self.data.loc[df.index, variable])
+                    
+                    r_list.append(r)
+                    sig_list.append(sig)
+                    rmsd_list.append(rmsd)
+                        
+                        
+                if with_error:
+                    
+                    output_df.loc['r_mu', (model_name, variable)] = np.mean(r_list)
+                    output_df.loc['r_sigma',  (model_name, variable)] = np.std(r_list)
+                    output_df.loc['sig_mu', (model_name, variable)] = np.mean(sig_list)
+                    output_df.loc['sig_sigma', (model_name, variable)] = np.std(sig_list)
+                    output_df.loc['rmsd_mu', (model_name, variable)] = np.mean(rmsd_list)
+                    output_df.loc['rmsd_sigma', (model_name, variable)] = np.std(rmsd_list)
+                
+                else:
+                    
+                    output_df.loc['r', (model_name, variable)] = r_list[0]
+                    output_df.loc['sig', (model_name, variable)] = sig_list[0]
+                    output_df.loc['rmsd', (model_name, variable)] = rmsd_list[0]
+            
+            
+                
         breakpoint()
         
-        return
+        return output_df
     
         
     # =============================================================================
