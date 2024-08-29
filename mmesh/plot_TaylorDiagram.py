@@ -35,7 +35,7 @@ def make_NaNFree(*arrays):
     
     return tuple(output_arrs)
 
-def find_TaylorStatistics(test_data, ref_data):
+def find_TaylorStatistics(test_data = 0, ref_data = 0):
     
     N = float(len(test_data))
     if N != float(len(ref_data)):
