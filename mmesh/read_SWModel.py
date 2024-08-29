@@ -116,8 +116,14 @@ def apply_equations(df):
         p_dyn_proton = np.zeros(len(df)) if 'p_dyn_proton' not in df.columns else df.loc[:, 'p_dyn_proton']
         p_dyn_alpha = np.zeros(len(df)) if 'p_dyn_alpha' not in df.columns else df.loc[:, 'p_dyn_alpha']
         p_dyn = p_dyn_proton #+ p_dyn_alpha
+        
+        #   Unlike the other variables, we can potentially calculate a p_dyn
         if (p_dyn == 0).all():
-            p_dyn += np.nan
+            if np.isnan(n_tot).all() or np.isnan(u_mag).all():
+                p_dyn += np.nan
+            else:
+                #   p_dyn = rho [kg/m3] * u^2 [m/s]^2 -> nPa
+                p_dyn = (n_tot * kg_per_amu * 1e6) * (u_mag * 1e3)**2 * 1e9
         return_df.loc[:, 'p_dyn'] = p_dyn
         
     if 'B_mag' not in df.columns:
