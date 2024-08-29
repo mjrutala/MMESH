@@ -122,6 +122,12 @@ def workflow():
                                                                   filepath=mtraj.filepaths['output']/'context/')
         cast.context = pd.read_csv(context_fullfilepath, index_col='datetime', parse_dates=True)
         
+        #   Add data for comparison purposes only
+        #   This data will remain unchanged
+        spacecraft = spacecraftdata.SpacecraftData(cast.target)
+        spacecraft.read_processeddata(cast.start, cast.stop, resolution=resolution)
+        cast.addData('juno', spacecraft.data)
+        
     #   Now for the actually casting! Based on a formula describing how the context should inform the uncertainty model:
     #   This translates to:
     #       empirical time delta = a * (target_sun_earth_lat) + b * (solar_radio_flux) + c*(u_mag)
@@ -131,6 +137,5 @@ def workflow():
     mtraj.cast_Models(with_error=True)
     
     mtraj.ensemble()
-    
     
     return mtraj
