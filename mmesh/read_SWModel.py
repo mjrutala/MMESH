@@ -21,18 +21,18 @@ from pathlib import Path
 import sys
 import ast
 
-sys.path.append('/Users/mrutala/MMESH/separated_code/')
+sys.path.append('/Users/mrutala/projects/MMESH/separated_code/')
 from read_SWData import make_DerezzedData
 
 m_p = 1.67e-27
 kg_per_amu = 1.66e-27 # 
 
-# default_df = pd.DataFrame(columns=['u_mag', 'n_tot', 'p_dyn', 'B_mag', 
-#                                    'u_r', 'u_t', 'u_n', 
-#                                    'n_proton', 'n_alpha',
-#                                    'p_dyn_proton', 'p_dyn_alpha',
-#                                    'T_proton', 'T_alpha',
-#                                    'B_r', 'B_t', 'B_n', 'B_pol'])
+default_df = pd.DataFrame(columns=['u_mag', 'n_tot', 'p_dyn', 'B_mag', 
+                                    'u_r', 'u_t', 'u_n', 
+                                    'n_proton', 'n_alpha',
+                                    'p_dyn_proton', 'p_dyn_alpha',
+                                    'T_proton', 'T_alpha',
+                                    'B_r', 'B_t', 'B_n', 'B_pol'])
 
 
 def read_model(model, target, starttime, stoptime, resolution=None):
@@ -759,6 +759,13 @@ def runHUXt(target, metakernel_paths, starttime, stoptime, basedir=''):
     for i in range(int(lon_segments)):
         i_step = lon[0] + ((lon_range/lon_segments) * i)
         indx_list.append(np.argmin(abs(lon - i_step)))
+    
+    #   If lon is non-monotonic, force the point where it wraps to 0 to be a break
+    if np.argmin(lon) != 0:
+        indx_list.append(np.argmin(lon))
+        
+    #   Get rid of any repeated values
+    indx_list = sorted(list(set(indx_list)))
         
     start_indx = indx_list
     stop_indx = indx_list[1:] + [len(etimes)]
