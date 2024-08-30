@@ -11,6 +11,7 @@ import logging
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import scipy
 
 import plot_TaylorDiagram as TD
 
@@ -58,29 +59,96 @@ How I imagine this framework to work:
 """ 
 class MultiTrajectory:
     
-    def __init__(self, trajectories=[]):
+    def __init__(self, config_fullfilepath=None, trajectories=[]):
         
-        self.spacecraft_names = []
-        self.trajectories = {}   #  dict of Instances of Trajectory class
-        self.cast_intervals = {}    #  ???? of Instances of Trajectory class
-                                    #   i.e. hindcast, nowcast, forecase, simulcast
-                                    #   all relative to data span (although cound be between data spans)
+        self.filepaths = {}
         
-        #   The MultiTrajectory contains the superset of all trajectory models
-        all_model_sources = {}
-        for trajectory in trajectories:
-            self.spacecraft_names.append(trajectory.spacecraft_name)
-            self.trajectories[trajectory.trajectory_name] = trajectory
-            #possible_models += trajectory.model_names
-            all_model_sources.update(trajectory.model_sources)  #  overwritten by latest
+        self.domain = {}
         
-        self.model_refs = all_model_sources.keys()
-        self.model_sources = all_model_sources
+        self.trajectories = {}
+        self.trajectory_names = []
+        self.trajectory_sources = {}
+        self.model_names = []
+        self.model_sources = {}
+        
+        self.cast_intervals = {}
+        
+        #   !!!! This should be removed, but the relex is here for back-compatibility
+        self.spacecraft_names = self.trajectory_names
+        
+        if config_fullfilepath is not None:
+            self.init_fromconfig(config_fullfilepath)
+        else:
+            self.spacecraft_names = []
+            self.trajectories = {}   #  dict of Instances of Trajectory class
+            self.cast_intervals = {}    #  ???? of Instances of Trajectory class
+                                        #   i.e. hindcast, nowcast, forecase, simulcast
+                                        #   all relative to data span (although cound be between data spans)
+            
+            #   The MultiTrajectory contains the superset of all trajectory models
+            all_model_sources = {}
+            for trajectory in trajectories:
+                self.spacecraft_names.append(trajectory.spacecraft_name)
+                self.trajectories[trajectory.trajectory_name] = trajectory
+                #possible_models += trajectory.model_names
+                all_model_sources.update(trajectory.model_sources)  #  overwritten by latest
+            
+            self.model_names = all_model_sources.keys()
+            self.model_sources = all_model_sources
         
         self.offset_times = []  #   offset_times + (constant_offset) + np.linspace(0, total_hours, n_steps) give interpolation index
         self.optimized_shifts = []
         
+    def init_fromconfig(self, config_fullfilepath):
+        import tomllib
+        from pathlib import Path
         
+        with open(config_fullfilepath, "rb") as f:
+            config_dict = tomllib.load(f)
+        self.config = config_dict
+        self.config_fullfilepath = config_fullfilepath
+        
+        #   Store path info as pathlib Path
+        for path_name, path_spec in config_dict['paths'].items():
+            self.filepaths[path_name] = Path(path_spec)
+        
+        #   Store domain info
+        self.domain = config_dict['domain']
+        
+        #   Store data info
+        for trajectory_name, val in config_dict['trajectories'].items():
+            self.trajectories[trajectory_name] = Trajectory(name=trajectory_name)
+            self.trajectories[trajectory_name].start = val['start']
+            self.trajectories[trajectory_name].stop = val['stop']
+            self.trajectories[trajectory_name].source = val['source']
+            
+            self.trajectory_names.append(trajectory_name)
+            self.trajectory_sources[trajectory_name] = val['source']
+
+        #   Store model info
+        #   This doesn't go in the Trajectory proper right now, but instead in the MultiTrajectory directly
+        #   The preferred way to add model info is through the model setter
+        for model_name, model_info in config_dict['models'].items():
+            self.model_names.append(model_name)
+            self.model_sources[model_name] = model_info['source']
+            
+        #   Store the cast info
+        for cast_interval_name, val in config_dict['cast_intervals'].items():
+            self.cast_intervals[cast_interval_name] = Trajectory(name = cast_interval_name)
+            self.cast_intervals[cast_interval_name].start = val['start']
+            self.cast_intervals[cast_interval_name].stop = val['stop']
+            self.cast_intervals[cast_interval_name].target = val['target']
+        
+        
+    def init_fromtrajectory(self, trajectories):
+        
+        if not hasattr(self, 'trajectories'):
+            self.trajectories = {}
+        for trajectory in trajectories:
+            self.trajectories[trajectory.trajectory_name] = trajectory
+            
+            
+    
     def linear_regression(self, formula):
         import statsmodels.api as sm
         import statsmodels.formula.api as smf
@@ -92,7 +160,7 @@ class MultiTrajectory:
         # =============================================================================
         predictions_dict = {}
         nowcast_dict = {}
-        for model_ref in self.model_refs:
+        for model_name in self.model_names:
             
             #   !!! This should be dynamic based on input equation
             d = {'datetime':[], 
@@ -103,8 +171,8 @@ class MultiTrajectory:
                  'u_mag':[]}
             
             for trajectory_name, trajectory in self.trajectories.items():
-                d['empirical_time_delta'].extend(trajectory.models[model_ref]['empirical_time_delta'].loc[trajectory.data_index])
-                d['u_mag'].extend(trajectory.models[model_ref]['u_mag'].loc[trajectory.data_index])
+                d['empirical_time_delta'].extend(trajectory.models[model_name]['empirical_time_delta'].loc[trajectory.data_index])
+                d['u_mag'].extend(trajectory.models[model_name]['u_mag'].loc[trajectory.data_index])
                 
                 #   Need to write a better getter/setter for 'context'
                 d['solar_radio_flux'].extend(trajectory._primary_df[('context', 'solar_radio_flux')].loc[trajectory.data_index])
@@ -121,7 +189,7 @@ class MultiTrajectory:
             #   DataFrame if they have null values for any equation terms
             
             #   !!! Might need to allow different formulae for different models...
-            #   !!! i.e. formula = formulae[model_ref]
+            #   !!! i.e. formula = formulae[model_name]
             #   !!! Also, should catch all acceptable arithmetic symbols, not just plus
             self.mlr_formula = formula
             self.mlr_formula_terms = re.findall(r"[\w']+", formula)
@@ -139,12 +207,12 @@ class MultiTrajectory:
             result = nowcast.summary_frame(alpha_level)
             result = result.set_index(training_df.index)
             
-            predictions_dict[model_ref] = mlr_fit
-            nowcast_dict[model_ref] = result
+            predictions_dict[model_name] = mlr_fit
+            nowcast_dict[model_name] = result
             
         self.predictions_dict = predictions_dict
         self.nowcast_dict = nowcast_dict
-            
+        
         return predictions_dict
     
     def cast_Models(self, with_error=True):
@@ -192,7 +260,7 @@ class MultiTrajectory:
                     #   s_mu = shift_mu = mean shift
                     s_mu = result['mean'].set_axis(cast_context_df.index)
                     s_sig = sig.set_axis(cast_context_df.index)
-                
+                    
                     self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta')] = s_mu
                     self.cast_intervals[cast_interval_name]._primary_df.loc[:, (model_name, 'mlr_time_delta_sigma')] = s_sig
                 else:
@@ -208,123 +276,24 @@ class MultiTrajectory:
             #   Second: shift the models according to the time_delta predictions    
             if with_error:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma',
-                                           uncertainty_characterization=True)
+                                           force_distribution=True, compare_distributions=False)
             else:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta')
-                
+            
+    def ensemble(self, weights = None, as_skewnorm = True):   
+        """
+        Iteratively run Trajectory.ensemble()
+
+        Returns
+        -------
+        None.
+
+        """
         
-        # if with_error:
-        #     for cast_interval_name, cast_interval in self.cast_intervals.items():
-        #         cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma')
-        # else:
-        #     for cast_interval_name, cast_interval in self.cast_intervals.items():
-        #         cast_interval.shift_Models(time_delta_column='mlr_time_delta')
-        # return
-        
-    #   We want to characterize linear relationships independently and together
-    #   Via single-target (for now) multiple linear regression
-        
-    # #     #   For now: single-target MLR within each model-- treat models fully independently
-    # #     lr_dict = {}
-    # #     for i, model_name in enumerate(traj0.model_names):
-    #         print('For model: {} ----------'.format(model_name))
-    #         label = '({}) {}'.format(string.ascii_lowercase[i], model_name)
-            
-    #         #   For each model, loop over each dataset (i.e. each Trajectory class)
-    #         #   for j, trajectory in self.trajectories...
-            
-    #         
-            
-            
-            
-    #         #   Reindex the radio data to the cadence of the model
-    #         srf_training = solar_radio_flux.reindex(index=total_dtimes_inh.index)['adjusted_flux']
-            
-    #         # training_values, target_values = TD.make_NaNFree(solar_radio_flux.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
-    #         # training_values = training_values.reshape(-1, 1)
-    #         # target_values = target_values.reshape(-1, 1)
-    #         # reg = LinearRegression().fit(training_values, target_values)
-    #         # print(reg.score(training_values, target_values))
-    #         # print(reg.coef_)
-    #         # print(reg.intercept_)
-    #         # print('----------')
-            
-    #         TSE_lon = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lon']
-            
-    #         # training_values, target_values = TD.make_NaNFree(TSE_lon.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
-    #         # training_values = training_values.reshape(-1, 1)
-    #         # target_values = target_values.reshape(-1, 1)
-    #         # reg = LinearRegression().fit(training_values, target_values)
-    #         # print(reg.score(training_values, target_values))
-    #         # print(reg.coef_)
-    #         # print(reg.intercept_)
-    #         # print('----------')
-            
-    #         TSE_lat = pos_TSE.reindex(index=total_dtimes_inh.index)['del_lat']
-            
-    #         # training_values, target_values = TD.make_NaNFree(TSE_lat.to_numpy('float64'), total_dtimes_inh.to_numpy('float64'))
-    #         # training_values = training_values.reshape(-1, 1)
-    #         # target_values = target_values.reshape(-1, 1)
-    #         # reg = LinearRegression().fit(training_values, target_values)
-    #         # print(reg.score(training_values, target_values))
-    #         # print(reg.coef_)
-    #         # print(reg.intercept_)
-    #         # print('----------')
-            
-    #         training_df = pd.DataFrame({'total_dtimes': total_dtimes_inh,
-    #                                     'f10p7_flux': srf_training,
-    #                                     'TSE_lon': TSE_lon,
-    #                                     'TSE_lat': TSE_lat}, index=total_dtimes_inh.index)
-    #         training_df.dropna(axis='index')
-            
-    #         #training1, training3, target = TD.make_NaNFree(solar_radio_flux, TSE_lat, total_dtimes_inh.to_numpy('float64'))
-    #         #training = np.array([training1, training3]).T
-    #         #target = target.reshape(-1, 1)
-            
-    #         # n = int(1e4)
-    #         # mlr_arr = np.zeros((n, 4))
-    #         # for sample in range(n):
-    #         #     rand_indx = np.random.Generator.integers(0, len(target), len(target))
-    #         #     reg = LinearRegression().fit(training[rand_indx,:], target[rand_indx])
-    #         #     mlr_arr[sample,:] = np.array([reg.score(training, target), 
-    #         #                                   reg.intercept_[0], 
-    #         #                                   reg.coef_[0,0], 
-    #         #                                   reg.coef_[0,1]])
-                
-    #         # fig, axs = plt.subplots(nrows = 4)
-    #         # axs[0].hist(mlr_arr[:,0], bins=np.arange(0, 1+0.01, 0.01))
-    #         # axs[1].hist(mlr_arr[:,1])
-    #         # axs[2].hist(mlr_arr[:,2])
-    #         # axs[3].hist(mlr_arr[:,3])
-            
-    #         # lr_dict[model_name] = [np.mean(mlr_arr[:,0]), np.std(mlr_arr[:,0]),
-    #         #                        np.mean(mlr_arr[:,1]), np.std(mlr_arr[:,1]),
-    #         #                        np.mean(mlr_arr[:,2]), np.std(mlr_arr[:,2]),
-    #         #                        np.mean(mlr_arr[:,3]), np.std(mlr_arr[:,3])]
-    #         # print(lr_dict[model_name])
-    #         # print('------------------------------------------')
-            
-    #         #print(reg.predict({trai}))
-            
-    #         # print('Training data is shape: {}'.format(np.shape(sm_training)))
-    #         # ols = sm.OLS(target, sm_training)
-    #         # ols_result = ols.fit()
-    #         # summ = ols_result.summary()
-    #         # print(summ)
-            
-    #         # mlr_df = pd.DataFrame.from_dict(lr_dict, orient='index',
-    #         #                                 columns=['r2', 'r2_sigma', 
-    #         #                                          'c0', 'c0_sigma',
-    #         #                                          'c1', 'c1_sigma', 
-    #         #                                          'c2', 'c2_sigma'])
-            
-    #         fig, ax = plt.subplots()
-    #         ax.plot(prediction_df.index, pred['mean'], color='red')
-    #         ax.fill_between(prediction_df.index, pred['obs_ci_lower'], pred['obs_ci_upper'], color='red', alpha=0.5)
-    #         ax.plot(training_df.index, training_df['total_dtimes'], color='black')
-    #         ax.set_ylim((-24*10, 24*10))
-    #     return training_df, prediction_df, pred
-        
+        for trajectory_name, trajectory in self.cast_intervals.items():
+            trajectory.ensemble(weights = weights,
+                                as_skewnorm = as_skewnorm)
+ 
     # # def addData(self, spacecraft_name, spacecraft_df):
         
     # #     self.spacecraft_names.append(spacecraft_name)
@@ -370,11 +339,16 @@ class Trajectory(_MMESH_mixins.visualization):
         
         self.metric_tags = ['u_mag', 'p_dyn', 'n_tot', 'B_mag']
         self.variables =  ['u_mag', 'n_tot', 'p_dyn', 'B_mag']
-        self.variables_unc = [var+'_pos_unc' for var in self.variables] + [var+'_neg_unc' for var in self.variables]
+        
+        self.distribution_function = scipy.stats.skewnorm
         
         self.trajectory_name = name
+        self.start = None
+        self.stop = None
+        self.source = ''
         
-        self.spacecraft_name = ''
+        #   !!!! relex needs to be fixed
+        self.spacecraft_name = self.source
         self.spacecraft_df = ''
         
         self.model_sources = {}
@@ -387,6 +361,8 @@ class Trajectory(_MMESH_mixins.visualization):
         self.model_shift_method = None
         self.best_shifts = {}
         self.best_shift_functions = {}
+        
+        
         
         #self.model_shift_stats = {}
         #self.model_dtw_stats = {}
@@ -402,6 +378,17 @@ class Trajectory(_MMESH_mixins.visualization):
     def __len__(self):
         return len(self._primary_df)
     
+    @property
+    def _secondary_df(self):
+        return self._primary_df.query('@self.start <= index < @self.stop')
+    
+    @property
+    def variables_unc(self):
+        if self.distribution_function is not None:
+            return [var + suffix for suffix in ['_a', '_loc', '_scale'] for var in self.variables]
+        else:
+            return [var+'_pos_unc' for var in self.variables] + [var+'_neg_unc' for var in self.variables]
+    
     def _add_to_primary_df(self, label, df):
         
         #   Relabel the columns using MultiIndexing to add the label
@@ -410,8 +397,8 @@ class Trajectory(_MMESH_mixins.visualization):
         if self._primary_df.empty:
             self._primary_df = df
         else:
-            new_keys = [*self._primary_df.columns.levels[0], label]
-            self._primary_df = pd.concat([self._primary_df, df], axis=1)
+            # new_keys = [*self._primary_df.columns.levels[0], label]
+            self._primary_df = pd.concat([self._primary_df, df], axis=1, verify_integrity=True)
         
         #   Using this method will always re-set the index to datetime
         #   which is useful for preventing errors
@@ -445,6 +432,12 @@ class Trajectory(_MMESH_mixins.visualization):
         #   data_span is useful for propagating the models
         self.data_index = self.data.dropna(axis='index', how='all').index
         self.data_span = np.arange(self.data_index[0], self.data_index[-1], dt.timedelta(hours=1))
+        
+        #   Set the start and stop times based on the data, if not set
+        if self.start is None:
+            self.stop = self.data_index[0]
+        if self.start is None:
+            self.stop = self.data_index[-1]
     
     def addData(self, spacecraft_name, spacecraft_df):
         self.spacecraft_name = spacecraft_name
@@ -1198,15 +1191,18 @@ class Trajectory(_MMESH_mixins.visualization):
         plt.show()
         return
     
-    def shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, uncertainty_characterization=False):
+    def shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, 
+                     force_distribution=False, compare_distributions=False):
         
         result = self._shift_Models(time_delta_column=time_delta_column, 
                                     time_delta_sigma_column=time_delta_sigma_column,
                                     n_mc=n_mc,
-                                    uncertainty_characterization=uncertainty_characterization)
+                                    force_distribution=force_distribution,
+                                    compare_distributions=compare_distributions)
         self._primary_df = result
     
-    def _shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, uncertainty_characterization=False):
+    def _shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, 
+                      force_distribution=False, compare_distributions=False):
         """
         Shifts models by the specified column, expected to contain delta times in hours.
         Shifted models are only valid during the interval where data is present,
@@ -1219,7 +1215,12 @@ class Trajectory(_MMESH_mixins.visualization):
         import matplotlib.pyplot as plt
         import copy
         import time
+        import scipy.stats as stats
+        # import tqdm
+        import multiprocessing as mp
         
+        np.seterr(invalid='ignore')
+
         #   We're going to try to do this all with interpolation, rather than 
         #   needing to shift the model dataframe by a constant first
         
@@ -1231,7 +1232,6 @@ class Trajectory(_MMESH_mixins.visualization):
             #   This prevents making needlessly large arrays
             nonnan_row_index = ~self.models[model_name].isnull().all(axis=1)
             nonnan_model_df = self.models[model_name].dropna(how='all')
-            
             
             try:
                 #time_from_index = ((self.models[model_name].index - self.models[model_name].index[0]).to_numpy('timedelta64[s]') / 3600.).astype('float64')
@@ -1263,104 +1263,170 @@ class Trajectory(_MMESH_mixins.visualization):
             #   Now we're shifting based on the ordinate, not the abcissa,
             #   so we have time_from_index - time_deltas, not +
             
-            def shift_function(col, col_name='', model_name='', uncertainty_characterization=False):
-                #   Use the ORIGINAL time_from_index with this, not time_from_index + delta
-                if (time_delta_sigmas == 0.).all():
-                    col_shifted = np.interp(time_from_index - time_deltas, time_from_index, col)
-                    #arr_shifted = np.interp(time_from_index, time_from_index+time_deltas, arr)
-                    col_shifted_pos_unc = col_shifted * 0.
-                    col_shifted_neg_unc = col_shifted * 0.
-                else:
-                    #   Randomly perturb the time deltas by their uncertainties (sigma) n_mc times
-                    r = np.random.default_rng()
-                    arr2d_perturb = r.normal(time_deltas, time_delta_sigmas, (n_mc, len(time_deltas)))
-                    
-                    #   For each of these random selections, sample the corresponding value of column
-                    col2d_perturb = arr2d_perturb*0.
-                    for i in range(n_mc):
-                        col2d_perturb[i,:] = np.interp(time_from_index - arr2d_perturb[i,:], time_from_index, col)
-                    
-                    #   UNCERTAINTY CHARACTERIZATION !!!!
-                    if uncertainty_characterization == True:
-                        import scipy.stats as stats
-                        
-                        #df = pd.DataFrame(col2d_perturb)
-                        
-                        uc_dict = {'r2_norm': [], 'r2_lognorm': []}
-                        for j in tqdm(range(len(time_from_index)), position=0):
-                            coords, res = stats.probplot(col2d_perturb[:,j])
-                            uc_dict['r2_norm'].append(res[2]**2)
-                            
-                            coords, res = stats.probplot(np.log10(col2d_perturb[:,j]))
-                            uc_dict['r2_lognorm'].append(res[2]**2)
-                        uc_df = pd.DataFrame.from_dict(uc_dict)
-                        
-                        uc_filename = '/Users/mrutala/projects/MMESH/uncertainty_characterization/'
-                        uc_filename += model_name + '_' + col_name + '_' + str(n_mc) + 'perturbations_r2.csv'
-                        uc_df.to_csv(uc_filename, header=False, index=False, float_format='%.3E')
-                        # import matplotlib.pyplot as plt
-                        # import scipy.stats as stats
-                        
-                        # r2_norm = []
-                        # r2_lognorm = []
-                        # for j in tqdm(range(len(time_from_index)), position=0):
-                        #     coords, res = stats.probplot(col2d_perturb[:,j])
-                        #     r2_norm.append(res[2]**2)
-                            
-                        #     coords, res = stats.probplot(np.log10(col2d_perturb[:,j]))
-                        #     r2_lognorm.append(res[2]**2)
-                        
-                        # fig, axs = plt.subplots(figsize=(4,4.5), nrows=2, height_ratios=[3.5,1])
-                        # plt.subplots_adjust(hspace=0.3)
-                        
-                        # r2_norm_dist, edges = np.histogram(r2_norm, bins=np.linspace(0,1,101), density=True)
-                        # r2_lognorm_dist, edges = np.histogram(r2_lognorm, bins=np.linspace(0,1,101), density=True)
-                        # bin_widths = edges[1:] - edges[:-1]
-                        # left_edges = edges[:-1]
-                        
-                        # axs[0].stairs(r2_norm_dist, edges, linewidth=2, label='$R^2$ from normal dist.')
-                        # axs[0].stairs(r2_lognorm_dist, edges, linewidth=2, label='$R^2$ from lognormal dist.')
-                        
-                        # axs[0].annotate('{}: {} uncertainties'.format(model_name, col_name), 
-                        #             (0,1), (0,1), 
-                        #             xycoords='axes fraction', textcoords='offset fontsize')
-                        # axs[0].set(xlabel='$R^2$ Values',
-                        #            ylabel='Density')
-                        
-                        # cell_values = [[], []]
-                        # for val in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
-                        #     prob_norm = np.sum((r2_norm_dist * bin_widths)[left_edges >= val])
-                        #     prob_lognorm = np.sum((r2_lognorm_dist * bin_widths)[left_edges >= val])
-                            
-                        #     cell_values[0].append('{:.2f}'.format(prob_norm*100))
-                        #     cell_values[1].append('{:.2f}'.format(prob_lognorm*100))
-                        
-                        
-                        # axs[1].table(cellText=cell_values, 
-                        #              rowLabels=['Norm', 'LogNorm'], 
-                        #              colLabels=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
-                        #              bbox=[0.2,0,0.8,1])  #  bbox here is fraction of ax
-                        # axs[1].set_axis_off()
-                        # axs[1].annotate('%age of obs. > $R^2$ value', (0.5,0), (0,-2),
-                        #                 xycoords='axes fraction', textcoords='offset fontsize',
-                        #                 va = 'center', ha = 'center')
-                        
-                        # axs[0].legend()
-                        # plt.show()
-                    
-                    
-                    #   Return to normally scheduled programming
-                    #   Take the 16th, 50th, and 84th percentiles of the random samples as statistics                
-                    col_16p, col_50p, col_84p = np.percentile(col2d_perturb, [16,50,84], axis=0, overwrite_input=True)
-                    
-                    col_shifted = col_50p
-                    col_shifted_pos_unc = col_84p - col_50p
-                    col_shifted_neg_unc = col_50p - col_16p
-                    
-                   
-
+            #   shift_function() gets redefined for every model, so the time_deltas above are the correct ones
+            def shift_function(col, 
+                               col_name='', model_name='', 
+                               force_distribution=False, 
+                               compare_distributions=False):
+                #   If the col is all NaNs, we can't do anything
+                if ~np.isnan(col).all():
                 
-                output = (col_shifted, col_shifted_pos_unc, col_shifted_neg_unc)
+                    #   Use the ORIGINAL time_from_index with this, not time_from_index + delta
+                    if (time_delta_sigmas == 0.).all():
+                        col_shifted = np.interp(time_from_index - time_deltas, time_from_index, col)
+                        #arr_shifted = np.interp(time_from_index, time_from_index+time_deltas, arr)
+                        col_shifted_pos_unc = col_shifted * 0.
+                        col_shifted_neg_unc = col_shifted * 0.
+                        
+                        output = (col_shifted, col_shifted_pos_unc, col_shifted_neg_unc)
+                        
+                        output = pd.DataFrame({'median': col_shifted,
+                                               'pos_unc': col_shifted_pos_unc,
+                                               'neg_unc': col_shifted_neg_unc})
+                    else:
+                        #   Randomly perturb the time deltas by their uncertainties (sigma) n_mc times
+                        r = np.random.default_rng()
+                        arr2d_perturb = r.normal(time_deltas, time_delta_sigmas, (n_mc, len(time_deltas)))
+                        
+                        #   For each of these random selections, sample the corresponding value of column
+                        col2d_perturb = arr2d_perturb*0.
+                        for i in range(n_mc):
+                            #   !!!! Need to get rid of NaNs before doing this
+                            
+                            col2d_perturb[i,:] = np.interp(time_from_index - arr2d_perturb[i,:], time_from_index, col)
+                        
+                        col2d_perturb_originalsize = col2d_perturb
+                        col2d_cast_indices = np.isfinite(time_deltas)
+                        col2d_perturb = col2d_perturb[:, np.isfinite(time_deltas)]  #   This could filter the original df by self.start and self.stop
+                        
+                        def fit_dist_wmp(func, arr2d):
+                            """
+                            fit dist(ributions) w(ith) m(ulti)p(rocessing)
+    
+                            Parameters
+                            ----------
+                            func : function
+                                scipy.stats.*.fit function, for any distribution
+                            arr2d : n x n_mc np.array
+                                2D array where n is iterated over
+    
+                            Returns
+                            -------
+                            results : n x m np.array
+                                2D array of same length as arr2d, where m is the 
+                                number of fitting parameters returned by func
+    
+                            """
+                            
+                            results = []
+                            
+                            #   Find out how many cores can be used
+                            with mp.Pool(mp.cpu_count()) as pool:
+                                #   Map the fitting function to each column in a generator
+                                gen = pool.imap(func, [col for col in temp_col2d_perturbT])
+                                #   Perform the fitting & print a progress bar
+                                for entry in tqdm(gen, total=len(arr2d)):
+                                    results.append(entry)
+                                    
+                            return np.array(results)
+                                    
+                        #   UNCERTAINTY CHARACTERIZATION !!!!
+                        if force_distribution == True:
+                            #+++++++++++++++++++++++++++++++++++++++++++++++
+                            #   If all values in a column are the same, 
+                            #       the fit will fail
+                            #   If the fit fails in mp, the whole thing 
+                            #       fails
+                            #   So, filter out all same-value columns to 
+                            #       treat separately
+                            #-----------------------------------------------
+                            usable_cols = np.array([~((row == row[0]) == True).all() for row in col2d_perturb.T])
+                            
+                            n_cols = len(col2d_perturb.T)
+                            n_usable_cols = len(np.argwhere(usable_cols))
+                            n_unusable_cols = n_cols - n_usable_cols
+                            
+                            temp_col2d_perturbT = col2d_perturb.T[usable_cols]
+                            
+                            uc_fit = np.zeros((n_cols, 3))
+                            
+                            #   Parallelized fitting
+                            if n_usable_cols > 0:
+                                
+                                tqdm_desc = 'Characterizing uncertainties: {}|{}|{}'.format(self.trajectory_name, model_name, col_name)
+                                mp_results = self._fit_DistributionToList_wmp(temp_col2d_perturbT, desc=tqdm_desc)
+                                
+                                #   Assign the parallelized results
+                                uc_fit[usable_cols] = np.array(mp_results)
+                                
+                            #   Assign the unparallelized results
+                            uc_fit[~usable_cols] = np.array([[0]*n_unusable_cols, np.mean(col2d_perturb.T[~usable_cols],1), [0]*n_unusable_cols]).T
+                            
+                        if compare_distributions == True:
+                            #   Normal
+                            norm_fits = fit_dist_wmp(stats.norm.fit, temp_col2d_perturbT)
+                            norm_ks = [stats.kstest(col, stats.norm.cdf, args=args).statistic for col, args in zip(temp_col2d_perturbT, norm_fits)]
+                            
+                            #   Skew-Normal
+                            skew_fits = fit_dist_wmp(stats.skewnorm.fit, temp_col2d_perturbT)
+                            skew_ks = [stats.kstest(col, stats.skewnorm.cdf, args=args).statistic for col, args in zip(temp_col2d_perturbT, skew_fits)]
+                            
+                            # #   Beta
+                            # #   Not currently supported, as it throws FitErrors
+                            # beta_fits_list = fit_dist_wmp(stats.bera.fit, temp_col2d_perturbT)
+                            # beta_ks = [stats.kstest(col, stats.beta.cdf, args=args) for col, args in zip(temp_col2d_perturbT, beta_fits_list)]
+                            
+                            #   Gamma
+                            gamma_fits = fit_dist_wmp(stats.gamma.fit, temp_col2d_perturbT)
+                            gamma_ks = [stats.kstest(col, stats.gamma.cdf, args=args).statistic for col, args in zip(temp_col2d_perturbT, gamma_fits)]
+                            
+                            #   Save these distributions + ks test
+                            #breakpoint()
+                            
+                            # breakpoint()
+                            # import matplotlib.pyplot as plt
+                            fig, axs = plt.subplots(nrows = 3)
+                            x0 = np.linspace(0.0, 0.1, 50)
+                            x1 = np.linspace(0.0, 1.0, 50)
+                            x2 = np.linspace(0.9, 1.0, 50)
+                            
+                            for name, dist in {'Normal':norm_ks, 'Skew-Normal':skew_ks, 'Gamma':gamma_ks}.items():
+                                axs[0].hist(dist, bins=x0, label=name, linewidth=2, histtype='step')
+                                axs[1].hist(dist, bins=x1, label=name, linewidth=2, histtype='step')
+                                axs[2].hist(dist, bins=x2, label=name, linewidth=2, histtype='step')
+                            for ax in axs:
+                                ax.legend(loc='upper right')
+                            
+                            fig.suptitle('Mode: {}, Variable: {}'.format(model_name, col_name))
+                            fig.supxlabel('K-S Statistic')
+                            fig.supylabel('Number of Fits')
+                            
+                            plt.show()
+                            
+                        
+                        #   Return to normally scheduled programming
+                        #   Take the 16th, 50th, and 84th percentiles of the random samples as statistics                
+                        col_16p, col_50p, col_84p = np.percentile(col2d_perturb, [16,50,84], axis=0, overwrite_input=True)
+                        
+                        col_shifted = col_50p
+                        col_shifted_pos_unc = col_84p - col_50p
+                        col_shifted_neg_unc = col_50p - col_16p
+                        
+                        # output = (col_shifted, col_shifted_pos_unc, col_shifted_neg_unc,
+                        #           uc_fit.T[0], uc_fit.T[1], uc_fit.T[2])
+                        uc_fit_withpadding = np.zeros((len(col), 3))
+                        uc_fit_withpadding[col2d_cast_indices, :] = uc_fit
+                        
+                        output = pd.DataFrame({'a': uc_fit_withpadding.T[0],
+                                               'loc': uc_fit_withpadding.T[1],
+                                               'scale': uc_fit_withpadding.T[2],
+                                               'median': [self.distribution_function.median(*params) for params in uc_fit_withpadding]})
+                else:
+                    output = pd.DataFrame({'a': [np.nan] * len(col),
+                                           'loc': [np.nan] * len(col),
+                                           'scale': [np.nan] * len(col),
+                                           'median': [np.nan] * len(col)})
+                        
                 return output
             
             # def test_shift_function(arr):
@@ -1378,27 +1444,146 @@ class Trajectory(_MMESH_mixins.visualization):
             #     output = (arr_shifted, arr_shifted_sigma)
             #     return output
             
-            #self.best_shift_functions[model_name] = shift_function
-            
             len_items = len(nonnan_model_df.columns)
-            for col_name, col in tqdm(nonnan_model_df.items(), 
-                                      desc='Shifting Columns', 
-                                      total=len_items):
+            for col_name, col in nonnan_model_df.items():
                 #   Skip columns of all NaNs and columns which don't appear
                 #   in list of tracked variables
                 #if len(col.dropna() > 0) and (col_name in self.variables):
                 if (col_name in self.variables):
                     
-                    col_shifted = shift_function(col.to_numpy('float64'), col_name=col_name, model_name=model_name,
-                                                 uncertainty_characterization=uncertainty_characterization)
+                    col_shifted = shift_function(col.to_numpy('float64'), 
+                                                 col_name=col_name, model_name=model_name,
+                                                 force_distribution=force_distribution,
+                                                 compare_distributions=compare_distributions)
                     
-                    shifted_primary_df.loc[nonnan_row_index, (model_name, col_name)] = col_shifted[0]
-                    shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_pos_unc')] = col_shifted[1]
-                    shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_neg_unc')] = col_shifted[2]
+                    col_shifted_df = col_shifted.set_index(nonnan_row_index.index)
+                    
+                    c_name_mapper = dict()
+                    c_names = list(col_shifted_df.columns)
+                    for c_name in c_names:
+                        if c_name == 'median':
+                            c_name_mapper[c_name] = col_name
+                        else:
+                            c_name_mapper[c_name] = col_name + '_' + c_name
+                    
+                    col_shifted_df = col_shifted_df.rename(c_name_mapper, axis='columns')
+                    
+                    for c_name, c in col_shifted_df.items():
+                        shifted_primary_df.loc[nonnan_row_index, (model_name, c_name)] = c
+                    # shifted_primary_df.loc[nonnan_row_index, (model_name, col_name)] = col_shifted[0]
+                    # shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_pos_unc')] = col_shifted[1]
+                    # shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_neg_unc')] = col_shifted[2]
                     
         return shifted_primary_df
+                        
+    def _fit_DistributionToList_wmp(self, list_of_data, desc=''):
+        """
+        fit dist(ributions) w(ith) m(ulti)p(rocessing)
     
-    def ensemble(self, weights = None):
+        Parameters
+        ----------
+        func : function
+            scipy.stats.*.fit function, for any distribution
+        arr2d : n x n_mc np.array
+            2D array where n is iterated over
+    
+        Returns
+        -------
+        results : n x m np.array
+            2D array of same length as arr2d, where m is the 
+            number of fitting parameters returned by func
+    
+        """
+        import multiprocessing as mp
+        
+        results = []
+        
+        #   Find out how many cores can be used
+        func = self.distribution_function.fit
+        
+        with mp.Pool(mp.cpu_count()) as pool:
+            
+            #   Map the fitting function to each entry in the list in a generator
+            gen = pool.imap(func, [entry for entry in list_of_data])
+            #   Perform the fitting & print a progress bar
+            for entry in tqdm(gen, total=len(list_of_data), desc=desc):
+                results.append(entry)
+                
+        return np.array(results)
+
+    # def sample(self, model_names = [], variables = [], n_samples=1, mu=False):
+    #     """
+        
+
+    #     Parameters
+    #     ----------
+    #     model_name : TYPE, optional
+    #         DESCRIPTION. The default is [].
+    #     column_ref : TYPE, optional
+    #         DESCRIPTION. The default is [].
+    #     n_samples : TYPE, optional
+    #         DESCRIPTION. The default is 1.
+
+    #     Returns
+    #     -------
+    #     None.
+
+    #     """
+    #     import scipy.stats as stats
+        
+    #     model_names = list(model_names)
+    #     variables = list(variables)
+        
+    #     if len(model_names) == 0:
+    #         model_names = self.model_names
+    #     if len(variables) == 0:
+    #         variables= self.variables
+        
+    #     for i_sample in range(n_samples): 
+            
+    #         #   Make an empty dataframe to hold the sample
+    #         multiindex = pd.MultiIndex.from_product([self.model_names,
+    #                                                  self.variables])
+    #         sample_df = pd.DataFrame(index = self.models.index,
+    #                                  columns = multiindex)
+    #         for model_name in model_names:
+    #             for variable in variables:
+                    
+    #                 #   For this variable, get the names of parameters describing the distribution
+    #                 param_names = self.models[model_name].columns[self.models[model_name].columns.str.contains(variable)].to_list()
+    #                 param_names.remove(variable)
+                    
+    #                 #   Now get the parameters themselves
+    #                 params = self.models[model_name].loc[:, param_names]
+                    
+    #                 #
+    #                 def apply_fn(row):
+    #                     return stats.skewnorm.mean(*row.to_numpy())
+                    
+    #                 sample_df.loc[:, (model_name, variable)] = params.apply(apply_fn, axis='columns')
+                    
+    #         breakpoint()
+                
+    #     return
+    
+    def weights(self, how='default'):
+        
+        #   Create a new DataFrame with all model-variable combinations
+        weights = self._primary_df.loc[:, pd.IndexSlice[:, self.variables]].copy(deep=True)
+        #   And then empty it
+        for col in weights.columns:
+            weights.loc[:, col] = 1
+            
+        if how == 'default':
+            #   By default, weights are 1 unless that corresponding model has NaNs, in which case its 0
+            for model_name in self.model_names:
+                for variable in self.variables:
+                    isnan_mask = np.isnan(self.models[model_name][variable].to_numpy())
+                    weights.loc[isnan_mask, (model_name, variable)] = 0
+        
+        return weights
+    
+    def ensemble(self, weights = None, as_skewnorm = True):
         """
         Produces an ensemble model from inputs.
         
@@ -1408,7 +1593,7 @@ class Trajectory(_MMESH_mixins.visualization):
             Parameters Weights: account for better performance of individual parameters within a model
                 i.e., Model 1 velocity may outperform Model 2, but Model 2 pressure may outperform Model 1
             Timestep Weights: Certain models may relatively outperform others at specific times. 
-                Also allows inclusion of partial models, i.e., HUXt velocity but with 0 weight in pressure
+                Also allows inclusion of partial models, i.e., HUXt velocity but with 0 weight in e.g. pressure
 
         Parameters
         ----------
@@ -1423,60 +1608,306 @@ class Trajectory(_MMESH_mixins.visualization):
         import pandas as pd
         from functools import reduce
         
-        #weights_df = pd.DataFrame(columns = self.em_parameters)
+        #   Ignores math warnings in numpy that clutter the terminal
+        np.seterr(invalid='ignore')
         
-        # weights = dict.fromkeys(self.variables, 1.0/len(self.model_names))
-        # print(weights)
+        #   Initialize an empty ensmeble data frame
+        ensemble = pd.DataFrame(index = self._primary_df.index)
         
-        # if weights == None:
-        #     for model in self.model_names:
-        #         all_nans = ~self.model_dfs[model].isna().all()
-        #         overlap_col = list(set(all_nans.index) & set(weights_df.columns))
-        #         weights_df.loc[model] = all_nans[overlap_col].astype(int)
-        #         weights_df = weights_df.div(weights_df.sum())
+        if weights == None:
+            weights = self.weights()
         
-        # if dict, use dict
-        # if list/array, assign to dict in order
-        # if none, make dict with even weights
-        
-        #   Equal weights
-        
-        
-        #   Equal weights, but ignoring NaNs and Zeros
-        weights = np.zeros(np.shape(self.models[self.model_names[0]][self.variables]))
-        for model_name in self.model_names:
-            #   !!!! Add zero handling
-            weights += self.models[model_name][self.variables].notna().astype('float64').values
-        weights[np.where(weights > 0)] = 1.0/weights[np.where(weights > 0)]
-        
-        #   
-        variables_unc = [v+'_pos_unc' for v in self.variables]
-        variables_unc.extend([v+'_neg_unc' for v in self.variables])
-        
-        partials_list = []
-        for model_name in self.model_names:
-            df = self.models[model_name][self.variables].mul(weights, fill_value=0.)
+        if as_skewnorm:
             
-            if set(variables_unc).issubset(set(self.models[model_name].columns)): #   If sigmas get added from start, get rid of this bit
+            for variable in self.variables:
                 
-                weights_for_unc = np.concatenate((weights, weights), axis=1)
-                df[variables_unc] = self.models[model_name][variables_unc].mul(weights_for_unc, fill_value=0.)
+                #   Estimate the bounds of this variable from the minimum and maximum of the 95% confidence interval
+                dynamic_range = []
+                for model_name in self.model_names:
+                    
+                    dist_params = self._secondary_df[model_name].loc[:, [variable+'_a', variable+'_loc', variable+'_scale']].to_numpy()
+                    
+                    interval95 = np.array([np.percentile(self.distribution_function.rvs(*dist_param, size=1000), (2.5, 97.5)) if (~np.isnan(dist_param)).all() else [np.nan, np.nan] for dist_param in dist_params])
+                    
+                    # interval95 = np.array([self.distribution_function.interval(0.95, *dist_param) for dist_param in dist_params])
+                    
+                    # #   The skew-normal distribution can cause errors in the interval function, causing the right hand bound to go negative
+                    # #   These are not physical-- simply NaN them
+                    # if (interval95[:,1] < 0).any():
+                    #     interval95[interval95[:,1] < 0, 1] = np.nan
+                    
+                    dynamic_range.extend(interval95.flatten())
                 
-            partials_list.append(df)
-        
-        #   Empty dataframe of correct dimensions for ensemble
-        ensemble = partials_list[0].mul(0.)
-        
-        #   Sum weighted variables, and RSS weighted errors
-        for partial in partials_list:
-            ensemble.loc[:, self.variables] += partial.loc[:, self.variables].astype('float64')
-            ensemble.loc[:, variables_unc] += (partial.loc[:, variables_unc].astype('float64'))**2.
+                #   np.perceniles prevents single large or small numbers form biasing these
+                var_min, var_max = np.nanpercentile(dynamic_range, (2.5, 97.5))
+                    
+                #   n x m numpy array, where:
+                #   n = length of _primary_df
+                #   m = length of values sampled over, arbitrary
+                m_pdf = 1000
+                x_pdf = np.linspace(var_min, var_max, m_pdf)
+                variable_2d_arr = np.zeros((len(self._secondary_df), m_pdf)) + 1
+                
+                for model_name in self.model_names:
+                
+                    variable_params_withpadding_df = self.models[model_name].filter(like=variable, axis='columns')
+                    variable_params_withpadding_df.drop(variable, axis='columns', inplace=True)
+                    variable_params_df = variable_params_withpadding_df.query('@self.start <= index < @self.stop')
+                    
+                    variable_model_weights = weights.query('@self.start <= index < @self.stop').loc[:, (model_name, variable)].to_numpy()
+                    
+                    #   If all weights are zero here, skip the pdf generation
+                    if ~(variable_model_weights == 0.).all():
+                        for i in range(len(self._secondary_df)):
+                            #
+                            pdf = self.distribution_function.pdf(x_pdf, *variable_params_df.iloc[i].to_numpy())
+                            
+                            #   Multiply the resulting pdf by the correct weights
+                            pdf *= variable_model_weights[i]
+                            
+                            variable_2d_arr[i,:] *= pdf
+                
+                #   The scale factor rescales the pdf such that the mean is 100
+                scale_factor = 1/np.mean(variable_2d_arr) * 1e2
+                
+                simulated_histogram2d = np.int64(variable_2d_arr * scale_factor)
+                
+                simulated_data = [np.repeat(x_pdf, histo) for histo in simulated_histogram2d]
+                
+                fit_list = self._fit_DistributionToList_wmp(simulated_data)
+                
+                #   Calculate the median of the pdf and set it as the titular value
+                ensemble.loc[self._secondary_df.index, variable] = [self.distribution_function.median(*f) for f in fit_list]
+                
+                #   Report the a (skew), loc, and shape parameters as well
+                ensemble.loc[self._secondary_df.index, variable + '_a'] = fit_list.T[0]
+                ensemble.loc[self._secondary_df.index, variable + '_loc'] = fit_list.T[1]
+                ensemble.loc[self._secondary_df.index, variable + '_scale'] = fit_list.T[2]
             
-        ensemble.loc[:, variables_unc] = np.sqrt(ensemble.loc[:, variables_unc])
-        #   !!!! This doesn't add error properly
-        # ensemble = reduce(lambda a,b: a.add(b, fill_value=0.), partials_list)
-
+        else:
+            #weights_df = pd.DataFrame(columns = self.em_parameters)
+            
+            # weights = dict.fromkeys(self.variables, 1.0/len(self.model_names))
+            # print(weights)
+            
+            # if weights == None:
+            #     for model in self.model_names:
+            #         all_nans = ~self.model_dfs[model].isna().all()
+            #         overlap_col = list(set(all_nans.index) & set(weights_df.columns))
+            #         weights_df.loc[model] = all_nans[overlap_col].astype(int)
+            #         weights_df = weights_df.div(weights_df.sum())
+            
+            # if dict, use dict
+            # if list/array, assign to dict in order
+            # if none, make dict with even weights
+            
+            #   Equal weights
+            
+            
+            #   Equal weights, but ignoring NaNs and Zeros
+            weights = np.zeros(np.shape(self.models[self.model_names[0]][self.variables]))
+            for model_name in self.model_names:
+                #   !!!! Add zero handling
+                weights += self.models[model_name][self.variables].notna().astype('float64').values
+            weights[np.where(weights > 0)] = 1.0/weights[np.where(weights > 0)]
+            
+            #   
+            variables_unc = [v+'_pos_unc' for v in self.variables]
+            variables_unc.extend([v+'_neg_unc' for v in self.variables])
+            
+            partials_list = []
+            for model_name in self.model_names:
+                df = self.models[model_name][self.variables].mul(weights, fill_value=0.)
+                
+                if set(variables_unc).issubset(set(self.models[model_name].columns)): #   If sigmas get added from start, get rid of this bit
+                    
+                    weights_for_unc = np.concatenate((weights, weights), axis=1)
+                    df[variables_unc] = self.models[model_name][variables_unc].mul(weights_for_unc, fill_value=0.)
+                    
+                partials_list.append(df)
+            
+            #   Empty dataframe of correct dimensions for ensemble
+            ensemble = partials_list[0].mul(0.)
+            breakpoint()
+            #   Sum weighted variables, and RSS weighted errors
+            for partial in partials_list:
+                ensemble.loc[:, self.variables] += partial.loc[:, self.variables].astype('float64')
+                ensemble.loc[:, variables_unc] += (partial.loc[:, variables_unc].astype('float64'))**2.
+                
+            ensemble.loc[:, variables_unc] = np.sqrt(ensemble.loc[:, variables_unc])
+            #   !!!! This doesn't add error properly
+            # ensemble = reduce(lambda a,b: a.add(b, fill_value=0.), partials_list)
+        
+        
         self.addModel('ensemble', ensemble, model_source='MME')
+    
+    # =============================================================================
+    #     Statistical convenience functions   
+    # =============================================================================
+    def _parse_stats_inputs(self, model_names, variables):
+        model_names = self.model_names if model_names is None else model_names
+        model_names = [model_names] if isinstance(model_names, str) else model_names
+        
+        variables = self.variables if variables is None else variables
+        variables = [variables] if isinstance(variables, str) else variables
+        
+        return model_names, variables
+    
+    def _scipy_stats_method_apply(self, method, model_names, variables):
+        from pandas import IndexSlice as idx
+        
+        #   This falsely 
+        pd.options.mode.chained_assignment = None  # default='warn'
+        
+        model_names, variables = self._parse_stats_inputs(model_names, variables)
+        
+        #   Create a df to hold the output and set all to 0
+        output_df = self._primary_df.loc[:, idx[model_names, variables]]
+        for col in output_df.columns:
+            output_df.loc[:, col] = np.nan
+        
+        for model_name in model_names:
+            for variable in variables:
+                #   This makes sure that all the distribution params are ordered in the expected way
+                dist_param_names = [variable + suffix for suffix in ['_a', '_loc', '_scale']]
+                df = self.models[model_name].loc[:, dist_param_names]
+                
+                #   Only take the defined bits
+                defined_indx = [~np.isnan(row).all() for _, row in df.iterrows()]
+                dist_params = df.loc[defined_indx, :].to_numpy()
+                    
+                statistics = [method(*dist_param) for dist_param in dist_params]
+                statistics = np.array(statistics).flatten()
+                
+                output_df.loc[defined_indx, idx[model_name, variable]] = statistics
+        
+        return output_df
+    
+    def median(self, model_names=None, variables=None):
+        
+        method = self.distribution_function.median
+        result = self._scipy_stats_method_apply(method, model_names, variables)
+        
+        return result
+    
+    def ci(self, percentile=50, model_names=None, variables=None):
+        
+        #   Percent Point Function needs an extra argument, 
+        #   so define a new function
+        def method(*args):
+            return self.distribution_function.ppf(percentile/100, *args)
+        result = self._scipy_stats_method_apply(method, model_names, variables)
+        
+        return result
+    
+    def mean(self, model_names=None, variables=None):
+        
+        method = self.distribution_function.mean
+        result = self._scipy_stats_method_apply(method, model_names, variables)
+        
+        return result
+    
+    def sigma(self, model_names=None, variables=None):
+        
+        method = self.distribution_function.std
+        result = self._scipy_stats_method_apply(method, model_names, variables)
+        
+        return result
+    
+    def nsigma(self, n=1, model_names=None, variables=None):
+        
+        mu = self.mean(model_names, variables)
+        sigma = self.sigma(model_names, variables)
+        
+        return mu + n * sigma
+        
+    def sample(self, model_names=None, variables=None, size=1):
+        
+        def method(*args):
+            return self.distribution_function.rvs(*args, size=1)
+        
+        #   Consider looping over this to sample more?
+        result = []
+        for i in tqdm(range(size)):
+            result.append(self._scipy_stats_method_apply(method, model_names, variables))
+    
+        if size == 1:
+            result = result[0]
+        
+        return result
+    
+    def taylor_statistics(self, model_names=None, variables=None, with_error=True):
+        import plot_TaylorDiagram as TD
+        
+        model_names, variables = self._parse_stats_inputs(model_names, variables)
+        
+        if with_error:
+            index = ['r_mu', 'r_sigma', 'sig_mu', 'sig_sigma', 'rmsd_mu', 'rmsd_sigma']
+            n_mc = 100
+        else:
+            index = ['r', 'sig', 'rmsd']
+            n_mc = 1
+        
+        output_cols = pd.MultiIndex.from_product([model_names, variables])
+        output_df = pd.DataFrame(index=index,
+                                 columns=output_cols)
+        
+        #   Sample the df, making sure its a list
+        sampled_dfs = self.sample(size = n_mc)
+        if not with_error:
+            sampled_dfs = [sampled_dfs]
+        
+        for variable in variables:
+            
+            #   Drop all NaN rows, *unless* the whole column is NaN
+            #   This ensures the corr. coeffs. can be compared between models
+            usable_cols = self.model_names
+            for col in usable_cols:
+                if self.models[col][variable].isnull().all():
+                    usable_cols.remove(col)
+            
+            #   Get a df only looking at variable
+            isolated_variable_dfs = [df.xs(variable, axis='columns', level=1) for df in sampled_dfs]
+            
+            isolated_variable_dfs = [df.dropna(axis = 'index', how = 'any', subset = usable_cols) for df in isolated_variable_dfs]
+            
+            for model_name in model_names:
+                
+                isolated_model_dfs = [df[model_name] for df in isolated_variable_dfs]
+                
+                r_list, sig_list, rmsd_list = [], [], []
+                for i, df in enumerate(isolated_model_dfs):
+                    
+                    #   Squeeze forces this to be a series, so can be directly compared to spacecraft data
+                    (r, sig), rmsd = TD.find_TaylorStatistics(test_data = df.squeeze(),
+                                                              ref_data = self.data.loc[df.index, variable])
+                    
+                    r_list.append(r)
+                    sig_list.append(sig)
+                    rmsd_list.append(rmsd)
+                        
+                        
+                if with_error:
+                    
+                    output_df.loc['r_mu', (model_name, variable)] = np.mean(r_list)
+                    output_df.loc['r_sigma',  (model_name, variable)] = np.std(r_list)
+                    output_df.loc['sig_mu', (model_name, variable)] = np.mean(sig_list)
+                    output_df.loc['sig_sigma', (model_name, variable)] = np.std(sig_list)
+                    output_df.loc['rmsd_mu', (model_name, variable)] = np.mean(rmsd_list)
+                    output_df.loc['rmsd_sigma', (model_name, variable)] = np.std(rmsd_list)
+                
+                else:
+                    
+                    output_df.loc['r', (model_name, variable)] = r_list[0]
+                    output_df.loc['sig', (model_name, variable)] = sig_list[0]
+                    output_df.loc['rmsd', (model_name, variable)] = rmsd_list[0]
+            
+            
+                
+        breakpoint()
+        
+        return output_df
+    
         
     # =============================================================================
     #   Plotting stuff
