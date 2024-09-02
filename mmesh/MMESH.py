@@ -13,6 +13,7 @@ import pandas as pd
 from tqdm import tqdm
 import scipy
 
+
 import plot_TaylorDiagram as TD
 
 from matplotlib.ticker import MultipleLocator
@@ -110,7 +111,11 @@ class MultiTrajectory:
         
         #   Store path info as pathlib Path
         for path_name, path_spec in config_dict['paths'].items():
-            self.filepaths[path_name] = Path(path_spec)
+            path_formatted = Path(path_spec)
+            self.filepaths[path_name] = path_formatted
+            
+            #   Check that the paths exist, and if not, make them
+            path_formatted.mkdir(parents=True, exist_ok=True)
         
         #   Store domain info
         self.domain = config_dict['domain']
@@ -1899,14 +1904,14 @@ class Trajectory(_MMESH_mixins.visualization):
         
         return result
     
-    def taylor_statistics(self, model_names=None, variables=None, with_error=True):
+    def taylor_statistics(self, model_names=None, variables=None, with_error=True, n_mc=100):
         import plot_TaylorDiagram as TD
         
         model_names, variables = self._parse_stats_inputs(model_names, variables)
         
         if with_error:
             index = ['r_mu', 'r_sigma', 'sig_mu', 'sig_sigma', 'rmsd_mu', 'rmsd_sigma']
-            n_mc = 100
+            n_mc = n_mc
         else:
             index = ['r', 'sig', 'rmsd']
             n_mc = 1
@@ -1933,7 +1938,7 @@ class Trajectory(_MMESH_mixins.visualization):
             isolated_variable_dfs = [df.xs(variable, axis='columns', level=1) for df in sampled_dfs]
             
             isolated_variable_dfs = [df.dropna(axis = 'index', how = 'any', subset = usable_cols) for df in isolated_variable_dfs]
-            
+            breakpoint()
             for model_name in model_names:
                 
                 isolated_model_dfs = [df[model_name] for df in isolated_variable_dfs]
