@@ -39,13 +39,13 @@ def read_model(model, target, starttime, stoptime, resolution=None):
     
     #   Read the config file
     config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
-    config.read('../Readers.ini')
+    config.read('/Users/mrutala/projects/MMESH/Readers.ini')
     
     #   Read the base directory and construct a directory from it
     fulldir = Path(config['Models']['directory']) / model / target
     
     #   Search for files (NOT directories) in the specified directory
-    filenames = [g.split('/')[-1] for g in glob.glob(str(fulldir / '*.*'))]
+    filenames = [g.split('/')[-1] for g in glob.glob(str(fulldir / '*.???'))]
     if filenames == []:
         logging.warning('No files were found in {}. '
                         'Please check the directory, bearing in mind that '
@@ -95,26 +95,31 @@ def apply_equations(df):
     
     return_df = df.copy(deep=True)
     
-    if 'n_tot' not in df.columns:
-        n_proton = np.zeros(len(df)) if 'n_proton' not in df.columns else df.loc[:, 'n_proton']
-        n_alpha = np.zeros(len(df)) if 'n_alpha' not in df.columns else df.loc[:, 'n_alpha']
+    existing_cols = list(df.columns)
+    for col in existing_cols:
+        if (df[col].isnull().all()) or ((df[col] == 0).all()):
+            existing_cols.remove(col)
+    
+    if 'n_tot' not in existing_cols:
+        n_proton = np.zeros(len(df)) if 'n_proton' not in existing_cols else df.loc[:, 'n_proton']
+        n_alpha = np.zeros(len(df)) if 'n_alpha' not in existing_cols else df.loc[:, 'n_alpha']
         n_tot = n_proton #+ n_alpha
         if (n_tot == 0).all():
             n_tot += np.nan
         return_df.loc[:, 'n_tot'] = n_tot
         
-    if 'u_mag' not in df.columns:
-        u_r = np.zeros(len(df)) if 'u_r' not in df.columns else df.loc[:, 'u_r']
-        u_t = np.zeros(len(df)) if 'u_t' not in df.columns else df.loc[:, 'u_t']
-        u_n = np.zeros(len(df)) if 'u_n' not in df.columns else df.loc[:, 'u_n']
+    if 'u_mag' not in existing_cols:
+        u_r = np.zeros(len(df)) if 'u_r' not in existing_cols else df.loc[:, 'u_r']
+        u_t = np.zeros(len(df)) if 'u_t' not in existing_cols else df.loc[:, 'u_t']
+        u_n = np.zeros(len(df)) if 'u_n' not in existing_cols else df.loc[:, 'u_n']
         u_mag = np.sqrt(u_r**2 + u_t**2 + u_n**2)
         if (u_mag == 0).all():
             u_mag += np.nan
         return_df.loc[:, 'u_mag'] = u_mag
 
-    if 'p_dyn' not in df.columns:
-        p_dyn_proton = np.zeros(len(df)) if 'p_dyn_proton' not in df.columns else df.loc[:, 'p_dyn_proton']
-        p_dyn_alpha = np.zeros(len(df)) if 'p_dyn_alpha' not in df.columns else df.loc[:, 'p_dyn_alpha']
+    if 'p_dyn' not in existing_cols:
+        p_dyn_proton = np.zeros(len(df)) if 'p_dyn_proton' not in existing_cols else df.loc[:, 'p_dyn_proton']
+        p_dyn_alpha = np.zeros(len(df)) if 'p_dyn_alpha' not in existing_cols else df.loc[:, 'p_dyn_alpha']
         p_dyn = p_dyn_proton #+ p_dyn_alpha
         
         #   Unlike the other variables, we can potentially calculate a p_dyn
@@ -126,10 +131,10 @@ def apply_equations(df):
                 p_dyn = (n_tot * kg_per_amu * 1e6) * (u_mag * 1e3)**2 * 1e9
         return_df.loc[:, 'p_dyn'] = p_dyn
         
-    if 'B_mag' not in df.columns:
-        B_r = np.zeros(len(df)) if 'B_r' not in df.columns else df.loc[:, 'B_r']
-        B_t = np.zeros(len(df)) if 'B_t' not in df.columns else df.loc[:, 'B_t']
-        B_n = np.zeros(len(df)) if 'B_n' not in df.columns else df.loc[:, 'B_n']
+    if 'B_mag' not in existing_cols:
+        B_r = np.zeros(len(df)) if 'B_r' not in existing_cols else df.loc[:, 'B_r']
+        B_t = np.zeros(len(df)) if 'B_t' not in existing_cols else df.loc[:, 'B_t']
+        B_n = np.zeros(len(df)) if 'B_n' not in existing_cols else df.loc[:, 'B_n']
         B_mag = np.sqrt(B_r**2 + B_t**2 + B_n**2)
         if (B_mag == 0).all():
             B_mag += np.nan
