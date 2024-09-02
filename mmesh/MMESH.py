@@ -215,7 +215,7 @@ class MultiTrajectory:
         
         return predictions_dict
     
-    def cast_Models(self, with_error=True):
+    def cast_Models(self, with_error=True, min_rel_scale = None):
         
         #   For now, assume that we get a MLR prediction from linear_regression()
         #   May want to retool this eventually to just add errors from shifts to models?
@@ -276,7 +276,7 @@ class MultiTrajectory:
             #   Second: shift the models according to the time_delta predictions    
             if with_error:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta', time_delta_sigma_column='mlr_time_delta_sigma',
-                                           force_distribution=True, compare_distributions=False)
+                                           force_distribution=True, compare_distributions=False, min_rel_scale = min_rel_scale)
             else:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta')
             
@@ -1192,17 +1192,20 @@ class Trajectory(_MMESH_mixins.visualization):
         return
     
     def shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, 
-                     force_distribution=False, compare_distributions=False):
+                     force_distribution=False, compare_distributions=False,
+                     min_rel_scale = None):
         
         result = self._shift_Models(time_delta_column=time_delta_column, 
                                     time_delta_sigma_column=time_delta_sigma_column,
                                     n_mc=n_mc,
                                     force_distribution=force_distribution,
-                                    compare_distributions=compare_distributions)
+                                    compare_distributions=compare_distributions,
+                                    min_rel_scale = min_rel_scale)
         self._primary_df = result
     
     def _shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, 
-                      force_distribution=False, compare_distributions=False):
+                      force_distribution=False, compare_distributions=False,
+                      min_rel_scale = 1e-11):
         """
         Shifts models by the specified column, expected to contain delta times in hours.
         Shifted models are only valid during the interval where data is present,
@@ -1220,6 +1223,8 @@ class Trajectory(_MMESH_mixins.visualization):
         import multiprocessing as mp
         
         np.seterr(invalid='ignore')
+        
+        if min_rel_scale is None: min_rel_scale = 1e-11
 
         #   We're going to try to do this all with interpolation, rather than 
         #   needing to shift the model dataframe by a constant first
@@ -1230,7 +1235,7 @@ class Trajectory(_MMESH_mixins.visualization):
             
             #   temporarily drop all-nan rows from the model-specific df
             #   This prevents making needlessly large arrays
-            nonnan_row_index = ~self.models[model_name].isnull().all(axis=1)
+            # nonnan_row_index = ~self.models[model_name].isnull().all(axis=1)
             nonnan_model_df = self.models[model_name].dropna(how='all')
             
             try:
@@ -1267,7 +1272,8 @@ class Trajectory(_MMESH_mixins.visualization):
             def shift_function(col, 
                                col_name='', model_name='', 
                                force_distribution=False, 
-                               compare_distributions=False):
+                               compare_distributions=False,
+                               min_rel_scale = min_rel_scale):
                 #   If the col is all NaNs, we can't do anything
                 if ~np.isnan(col).all():
                 
@@ -1406,16 +1412,30 @@ class Trajectory(_MMESH_mixins.visualization):
                         
                         #   Return to normally scheduled programming
                         #   Take the 16th, 50th, and 84th percentiles of the random samples as statistics                
-                        col_16p, col_50p, col_84p = np.percentile(col2d_perturb, [16,50,84], axis=0, overwrite_input=True)
+                        # col_16p, col_50p, col_84p = np.percentile(col2d_perturb, [16,50,84], axis=0, overwrite_input=True)
                         
-                        col_shifted = col_50p
-                        col_shifted_pos_unc = col_84p - col_50p
-                        col_shifted_neg_unc = col_50p - col_16p
+                        # col_shifted = col_50p
+                        # col_shifted_pos_unc = col_84p - col_50p
+                        # col_shifted_neg_unc = col_50p - col_16p
+                        
+                        #   Force a minimum for the relative scale;
+                        #   By default, this 1e-11 (a billionth of 1%)
+                        #   Helps prevent errors with overly-peaked distributions
+                        #   !!!!! This could alternatively take the form of a small 
+                        #   additional scale added in quadrature to each term, regardless of rel. scale
+                        scale_rel_to_loc = uc_fit.T[2] / uc_fit.T[1]
+                        lt_min_indx = scale_rel_to_loc < min_rel_scale
+                        
+                        if (lt_min_indx == True).any():
+                            uc_fit.T[2][lt_min_indx] = uc_fit.T[1][lt_min_indx] * min_rel_scale
                         
                         # output = (col_shifted, col_shifted_pos_unc, col_shifted_neg_unc,
                         #           uc_fit.T[0], uc_fit.T[1], uc_fit.T[2])
                         uc_fit_withpadding = np.zeros((len(col), 3))
                         uc_fit_withpadding[col2d_cast_indices, :] = uc_fit
+                        
+
+                        
                         
                         output = pd.DataFrame({'a': uc_fit_withpadding.T[0],
                                                'loc': uc_fit_withpadding.T[1],
@@ -1456,7 +1476,7 @@ class Trajectory(_MMESH_mixins.visualization):
                                                  force_distribution=force_distribution,
                                                  compare_distributions=compare_distributions)
                     
-                    col_shifted_df = col_shifted.set_index(nonnan_row_index.index)
+                    col_shifted_df = col_shifted.set_index(nonnan_model_df.index)
                     
                     c_name_mapper = dict()
                     c_names = list(col_shifted_df.columns)
@@ -1469,7 +1489,7 @@ class Trajectory(_MMESH_mixins.visualization):
                     col_shifted_df = col_shifted_df.rename(c_name_mapper, axis='columns')
                     
                     for c_name, c in col_shifted_df.items():
-                        shifted_primary_df.loc[nonnan_row_index, (model_name, c_name)] = c
+                        shifted_primary_df.loc[:, (model_name, c_name)] = c
                     # shifted_primary_df.loc[nonnan_row_index, (model_name, col_name)] = col_shifted[0]
                     # shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_pos_unc')] = col_shifted[1]
                     # shifted_primary_df.loc[nonnan_row_index, (model_name, col_name+'_neg_unc')] = col_shifted[2]
@@ -1621,8 +1641,16 @@ class Trajectory(_MMESH_mixins.visualization):
             
             for variable in self.variables:
                 
+                #   !!!!!!
+                #   THIS SECTION NEEDS TO BE REWRITTEN
+                #   x_pdf should vary per row
+                #   So, x_pdf is a list of (potentially) unequal lengths... although can force m_pdf length too
+                #   variable_2d_LIST is a LIST where each entry is the same len as corresponding entry in x_pdf
+                #   Loop over the same way, multiplying pdf to build up, etc.
+                #   Doing this should prevent overly-narrow distributions in the fake histograms
+                
                 #   Estimate the bounds of this variable from the minimum and maximum of the 95% confidence interval
-                dynamic_range = []
+                var_mins, var_maxs = [], []
                 for model_name in self.model_names:
                     
                     dist_params = self._secondary_df[model_name].loc[:, [variable+'_a', variable+'_loc', variable+'_scale']].to_numpy()
@@ -1636,17 +1664,25 @@ class Trajectory(_MMESH_mixins.visualization):
                     # if (interval95[:,1] < 0).any():
                     #     interval95[interval95[:,1] < 0, 1] = np.nan
                     
-                    dynamic_range.extend(interval95.flatten())
+                    var_mins.append(interval95.T[0])
+                    var_maxs.append(interval95.T[1])
                 
                 #   np.perceniles prevents single large or small numbers form biasing these
-                var_min, var_max = np.nanpercentile(dynamic_range, (2.5, 97.5))
-                    
+                # var_min, var_max = np.nanpercentile(dynamic_range, (2.5, 97.5))
+                
+                #   All models are going to be on the same interpolated axis, 
+                #   so make sure the min and max are sufficient for all expected values
+                x_min_list = np.nanmin(var_mins, 0)
+                x_max_list = np.nanmax(var_maxs, 0)
+                
                 #   n x m numpy array, where:
                 #   n = length of _primary_df
                 #   m = length of values sampled over, arbitrary
                 m_pdf = 1000
-                x_pdf = np.linspace(var_min, var_max, m_pdf)
-                variable_2d_arr = np.zeros((len(self._secondary_df), m_pdf)) + 1
+                # x_pdf = np.linspace(var_min, var_max, m_pdf)
+                x_pdf_list = [np.linspace(l, r, m_pdf) for l, r in zip(x_min_list, x_max_list)]
+                
+                variable_list = [np.zeros(m_pdf) + 1 for i in range(len(self._secondary_df))]
                 
                 for model_name in self.model_names:
                 
@@ -1660,21 +1696,48 @@ class Trajectory(_MMESH_mixins.visualization):
                     if ~(variable_model_weights == 0.).all():
                         for i in range(len(self._secondary_df)):
                             #
-                            pdf = self.distribution_function.pdf(x_pdf, *variable_params_df.iloc[i].to_numpy())
+                            pdf = self.distribution_function.pdf(x_pdf_list[i], *variable_params_df.iloc[i].to_numpy())
                             
                             #   Multiply the resulting pdf by the correct weights
                             pdf *= variable_model_weights[i]
                             
-                            variable_2d_arr[i,:] *= pdf
+                            #   Where the pdf is NaN, it shouldn't change the values of variable_list
+                            isnan_mask = np.isnan(pdf)
+                            if (isnan_mask == True).any():
+                                pdf[isnan_mask] = 1
+                            
+                            #   THIS SHOULDNT HAPPEN
+                            if (pdf == 0).all() == True:
+                                breakpoint()
+                            
+                            variable_list[i] *= pdf
+                            
+                variable_poorly_constrained_mask = [(v == 0).all() for v in variable_list]
                 
-                #   The scale factor rescales the pdf such that the mean is 100
-                scale_factor = 1/np.mean(variable_2d_arr) * 1e2
+                if (np.array(variable_poorly_constrained_mask) == True).any():
+                    #   Simulate a broad pdf, centered at the mean and 
+                    #   with non-zero density at all extrema
+    
+                    breakpoint()
                 
-                simulated_histogram2d = np.int64(variable_2d_arr * scale_factor)
+                #   The scale factor rescales the pdf such that the sum is ~m_pdf
+                #   This should yield histograms in the next step with reasonable samples
+                # scale_factor = 1/np.sum(variable_2d_arr, axis=1) * m_pdf
+                scale_factor_list = [1/np.sum(v) * m_pdf for v in variable_list]
                 
-                simulated_data = [np.repeat(x_pdf, histo) for histo in simulated_histogram2d]
+                #   This multiplies the correct dimensions by scale_factor
+                # simulated_histogram2d = np.int64(variable_2d_arr * scale_factor[:, np.newaxis])
+                simulated_histogram_list = [np.int64(v * sf) for v, sf in zip(variable_list, scale_factor_list)]
                 
-                fit_list = self._fit_DistributionToList_wmp(simulated_data)
+                try:
+                    simulated_data = [np.repeat(x, h) for x, h in zip(x_pdf_list, simulated_histogram_list)]
+                except:
+                    breakpoint()
+                
+                try:
+                    fit_list = self._fit_DistributionToList_wmp(simulated_data)
+                except:
+                    breakpoint()
                 
                 #   Calculate the median of the pdf and set it as the titular value
                 ensemble.loc[self._secondary_df.index, variable] = [self.distribution_function.median(*f) for f in fit_list]
