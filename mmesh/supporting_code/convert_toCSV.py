@@ -91,12 +91,19 @@ def convert_toCSV_TaoToAMDA(target_dir='', new_dir=''):
         file_data['B_r'] = np.NaN
         file_data = file_data[new_column_headers]
         
+        if file_data.loc[:, 'B_r'].isnull().all():
+            file_data.loc[:, 'B_r'] = 0.0
+            
+        #   These files don't have p_dyn written correctly, so re-calculate
+        file_data['p_dyn_proton'] = (1.67e-27) * file_data['n_proton'] * (1e6) * (file_data['u_r']**2 + file_data['u_t']**2) * (1e3)**2 * 1e9
+    
         #   Write this file back out to a CSV
         newfile = new_dir + filename[0:-4]+'.txt'
+
         
         with open(newfile, 'w') as f:
             f.write('#')
-            
+         
         file_data.to_csv(new_dir + filename[0:-4]+'.txt', sep=' ', index=False, mode='a', date_format='%Y-%m-%dT%H:%M:%S.%f')
     
     return
