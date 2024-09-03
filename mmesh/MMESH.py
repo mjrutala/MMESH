@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import scipy
-
+import multiprocessing as mp
 
 import plot_TaylorDiagram as TD
 
@@ -116,6 +116,19 @@ class MultiTrajectory:
             
             #   Check that the paths exist, and if not, make them
             path_formatted.mkdir(parents=True, exist_ok=True)
+            (path_formatted/'context/').mkdir(parents=True, exist_ok=True)
+            (path_formatted/'figures/').mkdir(parents=True, exist_ok=True)
+        
+        #   Initialize a logger for messages to terminal/file
+        logger = logging.getLogger(__name__)
+        logger_filepath = (self.filepaths['output'] / Path(config_fullfilepath).stem).with_suffix('.log')
+        logging.basicConfig(filename = logger_filepath, 
+                            level=logging.INFO, 
+                            filemode = 'w')
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        logger.addHandler(console_handler)
+        self.logger = logger
         
         #   Store domain info
         self.domain = config_dict['domain']
@@ -129,6 +142,8 @@ class MultiTrajectory:
             
             self.trajectory_names.append(trajectory_name)
             self.trajectory_sources[trajectory_name] = val['source']
+            
+            self.trajectories[trajectory_name].logger = self.logger
 
         #   Store model info
         #   This doesn't go in the Trajectory proper right now, but instead in the MultiTrajectory directly
@@ -143,6 +158,8 @@ class MultiTrajectory:
             self.cast_intervals[cast_interval_name].start = val['start']
             self.cast_intervals[cast_interval_name].stop = val['stop']
             self.cast_intervals[cast_interval_name].target = val['target']
+            
+            self.cast_intervals[cast_interval_name].logger = self.logger
         
         
     def init_fromtrajectory(self, trajectories):
@@ -237,8 +254,10 @@ class MultiTrajectory:
             #   First: get the time_delta predictions for each model
             for model_name in cast_interval.model_names:
             #for cast_interval_name, cast_interval in self.cast_intervals.items():
-                print("For model: {} ========================================".format(model_name))
-                print(self.predictions_dict[model_name].summary())
+                logging_message = "For model: {} ========================================".format(model_name)
+                self.logger.info(logging_message)
+                logging_message = self.predictions_dict[model_name].summary()
+                self.logger.info(logging_message)
                 
                 #   Need all mlr_formula_terms to cast the model, so drop terms where they aren't present
                 cast_context_df = pd.concat([cast_interval.models[model_name], 
@@ -272,7 +291,7 @@ class MultiTrajectory:
                     message = ('Context for Model: {} is partially or fully '
                                'missing in cast interval: {}. Removing this '
                                'model from this cast interval now...')
-                    logging.warning(message.format(model_name, cast_interval_name))
+                    self.logger.warning(message.format(model_name, cast_interval_name))
                     models_to_be_removed.append(model_name)
         
             for model_name in models_to_be_removed:
@@ -299,6 +318,22 @@ class MultiTrajectory:
             trajectory.ensemble(weights = weights,
                                 as_skewnorm = as_skewnorm)
  
+    
+    def taylor_statistics(self, cast=True, **kwargs):
+        
+        output_dict = {}
+        
+        if cast:
+            traj_dict = self.cast_intervals
+        else:
+            traj_dict = self.trajectories
+            
+        for traj_name, traj in traj_dict.items():
+            ts = traj.taylor_statistics(**kwargs)
+            output_dict[traj_name] = ts
+            
+        return output_dict
+    
     # # def addData(self, spacecraft_name, spacecraft_df):
         
     # #     self.spacecraft_names.append(spacecraft_name)
@@ -604,10 +639,12 @@ class Trajectory(_MMESH_mixins.visualization):
             
             #!!!!!!!! NEED TO CATCH NO JUMPS!
             if (rough_jumps == 0.).all():
-                print('No jumps in this time series! Must be quiescent solar wind conditions...')
-                plt.plot(smooth_derivative_zscore)
+                logging_message = "No jumps in this time series! Must be quiescent solar wind conditions..."
+                self.logger.warning(logging_message)
+                
+                # plt.plot(smooth_derivative_zscore)
                 outdf[output_tag] = rough_jumps
-                return(dataframe)
+                return dataframe
             
             #  Separate out each jump into a list of indices
             rough_jumps_indx = np.where(rough_jumps == 1)[0]
@@ -682,7 +719,9 @@ class Trajectory(_MMESH_mixins.visualization):
             if smooth_window.total_seconds() == 0.: smooth_window = dt.timedelta(hours=1)
             
             result[name] = smooth_window.total_seconds()/3600.
-            print("Smoothing of {} hours yields a standard deviation of {} for {}".format(str(smooth_window), smooth_score, name))
+            
+            logging_message = "Smoothing of {} hours yields a standard deviation of {} for {}".format(str(smooth_window), smooth_score, name)
+            self.logger.info(logging_message)
             
         return result
             
@@ -1021,9 +1060,12 @@ class Trajectory(_MMESH_mixins.visualization):
             self.best_shifts[model_name] = self.model_shift_stats[model_name].iloc[best_shift_indx]
             
             #   Add the new shift times to the model dataframe
-            print(self.best_shifts[model_name])
+            logging_message = self.best_shifts[model_name]
+            self.logger.info(logging_message)
+            
             constant_offset = self.best_shifts[model_name]['shift']
-            print(constant_offset)
+            logging_message = constant_offset
+            self.logger.info(logging_message)
             dynamic_offsets = self.model_shifts[model_name][str(int(constant_offset))]
             
             #   So, this time_delta DOES NOT mean 'point 0 belongs at time[0] + time_delta[0]'
@@ -1040,7 +1082,7 @@ class Trajectory(_MMESH_mixins.visualization):
     # =============================================================================
     #   Figure 5
     # =============================================================================
-    def plot_OptimizedOffset(self, basis_tag, metric_tag, fullfilepath=''):
+    def plot_OptimizedOffset(self, basis_tag, metric_tag, fullfilepath='', model_names = None):
         #   New plotting function
         import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
@@ -1048,7 +1090,8 @@ class Trajectory(_MMESH_mixins.visualization):
         from matplotlib.patches import ConnectionPatch
         
         #   Optionally, choose which models get plotted
-        model_names = ['huxt']
+        if model_names is None:
+            model_names = [self.model_names[0]]
         
         fig, axs = plt.subplots(nrows=3, ncols=len(model_names), 
                                 figsize=self.plotprops['figsize'], 
@@ -1225,7 +1268,7 @@ class Trajectory(_MMESH_mixins.visualization):
         import time
         import scipy.stats as stats
         # import tqdm
-        import multiprocessing as mp
+        # import multiprocessing as mp
         
         np.seterr(invalid='ignore')
         
@@ -1260,11 +1303,13 @@ class Trajectory(_MMESH_mixins.visualization):
             #   If no time_delta_sigma_column is given
             #   We don't want to do the whole Monte Carlo with zeros
             if time_delta_sigma_column == None:
-                print("Setting time_delta_sigmas to zero")
+                logging_message = "Setting time_delta_sigmas to zero"
+                self.logger.info(logging_message)
                 # time_delta_sigmas = np.zeros(len(self.models[model_name]))
                 time_delta_sigmas = np.zeros(len(nonnan_model_df))
             else:
-                print("Using real time_delta_sigmas")
+                logging_message = "Using real time_delta_sigmas"
+                self.logger.info(logging_message)
                 # time_delta_sigmas = self.models[model_name][time_delta_sigma_column].to_numpy('float64')
                 time_delta_sigmas = nonnan_model_df[time_delta_sigma_column].to_numpy('float64')
             
@@ -1519,9 +1564,12 @@ class Trajectory(_MMESH_mixins.visualization):
             number of fitting parameters returned by func
     
         """
-        import multiprocessing as mp
-        
+        #   An empty list to hold the results
         results = []
+        
+        #   The indices of any rows with nans, which would crash pool.imap
+        nan_rows = np.array([np.isnan(row).any() for row in list_of_data])
+        usable_list = [l for l, nan in zip(list_of_data, nan_rows) if ~nan]
         
         #   Find out how many cores can be used
         func = self.distribution_function.fit
@@ -1529,12 +1577,17 @@ class Trajectory(_MMESH_mixins.visualization):
         with mp.Pool(mp.cpu_count()) as pool:
             
             #   Map the fitting function to each entry in the list in a generator
-            gen = pool.imap(func, [entry for entry in list_of_data])
+            gen = pool.imap(func, [entry for entry in usable_list])
             #   Perform the fitting & print a progress bar
-            for entry in tqdm(gen, total=len(list_of_data), desc=desc):
+            for entry in tqdm(gen, total=len(usable_list), desc=desc):
                 results.append(entry)
-                
-        return np.array(results)
+        
+        #   Make an array with shape corresponding to the original list
+        #   And put the results into it
+        results_arr = np.zeros((len(list_of_data), np.shape(results)[1]))
+        results_arr[~nan_rows] = np.array(results)
+        
+        return results_arr
 
     # def sample(self, model_names = [], variables = [], n_samples=1, mu=False):
     #     """
@@ -1688,12 +1741,18 @@ class Trajectory(_MMESH_mixins.visualization):
                 x_pdf_list = [np.linspace(l, r, m_pdf) for l, r in zip(x_min_list, x_max_list)]
                 
                 variable_list = [np.zeros(m_pdf) + 1 for i in range(len(self._secondary_df))]
+                variable_parallel_list = [np.zeros((3, m_pdf)) for i in range(len(self._secondary_df))]
                 
                 for model_name in self.model_names:
                 
                     variable_params_withpadding_df = self.models[model_name].filter(like=variable, axis='columns')
                     variable_params_withpadding_df.drop(variable, axis='columns', inplace=True)
                     variable_params_df = variable_params_withpadding_df.query('@self.start <= index < @self.stop')
+                    
+                    #   !!!! Placeholder: this should be replaced with constraints on fitting in shift_Models()
+                    too_sharp_lim = 10
+                    too_sharp_indx = np.abs(variable_params_df[variable + '_a']) > too_sharp_lim
+                    variable_params_df.loc[too_sharp_indx, variable + '_a'] = np.sign(variable_params_df.loc[too_sharp_indx, variable + '_a']) * too_sharp_lim
                     
                     variable_model_weights = weights.query('@self.start <= index < @self.stop').loc[:, (model_name, variable)].to_numpy()
                     
@@ -1716,6 +1775,7 @@ class Trajectory(_MMESH_mixins.visualization):
                                 breakpoint()
                             
                             variable_list[i] *= pdf
+                            variable_parallel_list[i][self.model_names.index(model_name)] = pdf
                             
                 variable_poorly_constrained_mask = [(v == 0).all() for v in variable_list]
                 
@@ -1728,14 +1788,23 @@ class Trajectory(_MMESH_mixins.visualization):
                 #   The scale factor rescales the pdf such that the sum is ~m_pdf
                 #   This should yield histograms in the next step with reasonable samples
                 # scale_factor = 1/np.sum(variable_2d_arr, axis=1) * m_pdf
-                scale_factor_list = [1/np.sum(v) * m_pdf for v in variable_list]
+                scale_factor_list = [100*m_pdf/np.sum(v) for v in variable_list]
                 
                 #   This multiplies the correct dimensions by scale_factor
                 # simulated_histogram2d = np.int64(variable_2d_arr * scale_factor[:, np.newaxis])
                 simulated_histogram_list = [np.int64(v * sf) for v, sf in zip(variable_list, scale_factor_list)]
                 
                 try:
-                    simulated_data = [np.repeat(x, h) for x, h in zip(x_pdf_list, simulated_histogram_list)]
+                    #   To simulate data from the histogram:
+                    #   Oversample it, then choose 1000 points
+                    simulated_data = []
+                    for x, h in zip(x_pdf_list, simulated_histogram_list):
+                        repeated_var = np.repeat(x, h)
+                        rng = np.random.default_rng()
+                        sampled_repeated_var = rng.choice(repeated_var, m_pdf, replace=True)
+                        simulated_data.append(sampled_repeated_var)
+                        
+                    # simulated_data = [np.repeat(x, h) for x, h in zip(x_pdf_list, simulated_histogram_list)]
                 except:
                     breakpoint()
                 
@@ -1905,6 +1974,7 @@ class Trajectory(_MMESH_mixins.visualization):
         return result
     
     def taylor_statistics(self, model_names=None, variables=None, with_error=True, n_mc=100):
+        import copy
         import plot_TaylorDiagram as TD
         
         model_names, variables = self._parse_stats_inputs(model_names, variables)
@@ -1921,24 +1991,38 @@ class Trajectory(_MMESH_mixins.visualization):
                                  columns=output_cols)
         
         #   Sample the df, making sure its a list
-        sampled_dfs = self.sample(size = n_mc)
-        if not with_error:
-            sampled_dfs = [sampled_dfs]
+        if with_error:
+            sampled_dfs = self.sample(size = n_mc)
+        else:
+            sampled_dfs = [self.models.copy(deep=True)]
         
         for variable in variables:
             
             #   Drop all NaN rows, *unless* the whole column is NaN
             #   This ensures the corr. coeffs. can be compared between models
-            usable_cols = self.model_names
+            usable_cols = copy.deepcopy(self.model_names)
             for col in usable_cols:
                 if self.models[col][variable].isnull().all():
                     usable_cols.remove(col)
+                
             
             #   Get a df only looking at variable
-            isolated_variable_dfs = [df.xs(variable, axis='columns', level=1) for df in sampled_dfs]
+            isolated_variable_dfs = []
+            for df in sampled_dfs:
+                
+                df_atvar = df.xs(variable, axis='columns', level=1)
+                
+                df_nonan = df_atvar.dropna(axis = 'index', how = 'any', subset = usable_cols)
+                
+                joint_index = self.data.index.intersection(df_nonan.index)
+                df_joint = df_nonan.loc[joint_index]
+                
+                isolated_variable_dfs.append(df_joint)
+                
+            # isolated_variable_dfs = [df.xs(variable, axis='columns', level=1) for df in sampled_dfs]
+            # isolated_variable_dfs = [df.dropna(axis = 'index', how = 'any', subset = usable_cols) for df in isolated_variable_dfs]
+            # joint_index = 
             
-            isolated_variable_dfs = [df.dropna(axis = 'index', how = 'any', subset = usable_cols) for df in isolated_variable_dfs]
-            breakpoint()
             for model_name in model_names:
                 
                 isolated_model_dfs = [df[model_name] for df in isolated_variable_dfs]
@@ -1946,6 +2030,8 @@ class Trajectory(_MMESH_mixins.visualization):
                 r_list, sig_list, rmsd_list = [], [], []
                 for i, df in enumerate(isolated_model_dfs):
                     
+                    
+                    test_data = df.squeeze()
                     #   Squeeze forces this to be a series, so can be directly compared to spacecraft data
                     (r, sig), rmsd = TD.find_TaylorStatistics(test_data = df.squeeze(),
                                                               ref_data = self.data.loc[df.index, variable])
@@ -1969,13 +2055,10 @@ class Trajectory(_MMESH_mixins.visualization):
                     output_df.loc['r', (model_name, variable)] = r_list[0]
                     output_df.loc['sig', (model_name, variable)] = sig_list[0]
                     output_df.loc['rmsd', (model_name, variable)] = rmsd_list[0]
-            
-            
-                
-        breakpoint()
         
         return output_df
     
+    # def taylor_statistics_raw(self)
         
     # =============================================================================
     #   Plotting stuff
