@@ -38,7 +38,7 @@ class visualization:
                 self.plotprops['number_of_props_assigned'] += 1
                 self.set_plotprops(prop, label, value)
             if prop == 'marker':
-                value = 'x'
+                value = 'X'
                 self.set_plotprops(prop, label, value)
             
         return value
