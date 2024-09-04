@@ -120,15 +120,7 @@ class MultiTrajectory:
             (path_formatted/'figures/').mkdir(parents=True, exist_ok=True)
         
         #   Initialize a logger for messages to terminal/file
-        logger = logging.getLogger(__name__)
-        logger_filepath = (self.filepaths['output'] / Path(config_fullfilepath).stem).with_suffix('.log')
-        logging.basicConfig(filename = logger_filepath, 
-                            level=logging.INFO, 
-                            filemode = 'w')
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        logger.addHandler(console_handler)
-        self.logger = logger
+        self.logger = 'info'
         
         #   Store domain info
         self.domain = config_dict['domain']
@@ -168,8 +160,43 @@ class MultiTrajectory:
             self.trajectories = {}
         for trajectory in trajectories:
             self.trajectories[trajectory.trajectory_name] = trajectory
-            
-            
+    
+    @property
+    def logger(self):
+
+        return self._hidden_logger
+    
+    @logger.setter
+    def logger(self, level='info'):
+        from pathlib import Path
+        
+        #   Parse the level
+        if 'warn' in level.lower():
+            _level = logging.WARNING
+        elif 'info' in level.lower():
+            _level = logging.INFO
+        else:
+            _level = logging.INFO
+        
+        logger = logging.getLogger(__name__)
+        
+        if logger.hasHandlers():
+            logger.handlers = []
+        
+        #   Handle printing to file
+        logger_filepath = (self.filepaths['output'] / 
+                           Path(self.config_fullfilepath).stem).with_suffix('.log')
+        file_handler = logging.FileHandler(logger_filepath, 'w')
+        file_handler.setLevel(_level)
+        logger.addHandler(file_handler)
+        
+        
+        #   Handle printing to terminal
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(_level)
+        logger.addHandler(console_handler)
+        
+        self._hidden_logger = logger
     
     def linear_regression(self, formula):
         import statsmodels.api as sm
@@ -637,14 +664,14 @@ class Trajectory(_MMESH_mixins.visualization):
             smooth_derivative_zscore = smooth_derivative / np.nanstd(smooth_derivative)
             rough_jumps = np.where(smooth_derivative_zscore > sigma_cutoff, 1, 0)
             
-            #!!!!!!!! NEED TO CATCH NO JUMPS!
+            #   Catch any segments with no jumps
             if (rough_jumps == 0.).all():
                 logging_message = "No jumps in this time series! Must be quiescent solar wind conditions..."
                 self.logger.warning(logging_message)
                 
                 # plt.plot(smooth_derivative_zscore)
                 outdf[output_tag] = rough_jumps
-                return dataframe
+                return outdf
             
             #  Separate out each jump into a list of indices
             rough_jumps_indx = np.where(rough_jumps == 1)[0]
@@ -660,13 +687,15 @@ class Trajectory(_MMESH_mixins.visualization):
                 jumps[np.array(span_width_indx)+1] = 1  #  !!!!! Check +1 logic
             
             outdf[output_tag] = jumps
-            return(outdf)
+            return outdf
         
+        #   Find jumps in the data
         df = find_Jumps(self.data, parameter, sigma, smoothing_kernels[self.spacecraft_name])
         self._primary_df[self.spacecraft_name, 'jumps'] = df['jumps']
         
+        #   Find jumps in each model
         for model_name in self.model_names:
-            df = find_Jumps(self.models[model_name], parameter, sigma, smoothing_kernels[model_name], resolution_width=reswidth)
+            df = find_Jumps(self.models[model_name], parameter, sigma, smoothing_kernels[model_name], resolution_width=reswidth)     
             self._primary_df[model_name, 'jumps'] = df['jumps']
         
         self._primary_df.sort_index(axis=1, inplace=True)
@@ -946,7 +975,7 @@ class Trajectory(_MMESH_mixins.visualization):
                 
                 #  Block divide by zero errors from printing to console
                 #   Then get some confusion-matrix-based statistics
-                with np.errstate(divide='log'):
+                with np.errstate(divide='ignore', invalid='ignore'):
                     accuracy = (cm[0,0] + cm[1,1])/(cm[0,0] + cm[1,0] + cm[0,1] + cm[1,1])
                     precision = (cm[1,1])/(cm[0,1] + cm[1,1])
                     recall = (cm[1,1])/(cm[1,0] + cm[1,1])
@@ -1742,6 +1771,7 @@ class Trajectory(_MMESH_mixins.visualization):
                 
                 variable_list = [np.zeros(m_pdf) + 1 for i in range(len(self._secondary_df))]
                 variable_parallel_list = [np.zeros((3, m_pdf)) for i in range(len(self._secondary_df))]
+                variable_loc_list = [np.zeros(3) for i in range(len(self._secondary_df))]
                 
                 for model_name in self.model_names:
                 
@@ -1759,8 +1789,19 @@ class Trajectory(_MMESH_mixins.visualization):
                     #   If all weights are zero here, skip the pdf generation
                     if ~(variable_model_weights == 0.).all():
                         for i in range(len(self._secondary_df)):
+                            
+                            #   20240903 New Idea:
+                            #   Old method: generate pdfs for each model -> multiply together -> fit resulting pdf for ensemble
+                            #   This fails when the predictions are too far apart in location, as the pdf goes to 0 everywhere
+                            #   INSTEAD: scale the loc terms to be the same across models -> generate pdfs at scaled loc -> fit the shape for the ensemble uncertainties -> fill in with mean/median/whatever for loc
+                            #   How to address uncertainties?
+                            
+                            a, loc, scale = variable_params_df.iloc[i].to_numpy()
+                            scaled_loc = np.mean(x_pdf_list[i])
+                            pdf = self.distribution_function.pdf(x_pdf_list[i], a, scaled_loc, scale)
+                            
                             #
-                            pdf = self.distribution_function.pdf(x_pdf_list[i], *variable_params_df.iloc[i].to_numpy())
+                            # pdf = self.distribution_function.pdf(x_pdf_list[i], *variable_params_df.iloc[i].to_numpy())
                             
                             #   Multiply the resulting pdf by the correct weights
                             pdf *= variable_model_weights[i]
@@ -1776,7 +1817,8 @@ class Trajectory(_MMESH_mixins.visualization):
                             
                             variable_list[i] *= pdf
                             variable_parallel_list[i][self.model_names.index(model_name)] = pdf
-                            
+                            variable_loc_list[i][self.model_names.index(model_name)] = loc
+                           
                 variable_poorly_constrained_mask = [(v == 0).all() for v in variable_list]
                 
                 if (np.array(variable_poorly_constrained_mask) == True).any():
@@ -1802,7 +1844,13 @@ class Trajectory(_MMESH_mixins.visualization):
                         repeated_var = np.repeat(x, h)
                         rng = np.random.default_rng()
                         sampled_repeated_var = rng.choice(repeated_var, m_pdf, replace=True)
-                        simulated_data.append(sampled_repeated_var)
+                        
+                        #   Finally, we add a tiny amount of noise:
+                        #   The scale (sigma width) is the x resolution
+                        #   This is only to prevent overly-narrow distributions which cause failures
+                        x_pdf_res = (x[-1] - x[0])/m_pdf
+                        noisy_repeated_var = rng.normal(sampled_repeated_var, x_pdf_res)
+                        simulated_data.append(noisy_repeated_var)
                         
                     # simulated_data = [np.repeat(x, h) for x, h in zip(x_pdf_list, simulated_histogram_list)]
                 except:
@@ -1812,6 +1860,11 @@ class Trajectory(_MMESH_mixins.visualization):
                     fit_list = self._fit_DistributionToList_wmp(simulated_data)
                 except:
                     breakpoint()
+                
+                #   Reassign the correct loc to each fit
+                fit_list.T[1] = np.nanmean(variable_loc_list, 1)
+                
+                
                 
                 #   Calculate the median of the pdf and set it as the titular value
                 ensemble.loc[self._secondary_df.index, variable] = [self.distribution_function.median(*f) for f in fit_list]
