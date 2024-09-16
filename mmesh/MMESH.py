@@ -58,7 +58,8 @@ How I imagine this framework to work:
         Finally, store the ensemble model outputs (after averaging) in a top level dataframe
         Additionally, save the times at which the EM is available (i.e., times when all models are present)
 """ 
-class MultiTrajectory:
+import _MMESH_mixins
+class MultiTrajectory(_MMESH_mixins.visualization):
     
     def __init__(self, config_fullfilepath=None, trajectories=[]):
         
@@ -73,6 +74,8 @@ class MultiTrajectory:
         self.model_sources = {}
         
         self.cast_intervals = {}
+        
+        self.initialize_plotprops()
         
         #   !!!! This should be removed, but the relex is here for back-compatibility
         self.spacecraft_names = self.trajectory_names
@@ -93,6 +96,7 @@ class MultiTrajectory:
                 self.trajectories[trajectory.trajectory_name] = trajectory
                 #possible_models += trajectory.model_names
                 all_model_sources.update(trajectory.model_sources)  #  overwritten by latest
+                
             
             self.model_names = all_model_sources.keys()
             self.model_sources = all_model_sources
@@ -143,6 +147,12 @@ class MultiTrajectory:
         for model_name, model_info in config_dict['models'].items():
             self.model_names.append(model_name)
             self.model_sources[model_name] = model_info['source']
+            
+            #   Set plotting params from config if possible
+            if 'color' in model_info.keys():
+                self.set_plotprops('color', model_name, model_info['color'])
+            if 'marker' in model_info.keys():
+                self.set_plotprops('marker', model_name, model_info['marker'])
             
         #   Store the cast info
         for cast_interval_name, val in config_dict['cast_intervals'].items():
@@ -211,24 +221,40 @@ class MultiTrajectory:
         nowcast_dict = {}
         for model_name in self.model_names:
             
-            #   !!! This should be dynamic based on input equation
-            d = {'datetime':[], 
-                 'empirical_time_delta':[], 
-                 'solar_radio_flux':[], 
-                 'target_sun_earth_lon':[], 
-                 'target_sun_earth_lat':[], 
-                 'u_mag':[]}
+            #   Make a dict with all terms in formula, plus datetime
+            lhs_rhs_terms = re.findall(r"[\w']+", formula)
+            d = {key: [] for key in lhs_rhs_terms}
+            d['datetime'] = []
             
-            for trajectory_name, trajectory in self.trajectories.items():
-                d['empirical_time_delta'].extend(trajectory.models[model_name]['empirical_time_delta'].loc[trajectory.data_index])
-                d['u_mag'].extend(trajectory.models[model_name]['u_mag'].loc[trajectory.data_index])
-                
-                #   Need to write a better getter/setter for 'context'
-                d['solar_radio_flux'].extend(trajectory._primary_df[('context', 'solar_radio_flux')].loc[trajectory.data_index])
-                d['target_sun_earth_lon'].extend(trajectory._primary_df[('context', 'target_sun_earth_lon')].loc[trajectory.data_index])
-                d['target_sun_earth_lat'].extend(trajectory._primary_df[('context', 'target_sun_earth_lat')].loc[trajectory.data_index])
+            for _, trajectory in self.trajectories.items():
                 
                 d['datetime'].extend(trajectory._primary_df.loc[trajectory.data_index].index)
+                
+                for term in lhs_rhs_terms:
+                    
+                    search = trajectory._primary_df.xs(term, level=1, axis=1)
+                    
+                    #   If search has one column named 'context', pick it
+                    if len(search.columns) == 1:
+                        col = search.columns[0] 
+                        
+                    #   If search has multiple columns, pick the term aligning with the current model
+                    else:
+                        mask = search.columns == model_name
+                        col = search.columns[mask][0]
+                    
+                    d[term].extend(trajectory._primary_df.loc[trajectory.data_index, (col, term)])
+                    
+                
+                # d['empirical_time_delta'].extend(trajectory.models[model_name]['empirical_time_delta'].loc[trajectory.data_index])
+                # d['u_mag'].extend(trajectory.models[model_name]['u_mag'].loc[trajectory.data_index])
+                
+                # #   Need to write a better getter/setter for 'context'
+                # d['solar_radio_flux'].extend(trajectory._primary_df[('context', 'solar_radio_flux')].loc[trajectory.data_index])
+                # d['target_sun_earth_lon'].extend(trajectory._primary_df[('context', 'target_sun_earth_lon')].loc[trajectory.data_index])
+                # d['target_sun_earth_lat'].extend(trajectory._primary_df[('context', 'target_sun_earth_lat')].loc[trajectory.data_index])
+                
+                
             
             training_df = pd.DataFrame.from_dict(d)
             training_df = training_df.set_index('datetime')
@@ -394,7 +420,7 @@ class MultiTrajectory:
                 
     # #             print()
               
-import _MMESH_mixins
+
 class Trajectory(_MMESH_mixins.visualization):
     """
     The Trajectory class is designed to hold trajectory information in 4D
@@ -484,7 +510,7 @@ class Trajectory(_MMESH_mixins.visualization):
 
     @property
     def data(self):
-        return self._primary_df[self.spacecraft_name].dropna(axis='index', how='all')
+        return self._primary_df['data'].dropna(axis='index', how='all')
     
     @data.setter
     def data(self, df):
@@ -493,7 +519,7 @@ class Trajectory(_MMESH_mixins.visualization):
         int_columns = list(set(df.columns).intersection(self.variables))
         df = df[int_columns]
 
-        self._add_to_primary_df(self.spacecraft_name, df)
+        self._add_to_primary_df('data', df) #   All data gets stores as 'data'
         
         #   data_index is useful for statistical comparison between model and data
         #   data_span is useful for propagating the models
@@ -612,7 +638,7 @@ class Trajectory(_MMESH_mixins.visualization):
             
             #model_nonan, ref_nonan = TD.make_NaNFree(self.models[model_name][tag_name].to_numpy(dtype='float64'), ref_data)
             
-            (r, std), rmsd = TD.find_TaylorStatistics(self.models[model_name][tag_name].loc[self.data_index].to_numpy(dtype='float64'), ref_data)
+            (r, std), rmsd = TD.find_TaylorStatistics(self.models[model_name][tag_name].loc[self.data_index].to_numpy(dtype='float64'), ref_data, verbose=False)
             
             ax.scatter(np.arccos(r), std, label=model_name,
                        marker=self.gpp('marker',model_name), s=72, c=self.gpp('color',model_name),
@@ -690,8 +716,8 @@ class Trajectory(_MMESH_mixins.visualization):
             return outdf
         
         #   Find jumps in the data
-        df = find_Jumps(self.data, parameter, sigma, smoothing_kernels[self.spacecraft_name])
-        self._primary_df[self.spacecraft_name, 'jumps'] = df['jumps']
+        df = find_Jumps(self.data, parameter, sigma, smoothing_kernels['data'])
+        self._primary_df['data', 'jumps'] = df['jumps']
         
         #   Find jumps in each model
         for model_name in self.model_names:
@@ -787,13 +813,13 @@ class Trajectory(_MMESH_mixins.visualization):
                 shift_model_df.index += dt.timedelta(hours=int(shift))
                 
                 shift_model_df = pd.concat([self.data, shift_model_df], axis=1,
-                                            keys=[self.spacecraft_name, model_name])
+                                            keys=['data', model_name])
                 
                 #  !!!! This could use the internal 'baseline' method now!
                 model_nonan, ref_nonan = TD.make_NaNFree(shift_model_df[model_name][metric_tag].to_numpy(dtype='float64'), 
-                                                         shift_model_df[self.spacecraft_name][metric_tag].to_numpy(dtype='float64'))
+                                                         shift_model_df['data'][metric_tag].to_numpy(dtype='float64'))
 
-                (r, sig), rmsd = TD.find_TaylorStatistics(model_nonan, ref_nonan)
+                (r, sig), rmsd = TD.find_TaylorStatistics(model_nonan, ref_nonan, verbose=False)
                 
                 stat = {'shift': [shift],
                         'r': [r],
@@ -822,86 +848,126 @@ class Trajectory(_MMESH_mixins.visualization):
         self.model_shift_method = 'constant'
         return self.model_shift_stats
     
-    # def find_WarpStatistics_old(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
-    #     import sys
-    #     import DTW_Application as dtwa
-    #     import SWData_Analysis as swda
-        
-    #     for model_name in self.model_names:
-               
-    #         #  Only compare where data exists
-    #         df_nonan = self._primary_df.dropna(subset=[(self.spacecraft_name, basis_tag)], axis='index')
-            
-    #         stats = []
-    #         time_deltas = []
-    #         for shift in shifts:
-    #             stat, time_delta = dtwa.find_SolarWindDTW(df_nonan[self.spacecraft_name], df_nonan[model_name], shift, 
-    #                                                       basis_tag, metric_tag, 
-    #                                                       total_slope_limit=96.0,
-    #                                                       intermediate_plots=intermediate_plots,
-    #                                                       model_name = model_name,
-    #                                                       spacecraft_name = self.spacecraft_name)
-    #             time_delta = time_delta.rename(columns={'time_lag': str(shift)})
-                
-    #             stats.append(pd.DataFrame.from_dict(stat))
-    #             time_deltas.append(time_delta)
-            
-    #         stats_df = pd.concat(stats, axis='index', ignore_index=True)
-    #         times_df = pd.concat(time_deltas, axis='columns')
-    #         self.model_shifts[model_name] = times_df
-    #         self.model_shift_stats[model_name] = stats_df
-        
-    #     self.model_shift_method = 'dynamic'
-    #     return self.model_shift_stats
     
-    def find_WarpStatistics(self, basis_tag, metric_tag, shifts=[0], intermediate_plots=True):
+    def find_WarpStatistics(self, basis_tag, metric_tags, shifts=[0], 
+                            max_timedelta = 96, intermediate_plots=False):
+        """
+        Calculate several statistics describing how well a warped model matches
+        the original data
+
+        Parameters
+        ----------
+        basis_tag : STRING
+            A string representing a column name within self.data and 
+            self.models[*] from which the dynamic-time-warping (DTW) alignment 
+            will be calculated
+        metric_tag : STRING or LIST-LIKE
+            If a string: 
+                Represents a column name within self.data and 
+                self.models[*] from which the statistics will be 
+                calculated
+            If a list-like:
+                Represents multiple column names with self.data and 
+                self.models[*] from which the statistics will be 
+                calculated
+        shifts : list-like iterable, optional
+            A list-like iterable describing the backward (negative) and forward 
+            (positive) shifts to be applies to the model prior to DTW. 
+            The default is [0].
+        max_timedelta : FLOAT
+            THe maximum deviation in time (slope limit) for the model shift.
+            The default is 96 (+/-4 days, in hours)
+        intermediate_plots : BOOLEAN, optional
+            Plot each step-- under construction. The default is False.
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+
+        """
         import scipy
-        import dtw
-        
+        import dtw    
         from sklearn.metrics import confusion_matrix
         
-        #   Sets the global slope limit at +/-4*24 hours-- i.e., the maximum 
-        #   deviation from nominal time is +/- 4 days
-        #   Since we shift the full model, it would be nice if this could be 
-        #   asymmetric, such that the combined shift cannot exceed |4| days
-        total_slope_limit = 4*24.  #  !!!!! Adjust, add as argument !!!!!!!!!!!!!!! SHOULD BE DIVIDED BY 2???????????????
+        #   If metric_tags is a string, recast as a 1-element list
+        if type(metric_tags) is str:
+            metric_tags = [metric_tags]
         
+        # Initialize dfs to store statistics and time deltas for each shift
+        stats_names = ('distance', 'normalized_distance', 
+                       'r', 'stddev', 'rmsd', 
+                       'true_negative', 'true_positive', 'false_negative', 'false_positive', 
+                       'accuracy', 'precision', 'recall', 'f1_score', 
+                       'width_68', 'width_95', 'width_997')
+        mcols = pd.MultiIndex.from_product([self.model_names, metric_tags, stats_names])
+        stats_df = pd.DataFrame(index = shifts, columns = mcols)
+        mcols = pd.MultiIndex.from_product([self.model_names, [str(e) for e in shifts]])
+        time_deltas_df = pd.DataFrame(index = self.data.index, columns = mcols)
+        
+        logger_msg = ["Calculating dynamic time warping statistics for all models",
+                      "for constant shifts in range {} hours".format(", ".join([str(e) for e in shifts]))]
+        self.logger.info(logger_msg)
+        
+        # Iterate over each model in self
         for model_name in self.model_names:
+            self.logger.info("Now processing model: {}".format(self.model_sources[model_name]))
             
-            #   Only compare where data exists
-            #   df_nonan = self._primary_df.dropna(subset=[(self.spacecraft_name, basis_tag)], axis='index')
-            
-            stats = []
-            time_deltas = []
-            
-            for shift in shifts:
-                 
-                window_args = {'window_size': total_slope_limit, 'constant_offset': shift}
+            for shift in tqdm(shifts, desc='Iterating over shifts', position=0, leave=True):
                 
-                # =============================================================================
-                #   Reindex the reference by the shifted amount, 
-                #   then reset the index to match the query
-                # ============================================================================= 
-                shift_model_df = self.models[model_name].copy()
+                #   Get a copy of the model df and shift it accordingly
+                shift_model_df = self.models[model_name].copy(deep=True)
                 shift_model_df.index = shift_model_df.index + dt.timedelta(hours=float(shift))
                 shift_model_df = shift_model_df.reindex(self.data.index, method='nearest')        
-                 
-                reference = shift_model_df[basis_tag].to_numpy('float64')
-                query = self.data[basis_tag].to_numpy('float64') 
                 
-                #   Custom window
+                # Extract the time series data for reference and query
+                # reference -> the time series we're warping
+                # query -> the time series we're trying to match
+                reference = shift_model_df[basis_tag].to_numpy('float64')
+                query = self.data[basis_tag].to_numpy('float64')
+                
+                #   Define a custom windowing function for the DTW alignment
+                #   In effect, this describes how much freedom the DTW 
+                #   algorithm has to connect points in the model to points in the data
                 def custom_window(iw, jw, query_size, reference_size, window_size, constant_offset):
                     diagj = (iw * reference_size / query_size)
                     return abs(jw - diagj - constant_offset) <= window_size
                 
+                #   Arguments to be passed to custom_window
+                window_args = {'window_size': max_timedelta, 'constant_offset': shift}
+                
+                # Perform DTW alignment between query and reference
+                # This returns a matrix of len(query) x len(reference)
                 alignment = dtw.dtw(query, reference, keep_internals=True, 
                                     step_pattern='symmetric2', open_end=False,
                                     window_type=custom_window, window_args=window_args)
                 #alignment.plot(type="threeway")
                 #alignment.plot(type='density')
                 
+                # Define a function to find tie points in the alignment
                 def find_BinarizedTiePoints(alignment, query=True, reference=True,
                                             open_end=False, open_begin=False):
+                    """
+                    Find pairs of points which connect the query to the alignment
+
+                    Parameters
+                    ----------
+                    alignment : TYPE
+                        Alignment object.
+                    query : BOOLEAN, optional
+                        Whether to include tie points for the query. Default is True.
+                    reference : BOOLEAN, optional
+                        Whether to include tie points for the reference. Default is True.
+                    open_end : BOOLEAN, optional
+                        Whether to allow open end in alignment. Default is False.
+                    open_begin : BOOLEAN, optional
+                        Whether to allow open beginning in alignment. Default is False.
+    
+                    Returns
+                    -------
+                    list of tuples
+                        List of tie points connecting the query to the alignment.
+                    """
                     tie_points = []
                     if query == True:
                         for unity_indx in np.where(alignment.query == 1.0)[0]:
@@ -913,9 +979,7 @@ class Trajectory(_MMESH_mixins.visualization):
                             i2 = np.where(alignment.index2 == unity_indx)[0][0]
                             tie_points.append((alignment.index1[i2], alignment.index2[i2]))
                         
-                    #   If appropriate, add initial and final points as ties
-                    #   If DTW is performed w/o open_begin or open_end, then 
-                    #   the start and stop points are forced to match
+                    # Add start and end points as ties if alignment is not open at the edges
                     if open_begin == False:
                         tie_points.insert(0, (0,0))
                     if open_end == False:
@@ -923,44 +987,37 @@ class Trajectory(_MMESH_mixins.visualization):
                     
                     return sorted(tie_points)
                 
-                #   List of tuples; each tuple matches query index (first) to 
-                #   reference index (second)
+                # List of tuples; each tuple matches query (first) and
+                #    reference (second) indices
                 tie_points = find_BinarizedTiePoints(alignment)
                 
-                #   Map the reference to the query
+                # Map reference indices to query indices using tie points
                 reference_to_query_indx = np.zeros(len(reference))
                 for (iq_start, ir_start), (iq_stop, ir_stop) in zip(tie_points[:-1], tie_points[1:]):
                     reference_to_query_indx[iq_start:iq_stop+1] = np.linspace(ir_start, ir_stop, (iq_stop-iq_start+1))
                 
-                #   Convert from indices to time units
-                q_time = (self.data.index - self.data.index[0]).to_numpy('timedelta64[s]').astype('float64') / 3600.
+                # Convert index-based time to time units (hours)
+                # q_time = (self.data.index - self.data.index[0]).to_numpy('timedelta64[s]').astype('float64') / 3600.
                 r_time = (shift_model_df.index - shift_model_df.index[0]).to_numpy('timedelta64[s]').astype('float64') / 3600.
                 
-                #   This should work to interpolate any model quantity to the 
-                #   warp which best aligns with data
-                #   !!! r_time_warped is IDENTICAL to reference_to_query_indx...
+                # Interpolate reference time based on shifted indices
                 r_time_warped = np.interp(reference_to_query_indx, np.arange(0,len(reference)), r_time)
-                r_time_deltas = r_time - r_time_warped  #   !!!! changed from r_time_warped - r_time to current form MJR 2023/11/30
                 
-                #   Don't spline from the zeros at the start and end of the time series
-                #   These are an artifact of fixing the two time series to match at start and end
+                # Finally, calculate time deltas in the reference
+                #   and avoid artifacts at the start and end of the 
+                #   time series
+                r_time_deltas = r_time - r_time_warped
                 r_time_deltas[tie_points[0][0]:tie_points[1][0]] = r_time_deltas[tie_points[1][0]+1]
                 r_time_deltas[tie_points[-2][0]:tie_points[-1][0]+1] = r_time_deltas[tie_points[-2][0]-1]
                 
-                #   Warp the reference (i.e., shifted model at basis tag)
-                #   This DOES work to interpolate any model quantity! Finally!
-                #   I guess the confusing thing is that the resulting time 
-                #   series uses unwarped abcissa and warped ordinate
+                # Function to apply the shift to metric arrays
                 def shift_function(arr):
                     return np.interp(r_time - r_time_deltas, r_time, arr)
                 
+                # Apply shift function to warp reference data
                 r_basis_warped = shift_function(reference)
-                r_metric_warped = shift_function(shift_model_df[metric_tag].to_numpy('float64'))
                 
-                #   If the basis metric is binarized, the warping may introduce
-                #   non-binary ordinates due to interpolation. Check for these
-                #   and replace them with binary values.
-                #   !!!! May not work with feature widths/implicit errors
+                # Handle binarized basis_tag by replacing non-binary values
                 if basis_tag.lower() == 'jumps':
                     temp_arr = np.zeros(len(query))
                     for i, (val1, val2) in enumerate(zip(r_basis_warped[0:-1], r_basis_warped[1:])):
@@ -971,19 +1028,47 @@ class Trajectory(_MMESH_mixins.visualization):
                                 temp_arr[i+1] = 1.0
                     r_basis_warped = temp_arr
                 
+                # Compute confusion matrix and derived statistics
+                #   while ignoring numpy math warnings
                 cm = confusion_matrix(query, r_basis_warped, labels=[0,1])
-                
-                #  Block divide by zero errors from printing to console
-                #   Then get some confusion-matrix-based statistics
                 with np.errstate(divide='ignore', invalid='ignore'):
                     accuracy = (cm[0,0] + cm[1,1])/(cm[0,0] + cm[1,0] + cm[0,1] + cm[1,1])
                     precision = (cm[1,1])/(cm[0,1] + cm[1,1])
                     recall = (cm[1,1])/(cm[1,0] + cm[1,1])
                     f1_score = 2 * (precision * recall)/(precision + recall)
                 
-                #   Get the Taylor statistics (r, sigma, rmse)
-                (r, sig), rmsd = TD.find_TaylorStatistics(r_metric_warped, self.data[metric_tag].to_numpy('float64'))
+                #   Calculate the quasi-1-sigma, 2-sigma, and 3-sigma widths of the time_deltas
+                width_68 = np.diff(np.percentile(r_time_deltas, [16,84]))
+                width_95 = np.diff(np.percentile(r_time_deltas, [2.5,97.5]))
+                width_997 = np.diff(np.percentile(r_time_deltas, [0.15,99.85]))
                 
+                # Perform comparisons for all metric tags
+                for metric_tag in metric_tags:
+                    r_metric_warped = shift_function(shift_model_df[metric_tag].to_numpy('float64'))
+
+                    #   Get the Taylor statistics (r, sigma, RMSD)
+                    (r, stddev), rmsd = TD.find_TaylorStatistics(r_metric_warped, self.data[metric_tag].to_numpy('float64'), verbose=False)
+                    
+                    #   Statistcal results
+                    stats_df.loc[shift, (model_name, metric_tag, 'distance')] = alignment.distance
+                    stats_df.loc[shift, (model_name, metric_tag, 'normalized_distance')] = alignment.normalizedDistance
+                    stats_df.loc[shift, (model_name, metric_tag, 'r')] = r
+                    stats_df.loc[shift, (model_name, metric_tag, 'stddev')] = stddev
+                    stats_df.loc[shift, (model_name, metric_tag, 'rmsd')] = rmsd
+                    stats_df.loc[shift, (model_name, metric_tag, 'true_negative')] = cm[0,0]
+                    stats_df.loc[shift, (model_name, metric_tag, 'true_positive')] = cm[1,1]
+                    stats_df.loc[shift, (model_name, metric_tag, 'false_negative')] = cm[1,0]
+                    stats_df.loc[shift, (model_name, metric_tag, 'false_positive')] = cm[0,1]
+                    stats_df.loc[shift, (model_name, metric_tag, 'accuracy')] = accuracy
+                    stats_df.loc[shift, (model_name, metric_tag, 'precision')] = precision
+                    stats_df.loc[shift, (model_name, metric_tag, 'recall')] = recall
+                    stats_df.loc[shift, (model_name, metric_tag, 'f1_score')] = f1_score
+                    stats_df.loc[shift, (model_name, metric_tag, 'width_68')] = width_68
+                    stats_df.loc[shift, (model_name, metric_tag, 'width_95')] = width_95
+                    stats_df.loc[shift, (model_name, metric_tag, 'width_997')] = width_997
+                
+                #   For now, time deltas are NOT by metric tag, so the are out of the loop
+                time_deltas_df.loc[:, (model_name, str(shift))] = r_time_deltas
                 if intermediate_plots == True:
                     dtwa.plot_DTWViews(self.data, shift_model_df, shift, alignment, basis_tag, metric_tag,
                                   model_name = model_name, spacecraft_name = self.spacecraft_name)    
@@ -1037,48 +1122,13 @@ class Trajectory(_MMESH_mixins.visualization):
                                               axesA=axs[1], axesB=axs[2], color="gray", linewidth=2, linestyle=":")
                         axs[2].add_artist(con)
                     plt.show()
-                
-                #   20231019: Alright, I'm 99% sure these are reporting shifts correctly
-                #   That is, a positive delta_t means you add that number to the model
-                #   datetime index to best match the data. Vice versa for negatives
-                #   20240131: This is almost right-- a positive delta_t does NOT mean
-                #   that the current point should be shifted by +dt forward; it means 
-                #   that the point that should be in the current position *needs* to be 
-                #   shifted +dt forward
-                
-                time_delta_df = pd.DataFrame(data=r_time_deltas, index=shift_model_df.index, columns=[str(shift)])
-                
-                width_68 = np.percentile(r_time_deltas, 84) - np.percentile(r_time_deltas, 16)
-                width_95 = np.percentile(r_time_deltas, 97.5) - np.percentile(r_time_deltas, 2.5)
-                width_997 = np.percentile(r_time_deltas, 99.85) - np.percentile(r_time_deltas, 0.15)
-                d = {'shift': [shift],
-                     'distance': [alignment.distance],
-                     'normalizeddistance': [alignment.normalizedDistance],
-                     'r': [r],
-                     'stddev': [sig],
-                     'rmsd': [rmsd],
-                     'true_negative': cm[0,0],
-                     'true_positive': cm[1,1],
-                     'false_negative': cm[1,0],
-                     'false_positive': cm[0,1],
-                     'accuracy': accuracy,
-                     'precision': precision,
-                     'recall': recall,
-                     'f1_score': f1_score,
-                     'width_68': [width_68],
-                     'width_95': [width_95],
-                     'width_997': [width_997]}
-                
-                stats.append(pd.DataFrame.from_dict(d))
-                time_deltas.append(time_delta_df)
-            
-            stats_df = pd.concat(stats, axis='index', ignore_index=True)
-            times_df = pd.concat(time_deltas, axis='columns')
-            self.model_shifts[model_name] = times_df
-            self.model_shift_stats[model_name] = stats_df
-            
+        
+        #   Set all of these to attributes
         self.model_shift_method = 'dynamic'
-        return self.model_shift_stats
+        self.model_shifts = time_deltas_df
+        self.model_shift_stats = stats_df
+        
+        return #self.model_shift_stats
     
     def optimize_Warp(self, eqn):
         for model_name in self.model_names:
@@ -1092,10 +1142,10 @@ class Trajectory(_MMESH_mixins.visualization):
             logging_message = self.best_shifts[model_name]
             self.logger.info(logging_message)
             
-            constant_offset = self.best_shifts[model_name]['shift']
+            constant_offset = float(self.best_shifts[model_name].name)
             logging_message = constant_offset
             self.logger.info(logging_message)
-            dynamic_offsets = self.model_shifts[model_name][str(int(constant_offset))]
+            dynamic_offsets = self.model_shifts[model_name][str(int(constant_offset))].to_numpy(dtype=np.float64)
             
             #   So, this time_delta DOES NOT mean 'point 0 belongs at time[0] + time_delta[0]'
             #   Instead, it means that 'the point that belongs at time[0] is currently at time[0]-time_delta[0]'
@@ -1105,7 +1155,7 @@ class Trajectory(_MMESH_mixins.visualization):
             self._primary_df.loc[self.data_index, (model_name, 'empirical_time_delta')] += dynamic_offsets
             
         self._dtw_optimization_equation = eqn
-        
+
         return
     
     # =============================================================================
@@ -2087,7 +2137,8 @@ class Trajectory(_MMESH_mixins.visualization):
                     test_data = df.squeeze()
                     #   Squeeze forces this to be a series, so can be directly compared to spacecraft data
                     (r, sig), rmsd = TD.find_TaylorStatistics(test_data = df.squeeze(),
-                                                              ref_data = self.data.loc[df.index, variable])
+                                                              ref_data = self.data.loc[df.index, variable],
+                                                              verbose=False)
                     
                     r_list.append(r)
                     sig_list.append(sig)
@@ -2108,6 +2159,8 @@ class Trajectory(_MMESH_mixins.visualization):
                     output_df.loc['r', (model_name, variable)] = r_list[0]
                     output_df.loc['sig', (model_name, variable)] = sig_list[0]
                     output_df.loc['rmsd', (model_name, variable)] = rmsd_list[0]
+                    
+                output_df.loc['sig', ('data', variable)] = np.std(self.data.loc[df.index, variable])
         
         return output_df
     
@@ -2323,7 +2376,7 @@ class Trajectory(_MMESH_mixins.visualization):
                                         keys=[self.spacecraft_name, model_name])
             
             fig, ax = TD.plot_TaylorDiagram(shift_model_df[(model_name, 'u_mag')], 
-                                            shift_model_df[(self.spacecraft_name, 'u_mag')], 
+                                            shift_model_df[('data', 'u_mag')], 
                                             fig=fig, ax=ax, zorder=9, 
                                             s=36, c=self.gpp('color',model_name), marker=self.gpp('marker',model_name),
                                             label=model_name + ' ' + str(shift) + ' h')
@@ -2450,9 +2503,9 @@ class Trajectory(_MMESH_mixins.visualization):
         #   Rather than just the NaNs in the data
         #   Since we drop all the NaNs when calculating the other TD params
         subset = []
-        for first in [self.spacecraft_name] + self.model_names:
+        for first in ['data'] + self.model_names:
             subset.append((first, 'u_mag'))
-        ref_std = np.std(self._primary_df.dropna(subset=subset)[self.spacecraft_name, 'u_mag'])
+        ref_std = np.std(self._primary_df.dropna(subset=subset)['data', 'u_mag'])
         
         if fig == None:
             fig = plt.figure(figsize=(6,4.5))
@@ -2460,7 +2513,8 @@ class Trajectory(_MMESH_mixins.visualization):
 
         for model_name in self.model_names:
             (r, sig), rmse = TD.find_TaylorStatistics(self.models[model_name]['u_mag'].to_numpy('float64'), 
-                                                      self.data['u_mag'].to_numpy('float64'))
+                                                      self.data['u_mag'].to_numpy('float64'), 
+                                                      verbose=False)
             ax.scatter(np.arccos(r), sig, 
                         marker=self.gpp('marker',model_name), s=24, c='black',
                         zorder=9,
