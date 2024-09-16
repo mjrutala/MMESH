@@ -35,7 +35,7 @@ def make_NaNFree(*arrays):
     
     return tuple(output_arrs)
 
-def find_TaylorStatistics(test_data = 0, ref_data = 0):
+def find_TaylorStatistics(test_data = 0, ref_data = 0, verbose=True):
     
     N = float(len(test_data))
     if N != float(len(ref_data)):
@@ -47,7 +47,8 @@ def find_TaylorStatistics(test_data = 0, ref_data = 0):
     test_arr, ref_arr = make_NaNFree(test_arr, ref_arr)
     N = float(len(test_arr))
     if (len(test_arr) == 0.) or (len(ref_arr) == 0.):
-        print('One array is all NaNs. Returning...')
+        if verbose: 
+            print('One array is all NaNs. Returning...')
         return (0., 0.), 0.
     
     test_mean = np.mean(test_arr)
@@ -166,7 +167,12 @@ def init_TaylorDiagram(ref_std, fig=None, ax=None, half=False, r_label='', theta
         element.set_fontsize(plt.rcParams["figure.labelsize"])
     #          # ax.get_xticklabels() + ax.get_yticklabels()
     
-    return fig, ax 
+    ret = []
+    if fig is None:
+        ret.append(fig)
+    if ax is None:
+        ret.append(ax)
+    return ret
 
 def example_TaylorDiagram():
     
