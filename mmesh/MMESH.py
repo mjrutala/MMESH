@@ -506,6 +506,13 @@ class Trajectory(_MMESH_mixins.visualization):
     
     @context.setter
     def context(self, df):
+        
+        check = df.isnull().to_numpy().any()
+        if check == True:
+            logger_msg = "Context file contains NaN values. Unable to proceed."
+            self.logger.critical(logger_msg)
+            raise RuntimeError(logger_msg)
+            
         self._add_to_primary_df('context', df)
 
     @property
