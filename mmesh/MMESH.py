@@ -182,31 +182,44 @@ class MultiTrajectory(_MMESH_mixins.visualization):
         
         #   Parse the level
         if 'warn' in level.lower():
-            _level = logging.WARNING
+            logger_level = logging.WARNING
         elif 'info' in level.lower():
-            _level = logging.INFO
+            logger_level = logging.INFO
         else:
-            _level = logging.INFO
-        
+            logger_level = logging.INFO
+            
         logger = logging.getLogger(__name__)
-        
-        if logger.hasHandlers():
-            logger.handlers = []
-        
-        #   Handle printing to file
         logger_filepath = (self.filepaths['output'] / 
-                           Path(self.config_fullfilepath).stem).with_suffix('.log')
-        file_handler = logging.FileHandler(logger_filepath, 'w')
-        file_handler.setLevel(_level)
-        logger.addHandler(file_handler)
+                            Path(self.config_fullfilepath).stem).with_suffix('.log')
         
-        
-        #   Handle printing to terminal
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(_level)
-        logger.addHandler(console_handler)
-        
+        logging.basicConfig(level=logger_level,
+                            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                            handlers=[
+                                logging.FileHandler(logger_filepath),
+                                logging.StreamHandler()
+                                ])
+    
         self._hidden_logger = logger
+        
+        # logger = logging.getLogger(__name__)
+        
+        # if logger.hasHandlers():
+        #     logger.handlers = []
+        
+        # #   Handle printing to file
+        # logger_filepath = (self.filepaths['output'] / 
+        #                    Path(self.config_fullfilepath).stem).with_suffix('.log')
+        # file_handler = logging.FileHandler(logger_filepath, 'w')
+        # file_handler.setLevel(_level)
+        # logger.addHandler(file_handler)
+        
+        
+        # #   Handle printing to terminal
+        # console_handler = logging.StreamHandler()
+        # console_handler.setLevel(_level)
+        # logger.addHandler(console_handler)
+        
+        # self._hidden_logger = logger
     
     def linear_regression(self, formula):
         import statsmodels.api as sm
@@ -356,7 +369,308 @@ class MultiTrajectory(_MMESH_mixins.visualization):
                                            force_distribution=True, compare_distributions=False, min_rel_scale = min_rel_scale)
             else:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta')
+    
+    # def combine_trajectories(self, name, inplace=True):
+    #     import copy
+        
+    #     new_trajectory = copy.deepcopy(list(self.trajectories.values())[0])
+    #     new_trajectory._primary_df = new_trajectory._primary_df.head(0)
+    #     new_trajectory._primary_df = pd.concat([traj._primary_df for traj in self.trajectories.values()])
+        
+    #     #   Sort the index to be chronological
+    #     new_trajectory.sort_index(inplace = True)
+        
+    #     #   If indices repeat, average over all values ignoring NaNs
+    #     if new_trajectory._primary_df.index.duplicated().any() == True:
+    #         new_trajectory = new_trajectory._primary_df.groupby(new_trajectory.index).mean()
+        
+    #     if inplace == False:
+    #         return new_trajectory
+    #     else:
+    #         self.trajectories[name] = new_trajectory
             
+        
+    def _combine_trajectories_cast_intervals(self, which, subset=[]):
+        """
+        Main function for combining trajectories or cast intervals into
+        a single dataframe
+
+        Parameters
+        ----------
+        which : STRING
+            Either 'trajectories' or 'cast_intervals', depending on 
+            which is being combined
+        subset : LIST, optional
+            List of trajectory or cast interval names which will be
+            combined. An empty list is interpreted to mean all should
+            be combined.
+
+        Returns
+        -------
+        new : Trajectory Class
+            The new Trajectory Object, either a trajectory or cast
+            interval
+
+        """
+        import copy
+        
+        #   Check if we're combining trajectories or cast_intervals
+        if which == 'trajectories':
+            d = self.trajectories
+        else:
+            d = self.cast_intervals
+        
+        #   Create a new dict out of the trajectories/cast intervals in subset
+        #   If subset is empty, we will combine all of them
+        if len(subset) == 0:
+            subset = list(d.keys())
+        subset_dict = {key: value for key, value in d.items() if key in subset}
+        
+        #   Add a new trajectory/cast interval, and replace contents with concatenated dfs
+        new = copy.deepcopy(list(subset_dict.values())[0])
+        new._primary_df = new._primary_df.head(0)
+        new._primary_df = pd.concat([old._primary_df for old in subset_dict.values()])
+        
+        #   Sort the index to be chronological
+        new._primary_df.sort_index(inplace = True)
+        
+        #   If indices repeat, average over all values ignoring NaNs
+        if new._primary_df.index.duplicated().any() == True:
+            new._primary_df = new._primary_df.groupby(new._primary_df.index).mean()
+        
+        #   There should be none of these, as they were corrected in the last line
+        if new._primary_df.index.duplicated().any() == True:
+            breakpoint()
+        
+        return new
+        
+    def combine_trajectories(self, name, subset=[], inplace=True):
+        """
+        Combine a subset of trajectories into a single Trajectory object
+
+        Parameters
+        ----------
+        name : STRING
+            The name for the new trajectory. Must be a valid dictionary 
+            key
+        subset : LIST, optional
+            List of trajectory or cast interval names which will be
+            combined. An empty list is interpreted to mean all should
+            be combined.
+        inplace : BOOLEAN, optional
+            Whether to return an object (False) or add the Trajectory 
+            object to self (True). The default is True.
+
+        Returns
+        -------
+        result : Trajectory Object
+            The new, combined Trajectory Object
+        """
+        
+        result = self._combine_trajectories_cast_intervals('trajectories', subset)
+        
+        if inplace == False:
+            return result
+        else:
+            self.trajectories[name] = result
+            
+    def combine_cast_intervals(self, name, subset=[], inplace=True):
+        """
+        Combine a subset of cast intervals into a single Trajectory 
+        object
+
+        Parameters
+        ----------
+        name : STRING
+            The name for the new cast interval. Must be a valid 
+            dictionary key
+        subset : LIST, optional
+            List of cast interval names which will be combined. An empty
+            list is interpreted to mean all should be combined.
+        inplace : BOOLEAN, optional
+            Whether to return an object (False) or add the Trajectory 
+            object to self (True). The default is True.
+
+        Returns
+        -------
+        result : Trajectory Object
+            The new, combined Trajectory Object
+        """
+        
+        result = self._combine_trajectories_cast_intervals('cast_intervals', subset)
+        
+        if inplace == False:
+            return result
+        else:
+            self.cast_intervals[name] = result
+        
+    
+    def adjust_magnitudes(self):        
+        # =============================================================================
+        #     #   Magnitude Correction:
+        #   Linear regression of ensemble to other models
+        #   This should go in MMESH proper
+        # =============================================================================
+        import scipy.stats as stats
+        import copy
+        
+        self.logger.info("Beginning ensemble model magnitude and variance adjustments.")
+        
+        cast = self.combine_cast_intervals(name='combined', inplace=False)
+        
+        model_names_noensemble = copy.deepcopy(cast.model_names)
+        model_names_noensemble.remove('ensemble')
+        
+        data_forward_fn_dict = {'u_mag': lambda arr: arr,
+                                'n_tot': np.log10,
+                                'p_dyn': np.log10,
+                                'B_mag': lambda arr: arr}
+        data_reverse_fn_dict = {'u_mag': lambda arr: arr,
+                                'n_tot': lambda arr: 10**arr,
+                                'p_dyn': lambda arr: 10**arr,
+                                'B_mag': lambda arr: arr}
+        
+        #   Loop over this multiple times until the mean of the ensemble variables
+        #   are within 1% the mean of the other models
+        #   This is necessary because of the skew-normal distribution
+        largest_fractional_diff = 1
+        iteration_num = 0
+        while largest_fractional_diff > 0.01:
+            
+            #   Means of all vars before correction step
+            precorrection_means = [np.nanmean(cast.models['ensemble'][v]) for v in cast.variables]
+            
+            #   First correction: adjust the standard deviation
+            mag_correction_factors = {}
+            stddev_correction_factors = {}
+            # mag_correction_coeffs = {}
+            for var in cast.variables:
+                x0 = cast.models['ensemble'][var].to_numpy('float64')
+                x0 = data_forward_fn_dict[var](x0)
+                
+                m, f = [], []
+                for model_name in model_names_noensemble:
+                
+                    y = cast.models[model_name][var].to_numpy('float64')
+                    y = data_forward_fn_dict[var](y)
+                    
+                    nonnan_mask = ~np.isnan(x0) & ~np.isnan(y)
+                    
+                    #   If the entire mask is False, then there are no 
+                    #   overlapping points and this routine cannot procede
+                    if (nonnan_mask == True).any():
+                        
+                        #   Correction factor for the magnitude
+                        m.append(np.mean(y[nonnan_mask]) / np.mean(x0[nonnan_mask]))
+                        
+                        #   Correction factor for standard deviation scaling
+                        f.append(np.std(y[nonnan_mask]) / np.std(x0[nonnan_mask]))
+                
+                mag_correction_factors[var] = np.mean(m)
+                stddev_correction_factors[var] = np.mean(f)
+                
+                # x1 = np.nanmean(x0) + stddev_correction_factors[var] * (x0 - np.nanmean(x0))
+                # # x1 = data_translation_fn_dict[var](x1)
+                
+                # m, b = [], []
+                # for model_name in model_names_noensemble:
+                
+                #     y = cast.models[model_name][var].to_numpy('float64')
+                #     y = data_forward_fn_dict[var](y)
+                    
+                #     nonnan_mask = ~np.isnan(x1) & ~np.isnan(y)
+                    
+                #     #   If the entire mask is False, then there are no 
+                #     #   overlapping points and this routine cannot procede
+                #     if (nonnan_mask == True).any():
+                        
+                #         #   Correction factors for magnitude scaling
+                #         linfit = stats.linregress(x1[nonnan_mask], y[nonnan_mask])
+                #         m.append(linfit[0])
+                #         b.append(linfit[1])
+                
+                # #   Simple averages for now
+                # #   Could be weighted by # of nonnans in the future
+                # stddev_correction_factors[var] = np.mean(f)
+                # mag_correction_coeffs[var] = [np.mean(m), np.mean(b)]
+            
+            # correction_coeffs = {}
+            # for var in cast.variables:
+            #     x = cast.models['ensemble'][var].to_numpy('float64')
+                
+            #     m, b = [], []
+            #     for model_name in model_names_noensemble:
+                
+            #         y = cast.models[model_name][var].to_numpy('float64')
+                    
+            #         nonnan_mask = ~np.isnan(x) & ~np.isnan(y)
+                    
+            #         if (nonnan_mask == True).any():
+            #             linfit = stats.linregress(x[nonnan_mask], y[nonnan_mask])
+            #             m.append(linfit[0])
+            #             b.append(linfit[1])
+                    
+            #     correction_coeffs[var] = [np.mean(m), np.mean(b)]
+            
+            #   Now apply the corrections
+            for var in cast.variables:
+                
+                # cast._primary_df.loc[:, ('ensemble', var+'_scale')] *= stddev_correction_factors[var]
+                
+                x0 = cast._primary_df.loc[:, ('ensemble', var+'_loc')]
+                x0 = data_forward_fn_dict[var](x0)
+                
+                mu_x0 = np.nanmean(x0)
+                new_log_loc = mu_x0 * mag_correction_factors[var] + (x0 - mu_x0) * stddev_correction_factors[var]
+                new_loc = data_reverse_fn_dict[var](new_log_loc)
+                
+                cast._primary_df.loc[:, ('ensemble', var+'_loc')] = new_loc.to_numpy('float64')
+                
+                # x0 = cast._primary_df.loc[:, ('ensemble', var+'_loc')]
+                # x0 = data_forward_fn_dict[var](x0)
+                # x0 = x0 * mag_correction_coeffs[var][0] + mag_correction_coeffs[var][1]
+                # cast._primary_df.loc[:, ('ensemble', var+'_loc')] = data_reverse_fn_dict[var](x0).to_numpy('float64')
+                # print(type(data_reverse_fn_dict[var](x0)))
+                
+                # cast._primary_df.loc[:, ('ensemble', var+'_loc')] *= mag_correction_coeffs[var][0]
+                # cast._primary_df.loc[:, ('ensemble', var+'_loc')] += mag_correction_coeffs[var][1]
+                
+                new_median =  cast.median('ensemble', var)
+                cast._primary_df.loc[:, ('ensemble', var)] = new_median.to_numpy('float64')
+            
+            new_means = [np.nanmean(cast.models['ensemble'][v]) for v in cast.variables]
+            percent_change = np.abs((np.array(new_means) - np.array(precorrection_means)) / np.array(precorrection_means))
+            
+            largest_fractional_diff = np.max(percent_change)
+            iteration_num += 1
+            
+            logger_msg = ('After iteration #{}, the largest fractional '
+                          'difference between ensemble and input '
+                          'models is {:.4}'.format(iteration_num, 
+                                                largest_fractional_diff))
+            self.logger.info(logger_msg)
+        
+        self.logger.info("Ensemble model magnitude and variance adjustments converged. Writing to Trajectory...")
+            
+        #   Finally, adjust the ensemble model in each of the original cast_intervals
+        for cast_name, cast_interval in self.cast_intervals.items():
+            for var in cast.variables:
+                
+                #   Get the datetime indices of this cast interval
+                indx = self.cast_intervals[cast_name]._primary_df.index
+                
+                #   Overwrite original values
+                #   We only adjust _loc, but this behavior may change in the future
+                try:
+                    cast_interval._primary_df.loc[:, ('ensemble', var+'_a')] = cast.models['ensemble'].loc[indx, var+'_a']
+                    cast_interval._primary_df.loc[:, ('ensemble', var+'_loc')] = cast.models['ensemble'].loc[indx, var+'_loc']
+                    cast_interval._primary_df.loc[:, ('ensemble', var+'_scale')] = cast.models['ensemble'].loc[indx, var+'_scale']
+                    cast_interval._primary_df.loc[:, ('ensemble', var)] = cast.models['ensemble'].loc[indx, var]
+                except:
+                    breakpoint()
+        
+        return
+    
     def ensemble(self, weights = None, as_skewnorm = True):   
         """
         Iteratively run Trajectory.ensemble()
@@ -386,6 +700,23 @@ class MultiTrajectory(_MMESH_mixins.visualization):
             output_dict[traj_name] = ts
             
         return output_dict
+    
+    def save_MultiTrajectory(self):
+        from pathlib import Path
+        import pickle
+        
+        #   Overwrite the DTW optimization equation, which cannot be pickled
+        for key, item in self.trajectories.items():
+            item._dtw_optimization_equation = 'Dropped for Pickling...'
+        
+        #   Get a filepath and filename for saving
+        save_fullfilepath = (self.filepaths['output'] / 
+                             Path(self.config_fullfilepath).stem).with_suffix('.pkl')
+        
+        with open(save_fullfilepath, 'wb') as f:
+            pickle.dump(self, f)
+
+        return save_fullfilepath
     
     # # def addData(self, spacecraft_name, spacecraft_df):
         
@@ -1325,7 +1656,7 @@ class Trajectory(_MMESH_mixins.visualization):
         plt.show()
         return
     
-    def shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, 
+    def shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=1000, 
                      force_distribution=False, compare_distributions=False,
                      min_rel_scale = None):
         
@@ -1337,7 +1668,7 @@ class Trajectory(_MMESH_mixins.visualization):
                                     min_rel_scale = min_rel_scale)
         self._primary_df = result
     
-    def _shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=10000, 
+    def _shift_Models(self, time_delta_column=None, time_delta_sigma_column=None, n_mc=1000, 
                       force_distribution=False, compare_distributions=False,
                       min_rel_scale = 1e-11):
         """
@@ -1657,9 +1988,9 @@ class Trajectory(_MMESH_mixins.visualization):
         nan_rows = np.array([np.isnan(row).any() for row in list_of_data])
         usable_list = [l for l, nan in zip(list_of_data, nan_rows) if ~nan]
         
-        #   Find out how many cores can be used
         func = self.distribution_function.fit
         
+        #   Find out how many cores can be used
         with mp.Pool(mp.cpu_count()) as pool:
             
             #   Map the fitting function to each entry in the list in a generator
