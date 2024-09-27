@@ -140,6 +140,9 @@ def init_TaylorDiagram(ref_std, fig=None, ax=None, half=False, r_label='', theta
         
     ax.set_xticks([np.arccos(ang) for ang in theta_ticks])
     ax.set_xticklabels(theta_ticks)
+    ax.tick_params(axis='x', which='major', pad=-2, direction='inout')
+    for tick in ax.xaxis.get_majorticklabels():
+        tick.set_horizontalalignment('left')
     
     #   Set title and labels
     #   Need to set y in one command and x in another-- pyplot REALLY doesn't
