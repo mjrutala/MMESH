@@ -1,0 +1,28 @@
+[paths]
+mmesh = '/Users/mrutala/projects/MMESH/'
+output = '/Users/mrutala/projects/MMESH/minimal_example_output/'
+
+[domain]
+helioradial = [4.9, 5.5]            # [min, max] distance from Sun, AU
+heliolatitudinal = [-6.1, 6.1]      # [min, max] angle from solar equator, deg.
+
+[cast_intervals]
+    
+    [cast_intervals.juno_simulcast] # Internal name of this interval
+    target = 'Juno'                 # Target to cast at
+    start  = 2016-05-16 00:00:00    # First date/time to use, inclusive
+    stop   = 2016-06-26 00:00:00    # Last date/time to use, exclusive
+
+[models]
+
+    [models.tao]                    # Internal name of this model
+    source = 'Tao+'                 # Source of this model for input
+    color = '#b94973'               # Default color for this model in plots
+    marker = 'v'                    # Default marker for this model in plots
+    
+[trajectories]
+    
+    [trajectories.juno]             # Internal name of this interval
+    source = 'Juno'                 # Source of this trajectory
+    start  = 2016-05-16 00:00:00    # First date/time to use, inclusive
+    stop   = 2016-06-26 00:00:00    # Last date/time to use, exclusive
