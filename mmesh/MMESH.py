@@ -370,24 +370,80 @@ class MultiTrajectory(_MMESH_mixins.visualization):
             else:
                 cast_interval.shift_Models(time_delta_column='mlr_time_delta')
     
-    # def combine_trajectories(self, name, inplace=True):
-    #     import copy
+    def check_CastIntervalConsistency(self, limit = 6):
+        import copy
         
-    #     new_trajectory = copy.deepcopy(list(self.trajectories.values())[0])
-    #     new_trajectory._primary_df = new_trajectory._primary_df.head(0)
-    #     new_trajectory._primary_df = pd.concat([traj._primary_df for traj in self.trajectories.values()])
+        logger_msg = ("Ensuring that the input model coverage is ",
+                      "sufficient for ensemble construction... \n",
+                      "This requires that, for each variable, at ",
+                      "least one model is continuous over >{} time ",
+                      "steps.")
+        self.logger.info(''.join(logger_msg).format(limit))
         
-    #     #   Sort the index to be chronological
-    #     new_trajectory.sort_index(inplace = True)
+        #   Mostly for testing: backup self to comapare to old cast intervals
+        self_backup = copy.deepcopy(self)
         
-    #     #   If indices repeat, average over all values ignoring NaNs
-    #     if new_trajectory._primary_df.index.duplicated().any() == True:
-    #         new_trajectory = new_trajectory._primary_df.groupby(new_trajectory.index).mean()
-        
-    #     if inplace == False:
-    #         return new_trajectory
-    #     else:
-    #         self.trajectories[name] = new_trajectory
+        #   For each model in each cast interval
+        for cast_interval, cast in self.cast_intervals.items():
+            for model_name in cast.model_names:
+                
+                #   Check if we actually need to interpolate
+                isnan_mask = cast.models[model_name].loc[:, cast.variables].isna().any(axis=1)
+                if isnan_mask.any() == True:
+                    logger_msg = ("Interpolation required for ",
+                                  "cast_interval: {}, model: {}")
+                    self.logger.info(''.join(logger_msg).format(cast_interval, self.model_sources[model_name]))
+                    
+                    #   Interpolate over NaNs, but only up to limit
+                    this_model = cast.models[model_name].loc[:, cast.variables]
+                    this_model = this_model.interpolate('linear', axis=0, limit=limit)
+                    
+                    # Assign to self
+                    for var in cast.variables:
+                        self.cast_intervals[cast_interval]._primary_df.loc[this_model.index, (model_name, var)] = this_model[var]
+                
+                # BELOW CODE IS UNNECESSARY
+                # PANDAS MAKES THIS WAY EASIER
+                # #   Find rows with at least one nan
+                # isnan_mask = cast.models[model_name].loc[:, cast.variables].isna().any(axis=1)
+                # isnan_indx = np.argwhere(isnan_mask == True).flatten()
+                # #   Finding sections with consecutive missing rows
+                # #   This returns an empty list for isolated missing rows,
+                # #   and a list of indices into isnan_indx otherwise
+                # missing_chunks = [[]]
+                # for num, elem in enumerate(isnan_indx[1:]):
+                #     last = isnan_indx[num] # num lags behind real index
+                #     if (elem - last) != 1:
+                #         # Longer gap than 1, make an empty list
+                #         missing_chunks.append([])
+                #     else:
+                #         # Gap of 1, append to list
+                #         if len(missing_chunks[-1]) == 0:
+                #             missing_chunks[-1].append(num - 1)
+                #         missing_chunks[-1].append(num)
+                # len_missing_chunks = [len(elem) for elem in missing_chunks]
+                # #   Where are we missing more than 6 consective rows?
+                # large_missing_chunk_indx = np.argwhere(np.array(len_missing_chunks) > 6).flatten()
+
+        #   Finally, ensure there is at least one finite model value for each time step
+        for cast_interval, cast in self.cast_intervals.items():
+            all_model_df = cast._primary_df.drop('context', axis=1, level=0)
+            if 'data' in all_model_df.columns:
+                all_model_df = all_model_df.drop('data', axis=1, level=0)
+            
+            for var in cast.variables:
+               check = all_model_df.xs('u_mag', axis=1, level=1).isna().all(axis=1).any()
+               
+               if check == True:
+                   logger_msg = ("Critical Failure: \n",
+                                 "Cast_interval: {}, variable: {} ",
+                                 "No input model has sufficient ",
+                                 "coverage! \n",
+                                 "Breaking now...")
+                   self.logger.critical(''.join(logger_msg).format(cast_interval, var))
+                   breakpoint()
+            
+            
             
         
     def _combine_trajectories_cast_intervals(self, which, subset=[]):
@@ -504,23 +560,73 @@ class MultiTrajectory(_MMESH_mixins.visualization):
         else:
             self.cast_intervals[name] = result
         
+    def match_ModelDataScale(self, relative_to_Trajectory = False):
+        
+        if relative_to_Trajectory:
+            factor_dict = self.get_DataScaleFactors()
+        else:
+            factor_dict = self.get_ModelScaleFactors()
+
+        #  Adjust the ensemble model in each of the original cast_intervals
+        #  Based on the factors in factor_dict
+        for cast_name, cast_interval in self.cast_intervals.items():
+            for var in cast_interval.variables:
+                
+                #   Get the datetime indices of this cast interval
+                indx = cast_interval._primary_df.index
+                
+                #   Overwrite original values
+                #   We only adjust _loc, but this behavior may change in the future
+                try:
+                    breakpoint()
+                    cast_interval._primary_df.loc[:, ('ensemble', var+'_a')] = cast.models['ensemble'].loc[indx, var+'_a']
+                    cast_interval._primary_df.loc[:, ('ensemble', var+'_loc')] = cast.models['ensemble'].loc[indx, var+'_loc']
+                    cast_interval._primary_df.loc[:, ('ensemble', var+'_scale')] = cast.models['ensemble'].loc[indx, var+'_scale']
+                    cast_interval._primary_df.loc[:, ('ensemble', var)] = cast.models['ensemble'].loc[indx, var]
+                except:
+                    breakpoint()
+        
+        return
     
-    def adjust_magnitudes(self):        
-        # =============================================================================
-        #     #   Magnitude Correction:
-        #   Linear regression of ensemble to other models
-        #   This should go in MMESH proper
-        # =============================================================================
-        import scipy.stats as stats
+    def get_DataScaleFactors(self):
         import copy
         
-        self.logger.info("Beginning ensemble model magnitude and variance adjustments.")
+        self.logger.info("Matching ensemble model scale and variance to Trajectory data...")
+        
+        #   Copy self, then reassign all cast intervals to duplicate trajectories
+        mtraj_copy = copy.deepcopy(self)
+        mtraj_copy.cast_intervals = mtraj_copy.trajectories
+        
+        mtraj_copy.check_CastIntervalConsistency(limit = 6)
+
+        #   Cast the models & ensemble over the trajectories
+        mtraj_copy.cast_Models(with_error=True, min_rel_scale = 0.01)
+        mtraj_copy.ensemble()
+        
+        cast = mtraj_copy.combine_cast_intervals(name='combined', inplace=False)
+        
+        factor_dict = mtraj_copy.get_ScaleFactors(cast, compare_to = ['data'])
+        
+        return factor_dict
+    
+    def get_ModelScaleFactors(self):
+        import copy
+        
+        self.logger.info("Matching ensemble model scale and variance to input models...")
         
         cast = self.combine_cast_intervals(name='combined', inplace=False)
         
         model_names_noensemble = copy.deepcopy(cast.model_names)
         model_names_noensemble.remove('ensemble')
+
+        factor_dict = self.get_ScaleFactors(cast, compare_to = model_names_noensemble)
         
+        return factor_dict
+    
+    def get_ScaleFactors(self, cast_interval, compare_to=[]):
+        import copy
+        
+        #   Handle pressure, density as log-normally distributed
         data_forward_fn_dict = {'u_mag': lambda arr: arr,
                                 'n_tot': np.log10,
                                 'p_dyn': np.log10,
@@ -531,7 +637,141 @@ class MultiTrajectory(_MMESH_mixins.visualization):
                                 'B_mag': lambda arr: arr}
         
         #   Loop over this multiple times until the mean of the ensemble variables
-        #   are within 1% the mean of the other models
+        #   converge to within 1%
+        #   This is necessary because of the skew-normal distribution
+        largest_fractional_diff = 1
+        iteration_num = 0
+        
+        #   Initialize the factors as 1, so they don't scale the MME at all at start
+        mag_correction_factors = dict(zip(cast_interval.variables, 
+                                          [1]*len(cast_interval.variables)))
+        stddev_correction_factors = dict(zip(cast_interval.variables, 
+                                             [1]*len(cast_interval.variables)))
+        
+        #   Means of all vars before correction step
+        precorrection_means = [np.nanmean(cast_interval._primary_df.xs(v, level=1, axis=1).loc[:, compare_to]) 
+                               for v in cast_interval.variables]
+        
+        def scale_x0(x0, mag_correction, stddev_correction):
+            #   Get rid of NaN, inf, -inf for the mean
+            mu_x0 = np.mean(x0[np.isfinite(x0)])
+            
+            #   Scale the mean by mag correction; scale the residuals by stddev_correction
+            x1 = mu_x0 * mag_correction + (x0 - mu_x0) * stddev_correction
+            
+            return x1
+
+
+        #   Cast interval does not change, which allows the correction factors to converge
+        #   The copy allows us to set the _loc parameter and recalculate the median without changing cast interval
+        cast_copy = copy.deepcopy(cast_interval)
+        n_iterations = 0
+        while largest_fractional_diff > 0.01:
+            #   
+            for var in cast_copy.variables:
+                x0 = cast_copy.models['ensemble'][var].to_numpy('float64')
+                x0 = data_forward_fn_dict[var](x0)
+                # x0 = scale_x0(x0, mag_correction_factors[var], stddev_correction_factors[var])
+                
+                m, f = [], []
+                for col_name in compare_to:
+                    
+                    y = cast_copy._primary_df.loc[:, (col_name, var)].to_numpy('float64')
+                    y = data_forward_fn_dict[var](y)
+                    
+                    nonnan_mask = ~np.isnan(x0) & ~np.isnan(y)
+                    
+                    #   If the entire mask is False, then there are no 
+                    #   overlapping points and this routine cannot procede
+                    if (nonnan_mask == True).any():
+                        
+                        #   Correction factor for the magnitude
+                        m.append(np.mean(y[nonnan_mask]) / np.mean(x0[nonnan_mask]))
+                        
+                        #   Correction factor for standard deviation scaling
+                        f.append(np.std(y[nonnan_mask]) / np.std(x0[nonnan_mask]))
+                
+                mag_correction_factors[var] = np.mean(m)
+                stddev_correction_factors[var] = np.mean(f)
+                
+            for var in cast_copy.variables:
+                
+                with np.errstate(divide='ignore'):
+                    x0 = cast_copy._primary_df.loc[:, ('ensemble', var+'_loc')]
+                    x0 = data_forward_fn_dict[var](x0)
+                    
+                    new_loc = scale_x0(x0, mag_correction_factors[var], stddev_correction_factors[var])
+                    
+                    # mu_x0 = np.mean(x0[np.isfinite(x0)])
+                    # new_log_loc = mu_x0 * mag_correction_factors[var] + (x0 - mu_x0) * stddev_correction_factors[var]
+                    #   Convert back to real space
+                    new_loc = data_reverse_fn_dict[var](new_loc)
+                
+                #   Calculate the median from the new _loc
+                cast_copy._primary_df.loc[:, ('ensemble', var+'_loc')] = new_loc.to_numpy('float64')
+                new_median = cast_copy.median('ensemble', var).to_numpy('float64').squeeze()
+                cast_copy._primary_df.loc[:, ('ensemble', var)] = new_median
+            
+            new_means = [np.nanmean(cast_copy.models['ensemble'][v]) for v in cast_copy.variables]
+            percent_change = np.abs((np.array(new_means) - np.array(precorrection_means)) / np.array(precorrection_means))
+            
+            largest_fractional_diff = np.max(percent_change)
+            iteration_num += 1
+            
+            logger_msg = ('After iteration #{}, the largest fractional '
+                          'difference between ensemble and input '
+                          'models is {:.4}'.format(iteration_num, 
+                                                largest_fractional_diff))
+            self.logger.info(logger_msg)
+            n_iterations += 1
+            
+            print(mag_correction_factors, stddev_correction_factors)
+            if n_iterations > 10:
+                break
+        
+            
+        breakpoint()
+        self.logger.info("Ensemble model scale and variance adjustments converged!")
+        
+        correction_factors = {'mag': mag_correction_factors,
+                              'stddev': stddev_correction_factors}
+        
+        return correction_factors
+    
+    def adjust_magnitudes(self, relative_to_data=False):        
+        # =============================================================================
+        #     #   Magnitude Correction:
+        #   Linear regression of ensemble to other models
+        #   This should go in MMESH proper
+        # =============================================================================
+        import scipy.stats as stats
+        import copy
+        
+        self.logger.info("Beginning ensemble model magnitude and variance adjustments.")
+        
+        data_forward_fn_dict = {'u_mag': lambda arr: arr,
+                                'n_tot': np.log10,
+                                'p_dyn': np.log10,
+                                'B_mag': lambda arr: arr}
+        data_reverse_fn_dict = {'u_mag': lambda arr: arr,
+                                'n_tot': lambda arr: 10**arr,
+                                'p_dyn': lambda arr: 10**arr,
+                                'B_mag': lambda arr: arr}
+        
+        cast = self.combine_cast_intervals(name='combined', inplace=False)
+        model_names_noensemble = copy.deepcopy(cast.model_names)
+        model_names_noensemble.remove('ensemble')
+        
+        #   Choose whether to compared to the input models or input data
+        if relative_to_data:
+            comparison_column_names = ['data']
+        else:
+            comparison_column_names = model_names_noensemble
+        
+        breakpoint()
+        
+        #   Loop over this multiple times until the mean of the ensemble variables
+        #   converge to within 1%
         #   This is necessary because of the skew-normal distribution
         largest_fractional_diff = 1
         iteration_num = 0
@@ -549,9 +789,10 @@ class MultiTrajectory(_MMESH_mixins.visualization):
                 x0 = data_forward_fn_dict[var](x0)
                 
                 m, f = [], []
-                for model_name in model_names_noensemble:
-                
-                    y = cast.models[model_name][var].to_numpy('float64')
+                for col_name in comparison_column_names:
+                    
+                    y = cast._primary_df.loc[:, (col_name, var)].to_numpy('float64')
+                    # y = cast.models[model_name][var].to_numpy('float64')
                     y = data_forward_fn_dict[var](y)
                     
                     nonnan_mask = ~np.isnan(x0) & ~np.isnan(y)
@@ -615,14 +856,13 @@ class MultiTrajectory(_MMESH_mixins.visualization):
             #   Now apply the corrections
             for var in cast.variables:
                 
-                # cast._primary_df.loc[:, ('ensemble', var+'_scale')] *= stddev_correction_factors[var]
-                
-                x0 = cast._primary_df.loc[:, ('ensemble', var+'_loc')]
-                x0 = data_forward_fn_dict[var](x0)
-                
-                mu_x0 = np.nanmean(x0)
-                new_log_loc = mu_x0 * mag_correction_factors[var] + (x0 - mu_x0) * stddev_correction_factors[var]
-                new_loc = data_reverse_fn_dict[var](new_log_loc)
+                with np.errstate(divide='ignore'):
+                    x0 = cast._primary_df.loc[:, ('ensemble', var+'_loc')]
+                    x0 = data_forward_fn_dict[var](x0)
+                    
+                    mu_x0 = np.mean(x0[np.isfinite(x0)])
+                    new_log_loc = mu_x0 * mag_correction_factors[var] + (x0 - mu_x0) * stddev_correction_factors[var]
+                    new_loc = data_reverse_fn_dict[var](new_log_loc)
                 
                 cast._primary_df.loc[:, ('ensemble', var+'_loc')] = new_loc.to_numpy('float64')
                 
@@ -635,8 +875,8 @@ class MultiTrajectory(_MMESH_mixins.visualization):
                 # cast._primary_df.loc[:, ('ensemble', var+'_loc')] *= mag_correction_coeffs[var][0]
                 # cast._primary_df.loc[:, ('ensemble', var+'_loc')] += mag_correction_coeffs[var][1]
                 
-                new_median =  cast.median('ensemble', var)
-                cast._primary_df.loc[:, ('ensemble', var)] = new_median.to_numpy('float64')
+                new_median = cast.median('ensemble', var).to_numpy('float64').squeeze()
+                cast._primary_df.loc[:, ('ensemble', var)] = new_median
             
             new_means = [np.nanmean(cast.models['ensemble'][v]) for v in cast.variables]
             percent_change = np.abs((np.array(new_means) - np.array(precorrection_means)) / np.array(precorrection_means))
@@ -651,7 +891,7 @@ class MultiTrajectory(_MMESH_mixins.visualization):
             self.logger.info(logger_msg)
         
         self.logger.info("Ensemble model magnitude and variance adjustments converged. Writing to Trajectory...")
-            
+        
         #   Finally, adjust the ensemble model in each of the original cast_intervals
         for cast_name, cast_interval in self.cast_intervals.items():
             for var in cast.variables:
@@ -2103,6 +2343,8 @@ class Trajectory(_MMESH_mixins.visualization):
         import pandas as pd
         from functools import reduce
         
+        self.logger.info('Constructing the ensemble model...')
+        
         #   Ignores math warnings in numpy that clutter the terminal
         np.seterr(invalid='ignore')
         
@@ -2147,8 +2389,15 @@ class Trajectory(_MMESH_mixins.visualization):
                 
                 #   All models are going to be on the same interpolated axis, 
                 #   so make sure the min and max are sufficient for all expected values
-                x_min_list = np.nanmin(var_mins, 0)
-                x_max_list = np.nanmax(var_maxs, 0)
+                if np.isnan(var_mins).all():
+                    x_min_list = [0]*len(self.model_names)
+                else:
+                    x_min_list = np.nanmin(var_mins, 0)
+                    
+                if np.isnan(var_maxs).all():
+                    x_max_list = [1]*len(self.model_names)
+                else:
+                    x_max_list = np.nanmax(var_maxs, 0)
                 
                 #   n x m numpy array, where:
                 #   n = length of _primary_df
@@ -2244,6 +2493,7 @@ class Trajectory(_MMESH_mixins.visualization):
                 except:
                     breakpoint()
                 
+                self.logger.info('Characterizing {} uncertainties in the ensemble model'.format(variable))
                 try:
                     fit_list = self._fit_DistributionToList_wmp(simulated_data)
                 except:
@@ -2316,7 +2566,7 @@ class Trajectory(_MMESH_mixins.visualization):
             #   !!!! This doesn't add error properly
             # ensemble = reduce(lambda a,b: a.add(b, fill_value=0.), partials_list)
         
-        
+        self.logger.info('Ensemble model construction complete!')
         self.addModel('ensemble', ensemble, model_source='MME')
     
     # =============================================================================
@@ -2414,7 +2664,7 @@ class Trajectory(_MMESH_mixins.visualization):
         
         return result
     
-    def taylor_statistics(self, model_names=None, variables=None, with_error=True, n_mc=100):
+    def taylor_statistics(self, model_names=None, variables=None, with_error=True, n_mc=100, log10=False):
         import copy
         import plot_TaylorDiagram as TD
         
@@ -2471,10 +2721,12 @@ class Trajectory(_MMESH_mixins.visualization):
                 r_list, sig_list, rmsd_list = [], [], []
                 for i, df in enumerate(isolated_model_dfs):
                     
-                    
-                    test_data = df.squeeze()
+                    if log10 == True:
+                        test_data = np.log10(df.squeeze())
+                    else:
+                        test_data = df.squeeze()
                     #   Squeeze forces this to be a series, so can be directly compared to spacecraft data
-                    (r, sig), rmsd = TD.find_TaylorStatistics(test_data = df.squeeze(),
+                    (r, sig), rmsd = TD.find_TaylorStatistics(test_data = test_data,
                                                               ref_data = self.data.loc[df.index, variable],
                                                               verbose=False)
                     
@@ -2497,8 +2749,12 @@ class Trajectory(_MMESH_mixins.visualization):
                     output_df.loc['r', (model_name, variable)] = r_list[0]
                     output_df.loc['sig', (model_name, variable)] = sig_list[0]
                     output_df.loc['rmsd', (model_name, variable)] = rmsd_list[0]
-                    
-                output_df.loc['sig', ('data', variable)] = np.std(self.data.loc[df.index, variable])
+                
+                if log10 == True:
+                    data_sig = np.nanstd(np.log10(self.data.loc[df.index, variable].to_numpy('float64')))
+                else:
+                    data_sig = np.nanstd(self.data.loc[df.index, variable].to_numpy('float64'))
+                output_df.loc['sig', ('data', variable)] = data_sig
         
         return output_df
     
