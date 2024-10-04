@@ -60,8 +60,7 @@ def minimal_example():
         spacecraft = spacecraftdata.SpacecraftData(trajectory.source)
         spacecraft.read_processeddata(starttime, stoptime, resolution=resolution)
         
-        breakpoint()
-        
+
         #   Add this DataFrame to the trajectory using the 'addData()' method
         trajectory.addData(trajectory_name, spacecraft.data)
         
