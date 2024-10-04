@@ -1113,17 +1113,22 @@ def write_cast_for_publication(traj, fullfilename):
     output = output.reindex(sorted(output.columns), axis=1)
     #output.index.name = 'datetime'
     
-    ensemble_output = output.drop(['ENLIL', 'HUXt', 'Tao+'], axis=1, level=0)
+    nonensemble_model_names = [n for n in traj.model_names if n != 'ensemble']
+    ensemble_output = output.drop(nonensemble_model_names, axis=1, level=0)
     # ensemble_output = output.drop('HUXt', axis=1, level=0)
     # ensemble_output = output.drop('Tao', axis=1, level=0)
+    
+    start_str = traj._primary_df.index[0].strftime('%Y/%m/%d')
+    stop_str = traj._primary_df.index[-1].strftime('%Y/%m/%d')
+    now_str = dt.datetime.today().strftime('%Y/%m/%d')
     
     output_fullfilename = fullfilename[:-4] + '_withConstituentModels' + fullfilename[-4:]
     ensemble_fullfilename = fullfilename
     
     header = ['# Multi-Model Ensemble System for the outer Heliosphere (MMESH)',
               '# Output MME for target: Jupiter',
-              '# Spanning: 2016/07/04 - 2023/07/04',
-              '# Run by: M. J. Rutala, 2024/02/21',
+              '# Spanning: {} - {}'.format(start_str, stop_str),
+              '# Run by: M. J. Rutala, {}'.format(now_str),
               '# First row (if present) indicates the source of the parameter',
               '# (whether consituent model or the ensemble itself)',
               '# Second row indicates the parameter',
