@@ -103,13 +103,13 @@ def minimal_example():
         
         #   Calculate a whole bunch of statistics
         #   !!! connect shifts to padding/resolution in .toml
-        dtw_stats = trajectory.find_WarpStatistics('jumps', 'u_mag', 
-                                                   shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
+        trajectory.find_WarpStatistics('jumps', ['u_mag', 'n_tot'],
+                                       shifts=np.arange(-96, 96+6, 6), intermediate_plots=False)
         
         #   Write an equation describing the optimization equation
         #   This can be played with
         def optimization_eqn(df):
-            f = df['r'] + (1 - (0.5*df['width_68'])/96.)
+            f = df[('u_mag', 'r')] + (1 - (0.5*df[('u_mag', 'width_68')])/96.)
             return (f - np.min(f))/(np.max(f)-np.min(f))
         
         #   Plug in the optimization equation
