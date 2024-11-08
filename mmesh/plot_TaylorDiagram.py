@@ -104,10 +104,13 @@ def init_TaylorDiagram(ref_std, fig=None, ax=None, half=False, r_label='', theta
     #   If given nothing, make a figure and polar axis
     #   If given a figure, make a polar axis
     #   If given both, make nothing
+    ret = []
     if fig == None:
         fig = plt.figure()
+        ret.append(fig)
     if ax == None:
         ax = fig.add_subplot(111, projection='polar')
+        ret.append(ax)
     
     #  Centered RMS difference circles, centered on reference
     ax.scatter(0, ref_std, marker='o', color='black')
@@ -170,12 +173,8 @@ def init_TaylorDiagram(ref_std, fig=None, ax=None, half=False, r_label='', theta
         element.set_fontsize(plt.rcParams["figure.labelsize"])
     #          # ax.get_xticklabels() + ax.get_yticklabels()
     
-    ret = []
-    if fig is None:
-        ret.append(fig)
-    if ax is None:
-        ret.append(ax)
-    return ret
+    if len(ret) > 0:
+        return ret
 
 def example_TaylorDiagram():
     
