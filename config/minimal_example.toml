@@ -5,6 +5,7 @@ output = '/Users/mrutala/projects/MMESH/minimal_example_output/'
 [domain]
 helioradial = [4.9, 5.5]            # [min, max] distance from Sun, AU
 heliolatitudinal = [-6.1, 6.1]      # [min, max] angle from solar equator, deg.
+resolution = '60Min'
 
 [cast_intervals]
     
